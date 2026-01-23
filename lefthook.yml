@@ -1,0 +1,41 @@
+pre-commit:
+  parallel: true
+  commands:
+    go-fmt:
+      glob: "*.go"
+      run: gofmt -l -d . && test -z "$(gofmt -l .)"
+
+    go-vet:
+      glob: "*.go"
+      run: go vet ./...
+
+    go-test:
+      glob: "*.go"
+      run: go test ./...
+
+commit-msg:
+  commands:
+    semantic-commit:
+      run: |
+        commit_msg=$(cat {1})
+        pattern="^(feat|fix|docs|chore|refactor|test|ci|perf|style|build)(\(.+\))?: .+"
+        if ! echo "$commit_msg" | grep -qE "$pattern"; then
+          echo "ERROR: Commit message does not follow semantic commit format"
+          echo ""
+          echo "Expected format: <type>(<scope>): <description>"
+          echo ""
+          echo "Types: feat, fix, docs, chore, refactor, test, ci, perf, style, build"
+          echo ""
+          echo "Examples:"
+          echo "  feat: add user authentication"
+          echo "  fix(parser): handle empty input"
+          echo "  docs: update README"
+          echo ""
+          echo "Your message: $commit_msg"
+          exit 1
+        fi
+
+pre-push:
+  commands:
+    go-build:
+      run: go build ./...
