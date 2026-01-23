@@ -3,9 +3,32 @@ package tui
 import (
 	"testing"
 
-	gobzlmod "github.com/albertocavalcante/go-bzlmod"
+	"github.com/albertocavalcante/bz/internal/module"
+	"github.com/albertocavalcante/go-bzlmod/ast"
+	"github.com/albertocavalcante/go-bzlmod/label"
 	tea "github.com/charmbracelet/bubbletea"
 )
+
+// testModuleFile creates a test module.File with the given name, version, and deps
+func testModuleFile(name, version string, deps ...struct{ name, ver string }) *module.File {
+	f := &module.File{}
+
+	if name != "" {
+		f.Module = &ast.ModuleDecl{
+			Name:    label.MustModule(name),
+			Version: label.MustVersion(version),
+		}
+	}
+
+	for _, d := range deps {
+		f.Deps = append(f.Deps, &ast.BazelDep{
+			Name:    label.MustModule(d.name),
+			Version: label.MustVersion(d.ver),
+		})
+	}
+
+	return f
+}
 
 func TestApp_WindowSizeMsg_BeforeListInitialized(t *testing.T) {
 	// This test ensures we don't panic when WindowSizeMsg arrives
@@ -46,13 +69,9 @@ func TestApp_WindowSizeMsg_AfterListInitialized(t *testing.T) {
 
 	// Simulate DepsListedMsg to initialize the list
 	depsMsg := DepsListedMsg{
-		Module: &gobzlmod.ModuleInfo{
-			Name:    "test-module",
-			Version: "1.0.0",
-			Dependencies: []gobzlmod.Dependency{
-				{Name: "rules_go", Version: "0.50.0"},
-			},
-		},
+		File: testModuleFile("test-module", "1.0.0",
+			struct{ name, ver string }{"rules_go", "0.50.0"},
+		),
 	}
 	model, _ := app.Update(depsMsg)
 	app = model.(App)
@@ -90,10 +109,7 @@ func TestApp_DepsListedMsg_AppliesStoredDimensions(t *testing.T) {
 
 	// Now send DepsListedMsg
 	depsMsg := DepsListedMsg{
-		Module: &gobzlmod.ModuleInfo{
-			Name:    "test-module",
-			Version: "1.0.0",
-		},
+		File: testModuleFile("test-module", "1.0.0"),
 	}
 	model, _ = app.Update(depsMsg)
 	app = model.(App)

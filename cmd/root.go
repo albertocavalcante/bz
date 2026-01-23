@@ -3,6 +3,7 @@ package cmd
 import (
 	"os"
 
+	"github.com/albertocavalcante/bz/cmd/mod"
 	"github.com/spf13/cobra"
 )
 
@@ -23,4 +24,5 @@ func Execute() {
 
 func init() {
 	rootCmd.CompletionOptions.HiddenDefaultCmd = true
+	rootCmd.AddCommand(mod.Cmd)
 }

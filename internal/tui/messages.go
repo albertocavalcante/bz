@@ -1,6 +1,6 @@
 package tui
 
-import gobzlmod "github.com/albertocavalcante/go-bzlmod"
+import "github.com/albertocavalcante/bz/internal/module"
 
 // Message types following Elm architecture
 // All messages should be defined here for type safety
@@ -29,12 +29,12 @@ type ModuleResult struct {
 
 // ModuleInfoMsg is sent when module info is fetched
 type ModuleInfoMsg struct {
-	Info *gobzlmod.ModuleInfo
+	File *module.File
 }
 
 // DepsListedMsg is sent when local deps are listed
 type DepsListedMsg struct {
-	Module *gobzlmod.ModuleInfo
+	File *module.File
 }
 
 // VersionsMsg is sent when versions are fetched for a module

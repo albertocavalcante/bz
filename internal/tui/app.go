@@ -86,18 +86,18 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// Dependencies listed
 	case DepsListedMsg:
-		items := make([]ModuleItem, len(msg.Module.Dependencies))
-		for i, dep := range msg.Module.Dependencies {
+		items := make([]ModuleItem, len(msg.File.Deps))
+		for i, dep := range msg.File.Deps {
 			items[i] = ModuleItem{
-				name:    dep.Name,
-				version: dep.Version,
+				name:    dep.Name.String(),
+				version: dep.Version.String(),
 				dev:     dep.DevDependency,
 			}
 		}
 
 		title := "Dependencies"
-		if msg.Module.Name != "" {
-			title = fmt.Sprintf("%s - Dependencies", msg.Module.Name)
+		if msg.File.Name() != "" {
+			title = fmt.Sprintf("%s - Dependencies", msg.File.Name())
 		}
 
 		a.list = NewListModel(title, items, a.styles)
@@ -182,19 +182,19 @@ func RunHeadless() error {
 	case ErrMsg:
 		return m.Err
 	case DepsListedMsg:
-		items := make([]ModuleItem, len(m.Module.Dependencies))
-		for i, dep := range m.Module.Dependencies {
+		items := make([]ModuleItem, len(m.File.Deps))
+		for i, dep := range m.File.Deps {
 			items[i] = ModuleItem{
-				name:    dep.Name,
-				version: dep.Version,
+				name:    dep.Name.String(),
+				version: dep.Version.String(),
 				dev:     dep.DevDependency,
 			}
 		}
 
-		if m.Module.Name != "" {
-			fmt.Printf("%s", styles.Title.Render(m.Module.Name))
-			if m.Module.Version != "" {
-				fmt.Printf(" %s", styles.Muted.Render("("+m.Module.Version+")"))
+		if m.File.Name() != "" {
+			fmt.Printf("%s", styles.Title.Render(m.File.Name()))
+			if m.File.Version() != "" {
+				fmt.Printf(" %s", styles.Muted.Render("("+m.File.Version()+")"))
 			}
 			fmt.Println()
 		}

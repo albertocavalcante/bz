@@ -1,41 +1,21 @@
 package tui
 
 import (
-	"context"
 	"fmt"
 	"os"
 
-	gobzlmod "github.com/albertocavalcante/go-bzlmod"
+	"github.com/albertocavalcante/bz/internal/module"
 	tea "github.com/charmbracelet/bubbletea"
 )
-
-const defaultRegistry = "https://bcr.bazel.build"
-
-// FetchModuleInfo fetches module info from the registry
-func FetchModuleInfo(name, version string) tea.Cmd {
-	return func() tea.Msg {
-		client := gobzlmod.NewRegistryClient(defaultRegistry)
-		info, err := client.GetModuleFile(context.Background(), name, version)
-		if err != nil {
-			return ErrMsg{Err: fmt.Errorf("failed to fetch %s@%s: %w", name, version, err)}
-		}
-		return ModuleInfoMsg{Info: info}
-	}
-}
 
 // ListLocalDeps reads and parses the local MODULE.bazel
 func ListLocalDeps() tea.Cmd {
 	return func() tea.Msg {
-		path := "MODULE.bazel"
-		if _, err := os.Stat(path); err != nil {
-			return ErrMsg{Err: fmt.Errorf("MODULE.bazel not found in current directory")}
-		}
-
-		info, err := gobzlmod.ParseModuleFile(path)
+		f, err := module.FindAndLoad()
 		if err != nil {
-			return ErrMsg{Err: fmt.Errorf("failed to parse MODULE.bazel: %w", err)}
+			return ErrMsg{Err: err}
 		}
-		return DepsListedMsg{Module: info}
+		return DepsListedMsg{File: f}
 	}
 }
 
@@ -55,19 +35,17 @@ func SearchModules(query string) tea.Cmd {
 // AddDependency adds a dependency to MODULE.bazel
 func AddDependency(name, version string, dev bool) tea.Cmd {
 	return func() tea.Msg {
-		path := "MODULE.bazel"
+		path, err := module.Find()
+		if err != nil {
+			return ErrMsg{Err: err}
+		}
+
 		content, err := os.ReadFile(path)
 		if err != nil {
 			return ErrMsg{Err: fmt.Errorf("failed to read MODULE.bazel: %w", err)}
 		}
 
-		// Build new bazel_dep line
-		var depLine string
-		if dev {
-			depLine = fmt.Sprintf("bazel_dep(name = \"%s\", version = \"%s\", dev_dependency = True)\n", name, version)
-		} else {
-			depLine = fmt.Sprintf("bazel_dep(name = \"%s\", version = \"%s\")\n", name, version)
-		}
+		depLine := module.FormatBazelDep(name, version, dev)
 
 		newContent := string(content)
 		if len(newContent) > 0 && newContent[len(newContent)-1] != '\n' {

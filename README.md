@@ -12,29 +12,40 @@ go install github.com/albertocavalcante/bz@latest
 
 ```bash
 # Add a dependency
-bz add rules_go
-bz add rules_go@0.50.1
+bz mod add rules_go@0.50.1
+bz mod add rules_go@0.50.1 rules_python@0.35.0
+bz mod add --dev gazelle@0.38.0
 
 # List dependencies
-bz list
-bz list --outdated
+bz mod list
+bz mod list --json
+
+# Get module info from registry
+bz mod info rules_go@0.50.1
+bz mod info rules_go@0.50.1 --json
 
 # Search the Bazel Central Registry
-bz search rules_python
+bz mod search rules_python
 
-# Get module info
-bz info rules_go
+# Use a custom registry
+bz mod --registry https://my-bcr.example.com list
 ```
 
 ## Commands
 
-| Command   | Description                       |
-| --------- | --------------------------------- |
-| `add`     | Add a dependency to MODULE.bazel  |
-| `list`    | List dependencies in MODULE.bazel |
-| `search`  | Search for modules in the BCR     |
-| `info`    | Show information about a module   |
-| `version` | Print version information         |
+| Command      | Description                           |
+| ------------ | ------------------------------------- |
+| `mod add`    | Add dependencies to MODULE.bazel      |
+| `mod list`   | List dependencies in MODULE.bazel     |
+| `mod info`   | Show module information from registry |
+| `mod search` | Search for modules in the BCR         |
+| `version`    | Print version information             |
+
+### Global Flags
+
+| Flag         | Description                                                  |
+| ------------ | ------------------------------------------------------------ |
+| `--registry` | Custom Bazel Central Registry URL (default: bcr.bazel.build) |
 
 ## License
 
