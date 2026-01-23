@@ -1,12 +1,14 @@
 package tui
 
 import (
+	"errors"
 	"testing"
 
-	"github.com/albertocavalcante/bz/internal/module"
 	"github.com/albertocavalcante/go-bzlmod/ast"
 	"github.com/albertocavalcante/go-bzlmod/label"
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/albertocavalcante/bz/internal/module"
 )
 
 // testModuleFile creates a test module.File with the given name, version, and deps
@@ -133,7 +135,7 @@ func TestApp_ErrMsg_TransitionsToErrorState(t *testing.T) {
 	if app.state != StateError {
 		t.Errorf("expected state StateError, got %v", app.state)
 	}
-	if app.err != errTest {
+	if !errors.Is(app.err, errTest) {
 		t.Errorf("expected error %v, got %v", errTest, app.err)
 	}
 }

@@ -2,6 +2,7 @@ package registry
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -68,7 +69,7 @@ func TestHTTPRegistry_GetMetadata_NotFound(t *testing.T) {
 	ctx := context.Background()
 
 	_, err := reg.GetMetadata(ctx, "nonexistent")
-	if err != ErrModuleNotFound {
+	if !errors.Is(err, ErrModuleNotFound) {
 		t.Errorf("GetMetadata() error = %v, want ErrModuleNotFound", err)
 	}
 }
@@ -117,7 +118,7 @@ func TestHTTPRegistry_GetModuleBazel_VersionNotFound(t *testing.T) {
 	ctx := context.Background()
 
 	_, err := reg.GetModuleBazel(ctx, "rules_go", "9.9.9")
-	if err != ErrVersionNotFound {
+	if !errors.Is(err, ErrVersionNotFound) {
 		t.Errorf("GetModuleBazel() error = %v, want ErrVersionNotFound", err)
 	}
 }
@@ -202,7 +203,7 @@ func TestHTTPRegistry_ListModules_NotSupported(t *testing.T) {
 	ctx := context.Background()
 
 	_, err := reg.ListModules(ctx)
-	if err != ErrListingNotSupported {
+	if !errors.Is(err, ErrListingNotSupported) {
 		t.Errorf("ListModules() error = %v, want ErrListingNotSupported", err)
 	}
 }

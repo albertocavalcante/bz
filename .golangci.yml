@@ -1,0 +1,143 @@
+version: "2"
+
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+  tests: false
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/albertocavalcante/bz
+
+linters:
+  default: none
+  enable:
+    # Default linters
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+
+    # Additional recommended linters
+    - bodyclose
+    - copyloopvar
+    - dupl
+    - durationcheck
+    - errorlint
+    - fatcontext
+    - goconst
+    - gocritic
+    - gocyclo
+    - gomoddirectives
+    - goprintffuncname
+    - gosec
+    - misspell
+    - nakedret
+    - nilerr
+    - nilnil
+    - noctx
+    - prealloc
+    - predeclared
+    - revive
+    - unconvert
+    - unparam
+    - usestdlibvars
+    - wastedassign
+    - whitespace
+
+  settings:
+    errcheck:
+      check-type-assertions: false
+      check-blank: false
+      exclude-functions:
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - fmt.Printf
+        - fmt.Println
+        - (io.Writer).Write
+        - (http.ResponseWriter).Write
+        - (*tabwriter.Writer).Flush
+        - (io.Closer).Close
+
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment
+        - shadow
+
+    gocyclo:
+      min-complexity: 25
+
+    goconst:
+      min-len: 3
+      min-occurrences: 4
+
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - performance
+      disabled-tags:
+        - style
+      disabled-checks:
+        - hugeParam
+
+    misspell:
+      locale: US
+
+    nakedret:
+      max-func-lines: 30
+
+    gosec:
+      excludes:
+        - G304 # File path from variable - expected for file tools
+        - G306 # WriteFile permissions - 0644 is fine for non-sensitive
+        - G301 # Directory permissions - 0755 is standard
+
+    revive:
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: error-return
+        - name: error-naming
+        - name: increment-decrement
+        - name: indent-error-flow
+        - name: range
+        - name: receiver-naming
+        - name: time-naming
+        - name: var-declaration
+
+    unparam:
+      check-exported: false
+
+issues:
+  exclude-rules:
+    # Test files are more relaxed
+    - path: ".*_test\\.go$"
+      linters:
+        - dupl
+        - gocyclo
+        - goconst
+        - funlen
+        - errcheck
+        - gosec
+        - errorlint
+
+    # Main and cmd packages can use fmt.Print
+    - path: (main|cmd)
+      linters:
+        - forbidigo
+
+    # init() is valid for cobra commands
+    - path: cmd/
+      text: "don't use `init` function"
+
+  max-issues-per-linter: 0
+  max-same-issues: 0

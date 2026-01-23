@@ -85,7 +85,7 @@ func overrideToSummary(o ast.Override) Override {
 		}
 	case *ast.MultipleVersionOverride:
 		ov.Type = "multiple_version"
-		var versions []string
+		versions := make([]string, 0, len(v.Versions))
 		for _, ver := range v.Versions {
 			versions = append(versions, ver.String())
 		}

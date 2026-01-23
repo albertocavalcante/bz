@@ -3,6 +3,7 @@ package registry
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -83,7 +84,7 @@ func (r *HTTPRegistry) GetModuleBazel(ctx context.Context, module, version strin
 	data, err := r.fetch(ctx, url)
 	if err != nil {
 		// If module exists but version doesn't, return ErrVersionNotFound
-		if err == ErrModuleNotFound {
+		if errors.Is(err, ErrModuleNotFound) {
 			return nil, ErrVersionNotFound
 		}
 		return nil, err

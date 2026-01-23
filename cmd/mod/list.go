@@ -1,8 +1,9 @@
 package mod
 
 import (
-	"github.com/albertocavalcante/bz/internal/module"
 	"github.com/spf13/cobra"
+
+	"github.com/albertocavalcante/bz/internal/module"
 )
 
 var (

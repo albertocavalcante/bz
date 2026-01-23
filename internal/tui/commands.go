@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/albertocavalcante/bz/internal/module"
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/albertocavalcante/bz/internal/module"
 )
 
 // ListLocalDeps reads and parses the local MODULE.bazel

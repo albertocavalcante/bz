@@ -3,8 +3,9 @@ package cmd
 import (
 	"os"
 
-	"github.com/albertocavalcante/bz/cmd/mod"
 	"github.com/spf13/cobra"
+
+	"github.com/albertocavalcante/bz/cmd/mod"
 )
 
 var rootCmd = &cobra.Command{

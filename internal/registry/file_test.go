@@ -153,7 +153,7 @@ func TestFileRegistry_GetMetadata_NotFound(t *testing.T) {
 	if err == nil {
 		t.Error("GetMetadata() expected error for nonexistent module")
 	}
-	if err != ErrModuleNotFound {
+	if !errors.Is(err, ErrModuleNotFound) {
 		t.Errorf("GetMetadata() error = %v, want ErrModuleNotFound", err)
 	}
 }
@@ -181,7 +181,7 @@ func TestFileRegistry_GetModuleBazel_ModuleNotFound(t *testing.T) {
 	ctx := context.Background()
 
 	_, err := reg.GetModuleBazel(ctx, "nonexistent", "1.0.0")
-	if err != ErrModuleNotFound {
+	if !errors.Is(err, ErrModuleNotFound) {
 		t.Errorf("GetModuleBazel() error = %v, want ErrModuleNotFound", err)
 	}
 }
@@ -192,7 +192,7 @@ func TestFileRegistry_GetModuleBazel_VersionNotFound(t *testing.T) {
 	ctx := context.Background()
 
 	_, err := reg.GetModuleBazel(ctx, "rules_go", "9.9.9")
-	if err != ErrVersionNotFound {
+	if !errors.Is(err, ErrVersionNotFound) {
 		t.Errorf("GetModuleBazel() error = %v, want ErrVersionNotFound", err)
 	}
 }

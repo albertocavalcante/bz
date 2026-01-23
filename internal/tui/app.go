@@ -29,11 +29,10 @@ type App struct {
 	spinner spinner.Model
 
 	// Application state
-	styles    Styles
-	width     int
-	height    int
-	err       error
-	statusMsg string
+	styles Styles
+	width  int
+	height int
+	err    error
 }
 
 // NewApp creates a new application model
