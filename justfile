@@ -3,7 +3,7 @@
 set shell := ["bash", "-uc"]
 
 # Default recipe
-default: build
+default: help
 
 # Build the binary
 build:
