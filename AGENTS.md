@@ -18,18 +18,18 @@ This project follows [Semantic Commit Messages](https://www.conventionalcommits.
 
 ### Types
 
-| Type       | Description                                      |
-| ---------- | ------------------------------------------------ |
-| `feat`     | New feature                                      |
-| `fix`      | Bug fix                                          |
-| `docs`     | Documentation changes                            |
-| `chore`    | Maintenance, dependencies, tooling               |
-| `refactor` | Code restructuring without behavior change       |
-| `test`     | Adding or updating tests                         |
-| `ci`       | CI/CD changes                                    |
-| `perf`     | Performance improvements                         |
-| `style`    | Code style (formatting, whitespace)              |
-| `build`    | Build system changes                             |
+| Type       | Description                                |
+| ---------- | ------------------------------------------ |
+| `feat`     | New feature                                |
+| `fix`      | Bug fix                                    |
+| `docs`     | Documentation changes                      |
+| `chore`    | Maintenance, dependencies, tooling         |
+| `refactor` | Code restructuring without behavior change |
+| `test`     | Adding or updating tests                   |
+| `ci`       | CI/CD changes                              |
+| `perf`     | Performance improvements                   |
+| `style`    | Code style (formatting, whitespace)        |
+| `build`    | Build system changes                       |
 
 ### Examples
 

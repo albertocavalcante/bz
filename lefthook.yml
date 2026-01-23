@@ -3,7 +3,7 @@ pre-commit:
   commands:
     go-fmt:
       glob: "*.go"
-      run: gofmt -l -d . && test -z "$(gofmt -l .)"
+      run: test -z "$(gofmt -l . | grep -v vendor)" || (gofmt -d . && exit 1)
 
     go-vet:
       glob: "*.go"
@@ -12,6 +12,10 @@ pre-commit:
     go-test:
       glob: "*.go"
       run: go test ./...
+
+    dprint:
+      glob: "*.{md,json,toml,yml,yaml}"
+      run: dprint check
 
 commit-msg:
   commands:

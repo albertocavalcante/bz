@@ -28,13 +28,13 @@ bz info rules_go
 
 ## Commands
 
-| Command   | Description                                  |
-| --------- | -------------------------------------------- |
-| `add`     | Add a dependency to MODULE.bazel             |
-| `list`    | List dependencies in MODULE.bazel            |
-| `search`  | Search for modules in the BCR                |
-| `info`    | Show information about a module              |
-| `version` | Print version information                    |
+| Command   | Description                       |
+| --------- | --------------------------------- |
+| `add`     | Add a dependency to MODULE.bazel  |
+| `list`    | List dependencies in MODULE.bazel |
+| `search`  | Search for modules in the BCR     |
+| `info`    | Show information about a module   |
+| `version` | Print version information         |
 
 ## License
 
