@@ -128,6 +128,11 @@ func (m *ListModel) SetItems(items []ModuleItem) tea.Cmd {
 	return m.list.SetItems(listItems)
 }
 
+// SetSize sets the list dimensions
+func (m *ListModel) SetSize(width, height int) {
+	m.list.SetSize(width-4, height-4)
+}
+
 // RenderDepsTable renders dependencies as a simple table (for headless mode)
 func RenderDepsTable(deps []ModuleItem, styles Styles) string {
 	if len(deps) == 0 {

@@ -62,11 +62,13 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
-	// Window resize
+	// Window resize - only forward to list if initialized
 	case tea.WindowSizeMsg:
 		a.width = msg.Width
 		a.height = msg.Height
-		a.list, _ = a.list.Update(msg)
+		if a.state == StateList {
+			a.list, _ = a.list.Update(msg)
+		}
 		return a, nil
 
 	// Keyboard input
@@ -99,6 +101,9 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		a.list = NewListModel(title, items, a.styles)
+		if a.width > 0 && a.height > 0 {
+			a.list.SetSize(a.width, a.height)
+		}
 		a.state = StateList
 		return a, nil
 
