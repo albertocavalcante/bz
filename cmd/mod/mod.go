@@ -3,12 +3,12 @@ package mod
 
 import (
 	"github.com/spf13/cobra"
+
+	"github.com/albertocavalcante/bz/internal/registry"
 )
 
-const defaultRegistry = "https://bcr.bazel.build"
-
-// registry is the BCR URL to use (set via --registry flag)
-var registry string
+// registryFlag is the registry URL (set via --registry flag)
+var registryFlag = registry.DefaultBCR
 
 // Cmd is the root command for module operations
 var Cmd = &cobra.Command{
@@ -20,5 +20,5 @@ Commands for adding, removing, listing, and updating bazel_dep entries.`,
 }
 
 func init() {
-	Cmd.PersistentFlags().StringVar(&registry, "registry", defaultRegistry, "Bazel Central Registry URL")
+	Cmd.PersistentFlags().StringVar(&registryFlag, "registry", registry.DefaultBCR, "Registry URL (https://, http://, file://, or /path)")
 }

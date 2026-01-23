@@ -7,8 +7,10 @@ import (
 	"io"
 	"text/tabwriter"
 
-	gobzlmod "github.com/albertocavalcante/go-bzlmod"
 	"github.com/spf13/cobra"
+
+	"github.com/albertocavalcante/bz/internal/module"
+	"github.com/albertocavalcante/bz/internal/registry"
 )
 
 var (
@@ -16,13 +18,18 @@ var (
 )
 
 var infoCmd = &cobra.Command{
-	Use:   "info <module>@<version>",
+	Use:   "info <module>[@<version>]",
 	Short: "Show information about a module from the registry",
 	Long: `Display detailed information about a Bazel module from the registry.
 
+If no version is specified, shows metadata including all available versions.
+If a version is specified, shows the MODULE.bazel content for that version.
+
 Examples:
-  bz mod info rules_go@0.50.1
-  bz mod info rules_go@0.50.1 --json`,
+  bz mod info rules_go                   # Show metadata and versions
+  bz mod info rules_go@0.50.1            # Show specific version details
+  bz mod info rules_go --json            # Output as JSON
+  bz mod info rules_go --registry=/path  # Use local registry`,
 	Args: cobra.ExactArgs(1),
 	RunE: runInfo,
 }
@@ -34,57 +41,168 @@ func init() {
 
 func runInfo(cmd *cobra.Command, args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("module argument required: use <module>@<version>")
+		return fmt.Errorf("module argument required")
 	}
-
 	name, version := parseModuleArg(args[0])
-
-	if version == "" {
-		return fmt.Errorf("version required: use %s@<version>", name)
+	ctx := cmd.Context()
+	if ctx == nil {
+		ctx = context.Background()
 	}
 
-	client := gobzlmod.NewRegistryClient(registry)
-	moduleInfo, err := client.GetModuleFile(context.Background(), name, version)
+	// Create registry
+	reg, err := registry.New(registryFlag)
 	if err != nil {
-		return fmt.Errorf("failed to fetch module info: %w", err)
+		return fmt.Errorf("invalid registry: %w", err)
 	}
 
 	out := cmd.OutOrStdout()
 
-	if infoJSON {
-		return printInfoJSON(out, moduleInfo)
+	// If no version specified, show metadata
+	if version == "" {
+		meta, err := reg.GetMetadata(ctx, name)
+		if err != nil {
+			return fmt.Errorf("failed to fetch module metadata: %w", err)
+		}
+
+		if infoJSON {
+			return printMetadataJSON(out, name, meta)
+		}
+		return printMetadataTable(out, name, meta)
 	}
 
-	return printInfoTable(out, name, version, moduleInfo)
+	// Version specified - fetch MODULE.bazel and parse it
+	content, err := reg.GetModuleBazel(ctx, name, version)
+	if err != nil {
+		return fmt.Errorf("failed to fetch module: %w", err)
+	}
+
+	// Parse the MODULE.bazel content
+	modFile, err := module.LoadContent(name, content)
+	if err != nil {
+		return fmt.Errorf("failed to parse MODULE.bazel: %w", err)
+	}
+
+	if infoJSON {
+		return printModuleJSON(out, name, version, modFile)
+	}
+	return printModuleTable(out, name, version, modFile)
 }
 
-func printInfoTable(w io.Writer, name, version string, info *gobzlmod.ModuleInfo) error {
+func printMetadataTable(w io.Writer, name string, meta *registry.Metadata) error {
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 
 	fmt.Fprintf(tw, "Name:\t%s\n", name)
-	fmt.Fprintf(tw, "Version:\t%s\n", version)
-
-	if info.Name != "" && info.Name != name {
-		fmt.Fprintf(tw, "Module Name:\t%s\n", info.Name)
+	if meta.Homepage != "" {
+		fmt.Fprintf(tw, "Homepage:\t%s\n", meta.Homepage)
 	}
 
-	if len(info.Dependencies) > 0 {
+	if len(meta.Repository) > 0 {
+		fmt.Fprintf(tw, "Repository:\t%s\n", meta.Repository[0])
+	}
+
+	latest := meta.LatestVersion()
+	if latest != "" {
+		fmt.Fprintf(tw, "Latest:\t%s\n", latest)
+	}
+
+	fmt.Fprintf(tw, "Versions:\t%d available\n", len(meta.Versions))
+
+	// Show recent versions
+	if len(meta.Versions) > 0 {
 		fmt.Fprintln(tw)
-		fmt.Fprintln(tw, "Dependencies:")
-		for _, dep := range info.Dependencies {
-			dev := ""
-			if dep.DevDependency {
-				dev = " (dev)"
+		fmt.Fprintln(tw, "Recent versions:")
+		start := len(meta.Versions) - 5
+		if start < 0 {
+			start = 0
+		}
+		for i := len(meta.Versions) - 1; i >= start; i-- {
+			v := meta.Versions[i]
+			yanked := ""
+			if reason, ok := meta.YankedVersions[v]; ok {
+				yanked = fmt.Sprintf(" (yanked: %s)", reason)
 			}
-			fmt.Fprintf(tw, "  %s@%s%s\n", dep.Name, dep.Version, dev)
+			fmt.Fprintf(tw, "  %s%s\n", v, yanked)
+		}
+	}
+
+	if len(meta.Maintainers) > 0 {
+		fmt.Fprintln(tw)
+		fmt.Fprintln(tw, "Maintainers:")
+		for _, m := range meta.Maintainers {
+			if m.GitHub != "" {
+				fmt.Fprintf(tw, "  @%s", m.GitHub)
+			} else if m.Name != "" {
+				fmt.Fprintf(tw, "  %s", m.Name)
+			}
+			if m.Email != "" {
+				fmt.Fprintf(tw, " <%s>", m.Email)
+			}
+			fmt.Fprintln(tw)
 		}
 	}
 
 	return tw.Flush()
 }
 
-func printInfoJSON(w io.Writer, info *gobzlmod.ModuleInfo) error {
+func printMetadataJSON(w io.Writer, name string, meta *registry.Metadata) error {
+	output := struct {
+		Name     string             `json:"name"`
+		Metadata *registry.Metadata `json:"metadata"`
+	}{
+		Name:     name,
+		Metadata: meta,
+	}
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
-	return enc.Encode(info)
+	return enc.Encode(output)
+}
+
+func printModuleTable(w io.Writer, name, version string, mod *module.File) error {
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+
+	fmt.Fprintf(tw, "Name:\t%s\n", name)
+	fmt.Fprintf(tw, "Version:\t%s\n", version)
+
+	if mod.Name() != "" && mod.Name() != name {
+		fmt.Fprintf(tw, "Module Name:\t%s\n", mod.Name())
+	}
+
+	if len(mod.Deps) > 0 {
+		fmt.Fprintln(tw)
+		fmt.Fprintln(tw, "Dependencies:")
+		for _, dep := range mod.Deps {
+			devStr := ""
+			if dep.DevDependency {
+				devStr = " (dev)"
+			}
+			fmt.Fprintf(tw, "  %s@%s%s\n", dep.Name, dep.Version, devStr)
+		}
+	}
+
+	return tw.Flush()
+}
+
+func printModuleJSON(w io.Writer, name, version string, mod *module.File) error {
+	// Build a simplified output structure
+	deps := make([]map[string]interface{}, 0, len(mod.Deps))
+	for _, dep := range mod.Deps {
+		d := map[string]interface{}{
+			"name":    dep.Name.String(),
+			"version": dep.Version.String(),
+		}
+		if dep.DevDependency {
+			d["dev_dependency"] = true
+		}
+		deps = append(deps, d)
+	}
+
+	output := map[string]interface{}{
+		"name":         name,
+		"version":      version,
+		"dependencies": deps,
+	}
+
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	return enc.Encode(output)
 }

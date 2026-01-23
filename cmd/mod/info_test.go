@@ -9,20 +9,30 @@ import (
 )
 
 func TestInfoCmd_RequiresModuleArg(t *testing.T) {
-	err := infoCmd.RunE(infoCmd, []string{})
+	err := runInfo(infoCmd, []string{})
 	require.Error(t, err)
+	assert.Contains(t, err.Error(), "module argument required")
 }
 
-func TestInfoCmd_RequiresVersion(t *testing.T) {
-	// Reset flags
+func TestInfoCmd_ShowsMetadataWithoutVersion(t *testing.T) {
+	// This is an integration test - skip in CI if needed
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
 	infoJSON = false
 
-	var stderr bytes.Buffer
-	infoCmd.SetErr(&stderr)
+	var stdout bytes.Buffer
+	infoCmd.SetOut(&stdout)
 
-	err := infoCmd.RunE(infoCmd, []string{"rules_go"})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "version")
+	// Without version, should show metadata
+	err := runInfo(infoCmd, []string{"rules_go"})
+	require.NoError(t, err)
+
+	output := stdout.String()
+	assert.Contains(t, output, "rules_go")
+	assert.Contains(t, output, "Latest:")
+	assert.Contains(t, output, "Versions:")
 }
 
 func TestInfoCmd_FetchesFromRegistry(t *testing.T) {
@@ -37,7 +47,7 @@ func TestInfoCmd_FetchesFromRegistry(t *testing.T) {
 	infoCmd.SetOut(&stdout)
 
 	// Use a real module that exists in BCR
-	err := infoCmd.RunE(infoCmd, []string{"rules_go@0.50.1"})
+	err := runInfo(infoCmd, []string{"rules_go@0.50.1"})
 	require.NoError(t, err)
 
 	output := stdout.String()
@@ -56,7 +66,7 @@ func TestInfoCmd_JSONOutput(t *testing.T) {
 	var stdout bytes.Buffer
 	infoCmd.SetOut(&stdout)
 
-	err := infoCmd.RunE(infoCmd, []string{"rules_go@0.50.1"})
+	err := runInfo(infoCmd, []string{"rules_go@0.50.1"})
 	require.NoError(t, err)
 
 	output := stdout.String()
