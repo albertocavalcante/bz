@@ -263,5 +263,26 @@ func (r *HTTPRegistry) fetch(ctx context.Context, url string) ([]byte, error) {
 	return body, nil
 }
 
+// GetSource fetches the source.json content for a specific version.
+func (r *HTTPRegistry) GetSource(ctx context.Context, module, version string) ([]byte, error) {
+	// First verify module exists by checking metadata
+	_, err := r.GetMetadata(ctx, module)
+	if err != nil {
+		return nil, err
+	}
+
+	url := r.baseURL + "/" + SourcePath(module, version)
+	data, err := r.fetch(ctx, url)
+	if err != nil {
+		// If module exists but version doesn't, return ErrVersionNotFound
+		if errors.Is(err, ErrModuleNotFound) {
+			return nil, ErrVersionNotFound
+		}
+		return nil, err
+	}
+
+	return data, nil
+}
+
 // Verify HTTPRegistry implements Registry.
 var _ Registry = (*HTTPRegistry)(nil)

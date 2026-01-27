@@ -99,5 +99,29 @@ func (r *FileRegistry) GetModuleBazel(ctx context.Context, module, version strin
 	return data, nil
 }
 
+// GetSource fetches the source.json content for a specific version.
+func (r *FileRegistry) GetSource(ctx context.Context, module, version string) ([]byte, error) {
+	// First check if module exists
+	modulePath := filepath.Join(r.root, ModulePath(module))
+	if _, err := os.Stat(modulePath); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, ErrModuleNotFound
+		}
+		return nil, fmt.Errorf("stat module: %w", err)
+	}
+
+	// Then check for version
+	sourcePath := filepath.Join(r.root, SourcePath(module, version))
+	data, err := os.ReadFile(sourcePath)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, ErrVersionNotFound
+		}
+		return nil, fmt.Errorf("read source.json: %w", err)
+	}
+
+	return data, nil
+}
+
 // Verify FileRegistry implements Registry.
 var _ Registry = (*FileRegistry)(nil)
