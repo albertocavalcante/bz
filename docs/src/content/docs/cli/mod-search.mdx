@@ -1,0 +1,94 @@
+---
+title: bz mod search
+description: Search for modules in the registry
+---
+
+Search for Bazel modules by name in the configured registry.
+
+## Synopsis
+
+```bash
+bz mod search <query> [flags]
+```
+
+## Description
+
+The `search` command queries the registry for modules matching the search query. It searches module names and returns a list of matching modules with their descriptions.
+
+## Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `query` | Search term to match against module names |
+
+## Flags
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--registry` | `-r` | Registry URL to search (default: BCR) |
+| `--limit` | `-l` | Maximum results to return (default: 20) |
+| `--json` | | Output as JSON |
+
+## Examples
+
+### Basic Search
+
+```bash
+bz mod search rules_go
+```
+
+Output:
+```
+rules_go - Go rules for Bazel
+```
+
+### Search with Pattern
+
+```bash
+bz mod search rules_
+```
+
+Output:
+```
+rules_go - Go rules for Bazel
+rules_python - Python rules for Bazel
+rules_rust - Rust rules for Bazel
+rules_cc - C/C++ rules for Bazel
+rules_java - Java rules for Bazel
+...
+```
+
+### Search Custom Registry
+
+```bash
+bz mod search mymodule --registry https://registry.example.com
+```
+
+### JSON Output
+
+```bash
+bz mod search rules_go --json
+```
+
+Output:
+```json
+{
+  "modules": [
+    {
+      "name": "rules_go",
+      "description": "Go rules for Bazel"
+    }
+  ]
+}
+```
+
+### Limit Results
+
+```bash
+bz mod search rules_ --limit 5
+```
+
+## See Also
+
+- [mod show](/bz/cli/mod-show/) - View detailed module information
+- [mod sync](/bz/cli/mod-sync/) - Sync modules to a destination

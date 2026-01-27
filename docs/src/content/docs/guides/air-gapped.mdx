@@ -1,0 +1,255 @@
+---
+title: Air-gapped Setup
+description: Use bz in environments without internet access
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+
+This guide explains how to set up bz for air-gapped (disconnected) environments where machines cannot access the internet.
+
+## Overview
+
+The air-gapped workflow has two phases:
+
+1. **Export** - On an internet-connected machine, sync modules to a portable location
+2. **Import** - Transfer and set up the registry on the air-gapped network
+
+## Phase 1: Export
+
+<Steps>
+1. **Create export configuration**
+
+   On your internet-connected machine, create `bz-export.star`:
+
+   ```starlark
+   # bz-export.star - Export configuration for air-gapped transfer
+
+   bcr = registry.http("https://bcr.bazel.build")
+
+   # Export to a portable directory
+   export_dir = registry.file("/mnt/transfer/bazel-registry")
+
+   # All modules your air-gapped environment needs
+   modules = [
+       "bazel_skylib",
+       "platforms",
+       "rules_cc",
+       "rules_go",
+       "rules_python",
+       "rules_rust",
+       "gazelle",
+       "protobuf",
+       # Add all your dependencies here
+   ]
+
+   sync.workflow(
+       name = "export",
+       origin = bcr,
+       destination = export_dir,
+       modules = modules,
+       versions = sync.all(),  # Export all versions for flexibility
+       transforms = [
+           sync.skip_yanked(),
+           # Rewrite URLs to point to internal server
+           sync.rewrite_source_urls(
+               pattern = "https://github.com/(.*)/archive/",
+               replacement = "https://internal-mirror.local/github/$1/archive/",
+           ),
+           sync.include_patches(),
+       ],
+   )
+   ```
+
+   <Aside type="caution">
+   The `rewrite_source_urls` transform changes where Bazel downloads source archives from. Make sure you also mirror the actual source archives at that location.
+   </Aside>
+
+2. **Run the export**
+
+   ```bash
+   bz mod sync --config bz-export.star --workflow export
+   ```
+
+3. **Verify the export**
+
+   ```bash
+   ls -la /mnt/transfer/bazel-registry/modules/
+   ```
+
+4. **Transfer to air-gapped network**
+
+   Copy the `/mnt/transfer/bazel-registry` directory to your air-gapped network via:
+   - USB drive
+   - DVD
+   - Secure file transfer
+   - Whatever your security policy allows
+</Steps>
+
+## Phase 2: Import
+
+<Steps>
+1. **Set up the registry location**
+
+   On the air-gapped network, copy the registry to a shared location:
+
+   ```bash
+   # Copy to shared filesystem
+   cp -r /mnt/usb/bazel-registry /opt/shared/bazel-registry
+
+   # Or to an HTTP server document root
+   cp -r /mnt/usb/bazel-registry /var/www/html/bazel-registry
+   ```
+
+2. **Configure Bazel**
+
+   Update `.bazelrc` on all machines:
+
+   ```bash
+   # For file-based registry
+   common --registry=file:///opt/shared/bazel-registry
+
+   # Or for HTTP-served registry
+   common --registry=http://internal-server/bazel-registry
+   ```
+
+3. **Set up source archive mirror**
+
+   Since `source.json` files point to internal URLs, you need to serve the source archives. Options:
+
+   **Option A: Pre-download archives**
+
+   Download all source archives on the connected machine:
+
+   ```bash
+   # Script to download all source archives
+   for module in /mnt/transfer/bazel-registry/modules/*/; do
+       for version in "$module"*/; do
+           if [ -f "$version/source.json" ]; then
+               url=$(jq -r '.url // .urls[0]' "$version/source.json")
+               # Download and organize by the rewritten path
+               # ...
+           fi
+       done
+   done
+   ```
+
+   **Option B: Use a mirroring proxy**
+
+   Set up Artifactory, Nexus, or similar to proxy and cache downloads.
+
+4. **Test the setup**
+
+   ```bash
+   cd /path/to/bazel/project
+   bazel build //...
+   ```
+</Steps>
+
+## Example: Complete Air-gapped Pipeline
+
+### Connected Machine Setup
+
+```starlark
+# bz-export.star
+bcr = registry.http("https://bcr.bazel.build")
+export_dir = registry.file("/mnt/export/bazel-registry")
+
+# Internal URL that air-gapped machines will use
+INTERNAL_MIRROR = "http://mirror.internal.local"
+
+modules = [
+    "bazel_skylib",
+    "platforms",
+    "rules_cc",
+    "rules_go",
+    "rules_python",
+    "gazelle",
+    "protobuf",
+]
+
+sync.workflow(
+    name = "export",
+    origin = bcr,
+    destination = export_dir,
+    modules = modules,
+    versions = sync.all(),
+    transforms = [
+        sync.skip_yanked(),
+        sync.rewrite_source_urls(
+            pattern = "https://github.com",
+            replacement = INTERNAL_MIRROR + "/github-proxy",
+        ),
+        sync.include_patches(),
+    ],
+)
+```
+
+### Air-gapped Network
+
+File structure after import:
+
+```
+/opt/bazel/
+├── registry/           # Module registry
+│   ├── bazel_registry.json
+│   └── modules/
+│       ├── rules_go/
+│       ├── rules_python/
+│       └── ...
+└── archives/           # Source archives
+    └── github-proxy/
+        └── bazel-contrib/
+            └── rules_go/
+                └── releases/
+                    └── download/
+                        └── v0.50.1/
+                            └── rules_go-v0.50.1.zip
+```
+
+HTTP server configuration (nginx):
+
+```nginx
+server {
+    listen 80;
+    server_name mirror.internal.local;
+
+    # Serve registry
+    location /bazel-registry/ {
+        alias /opt/bazel/registry/;
+        autoindex on;
+    }
+
+    # Serve source archives
+    location /github-proxy/ {
+        alias /opt/bazel/archives/github-proxy/;
+    }
+}
+```
+
+Bazel configuration:
+
+```bash
+# .bazelrc
+common --registry=http://mirror.internal.local/bazel-registry
+```
+
+## Updating the Mirror
+
+When you need to add new modules or versions:
+
+1. Update `bz-export.star` with new modules
+2. Run `bz mod sync --workflow export` on connected machine
+3. Transfer only the changed files (use rsync or similar)
+4. Update the air-gapped mirror
+
+<Aside type="tip">
+Consider using git for the registry to make incremental updates easier:
+
+```starlark
+export_git = registry.git(
+    url = "/mnt/export/bazel-registry.git",
+)
+```
+
+Then transfer the git repository and pull changes on the air-gapped side.
+</Aside>

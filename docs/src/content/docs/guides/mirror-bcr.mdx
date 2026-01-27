@@ -1,0 +1,233 @@
+---
+title: Mirror BCR
+description: Create a local mirror of the Bazel Central Registry
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+
+This guide shows you how to create a local mirror of the [Bazel Central Registry](https://registry.bazel.build) (BCR) using bz.
+
+## Why Mirror BCR?
+
+- **Faster builds** - Avoid network latency for module resolution
+- **Reliability** - Builds don't fail when BCR is slow or down
+- **Compliance** - Keep a copy of all dependencies for auditing
+- **Offline builds** - Enable builds without internet access
+
+## Setup
+
+<Steps>
+1. **Create a configuration file**
+
+   Create `bz.star` in your project:
+
+   ```starlark
+   # bz.star - BCR Mirror Configuration
+
+   # Source: Bazel Central Registry
+   bcr = registry.http("https://bcr.bazel.build")
+
+   # Destination: Local filesystem
+   mirror = registry.file("/var/bazel-registry")
+
+   # Modules to mirror (add your dependencies here)
+   modules = [
+       "bazel_skylib",
+       "platforms",
+       "rules_cc",
+       "rules_go",
+       "rules_python",
+       "gazelle",
+       "protobuf",
+   ]
+
+   # Sync workflow
+   sync.workflow(
+       name = "mirror",
+       origin = bcr,
+       destination = mirror,
+       modules = modules,
+       versions = sync.latest(count = 5),  # Keep last 5 versions
+       transforms = [
+           sync.skip_yanked(),
+       ],
+   )
+   ```
+
+2. **Run the sync**
+
+   ```bash
+   bz mod sync --workflow mirror
+   ```
+
+3. **Configure Bazel to use the mirror**
+
+   Add to your `.bazelrc`:
+
+   ```bash
+   common --registry=file:///var/bazel-registry
+   common --registry=https://bcr.bazel.build
+   ```
+
+   <Aside type="tip">
+   List your local mirror first so Bazel checks it before BCR.
+   </Aside>
+
+4. **Set up regular syncing**
+
+   Create a cron job or CI pipeline to keep the mirror updated:
+
+   ```bash
+   # Run daily at 2 AM
+   0 2 * * * cd /path/to/project && bz mod sync --workflow mirror
+   ```
+</Steps>
+
+## Advanced Configuration
+
+### Mirror All Versions
+
+For a complete mirror of all versions:
+
+```starlark
+sync.workflow(
+    name = "full-mirror",
+    origin = bcr,
+    destination = mirror,
+    modules = modules,
+    versions = sync.all(),  # All versions
+    transforms = [
+        sync.skip_yanked(),
+    ],
+)
+```
+
+### Multiple Workflows
+
+Separate workflows for different environments:
+
+```starlark
+# Development: just latest versions
+sync.workflow(
+    name = "dev",
+    origin = bcr,
+    destination = registry.file("./local-registry"),
+    modules = modules,
+    versions = sync.latest(count = 1),
+)
+
+# CI: last few versions for compatibility testing
+sync.workflow(
+    name = "ci",
+    origin = bcr,
+    destination = registry.file("/opt/ci-registry"),
+    modules = modules,
+    versions = sync.latest(count = 3),
+)
+
+# Archive: full history
+sync.workflow(
+    name = "archive",
+    origin = bcr,
+    destination = registry.file("/mnt/archive/bazel-registry"),
+    modules = modules,
+    versions = sync.all(),
+)
+```
+
+### Rewrite URLs for Internal Proxy
+
+If you have a GitHub proxy:
+
+```starlark
+sync.workflow(
+    name = "mirror",
+    origin = bcr,
+    destination = mirror,
+    modules = modules,
+    transforms = [
+        sync.skip_yanked(),
+        sync.rewrite_source_urls(
+            pattern = "https://github.com",
+            replacement = "https://github-proxy.internal.example.com",
+        ),
+    ],
+)
+```
+
+## Serving the Mirror
+
+### HTTP Server
+
+Serve your mirror via HTTP using any web server:
+
+```bash
+# Using Python
+cd /var/bazel-registry
+python -m http.server 8080
+
+# Using nginx
+# Add to nginx.conf:
+# server {
+#     listen 8080;
+#     root /var/bazel-registry;
+#     autoindex on;
+# }
+```
+
+Then configure Bazel:
+
+```bash
+common --registry=http://localhost:8080
+```
+
+### Git Repository
+
+Push the mirror to a git repository:
+
+```starlark
+team_mirror = registry.git(
+    url = "https://github.com/myorg/bazel-registry.git",
+    branch = "main",
+)
+
+sync.workflow(
+    name = "git-mirror",
+    origin = bcr,
+    destination = team_mirror,
+    modules = modules,
+)
+```
+
+## Troubleshooting
+
+### Module Not Found
+
+If Bazel can't find a module:
+
+1. Verify the module exists in your mirror:
+   ```bash
+   ls /var/bazel-registry/modules/
+   ```
+
+2. Check you've synced the required version:
+   ```bash
+   ls /var/bazel-registry/modules/rules_go/
+   ```
+
+3. Run sync again with verbose output:
+   ```bash
+   bz mod sync --workflow mirror --verbose
+   ```
+
+### Stale Mirror
+
+If your mirror is out of date:
+
+```bash
+# Check what would be updated
+bz mod sync --workflow mirror --dry-run
+
+# Run the sync
+bz mod sync --workflow mirror
+```

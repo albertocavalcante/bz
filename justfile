@@ -1,9 +1,18 @@
-# bz - CLI for Bzlmod
+# bz - Bazel module management CLI
 
 set shell := ["bash", "-uc"]
 
-# Default recipe
-default: help
+# ─────────────────────────────────────────────────────────────────────────────
+# Default
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Default: show available recipes
+default:
+    @just --list
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Build & Test
+# ─────────────────────────────────────────────────────────────────────────────
 
 # Build the binary
 build:
@@ -17,23 +26,59 @@ build-release version="dev":
 test:
     go test -race ./...
 
+# Run tests with coverage
+test-coverage:
+    go test -race -coverprofile=coverage.out ./...
+    go tool cover -html=coverage.out -o coverage.html
+
+# Run benchmarks
+bench:
+    go test -bench=. -benchmem ./...
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Linting & Formatting
+# ─────────────────────────────────────────────────────────────────────────────
+
 # Run linters
 lint:
     golangci-lint run --timeout=5m
 
+# Lint and fix
+lint-fix:
+    golangci-lint run --fix --timeout=5m
+
 # Format code
 fmt:
     go fmt ./...
-    dprint fmt
+    gofumpt -w .
 
-# Check formatting
-check:
+# Check formatting (CI)
+fmt-check:
     test -z "$(gofmt -l .)"
-    dprint check
+
+# Lint GitHub Actions
+lint-actions:
+    actionlint
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Dependencies
+# ─────────────────────────────────────────────────────────────────────────────
 
 # Tidy dependencies
 tidy:
     go mod tidy
+
+# Download dependencies
+deps:
+    go mod download
+
+# Verify dependencies
+verify:
+    go mod verify
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Install
+# ─────────────────────────────────────────────────────────────────────────────
 
 # Install to ~/.local/bin (atomic)
 install: build
@@ -71,9 +116,40 @@ install-go: build
     mv "$tmp" "$dest"
     echo "Installed to $dest"
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Documentation
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Install docs dependencies
+docs-install:
+    cd docs && bun install
+
+# Build docs for production
+docs-build:
+    cd docs && bun run build
+
+# Serve docs locally (dev mode with hot reload)
+docs-dev:
+    cd docs && bun run dev
+
+# Preview production build locally
+docs-preview:
+    cd docs && bun run preview
+
+# Build and serve docs (production build)
+docs: docs-build docs-preview
+
+# Clean docs build artifacts
+docs-clean:
+    rm -rf docs/dist docs/.astro docs/node_modules
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Development
+# ─────────────────────────────────────────────────────────────────────────────
+
 # Clean build artifacts
 clean:
-    rm -f bz
+    rm -f bz coverage.out coverage.html
     go clean
 
 # Run the binary
@@ -84,6 +160,85 @@ run *args:
 watch:
     watchexec -e go -r -- just build
 
-# Show help
-help:
-    @just --list
+# Run all checks (CI simulation)
+check: fmt-check lint test
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Open in Browser / Editor
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Open repository in browser
+open:
+    open https://github.com/albertocavalcante/bz
+
+# Open GitHub Actions
+actions:
+    open https://github.com/albertocavalcante/bz/actions
+
+# Open GitHub Issues
+issues:
+    open https://github.com/albertocavalcante/bz/issues
+
+# Open Pull Requests
+prs:
+    open https://github.com/albertocavalcante/bz/pulls
+
+# Open Releases
+releases:
+    open https://github.com/albertocavalcante/bz/releases
+
+# Open docs in browser
+docs-open:
+    open https://albertocavalcante.github.io/bz/
+
+# Open in VSCode
+code:
+    code .
+
+# Open in Cursor
+cursor:
+    cursor .
+
+# Open in Zed
+zed:
+    zed .
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CI / Workflows
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Watch CI status
+ci-watch:
+    gh run watch
+
+# List recent workflow runs
+ci-list:
+    gh run list --limit 10
+
+# Trigger nightly build
+nightly:
+    gh workflow run nightly.yml --field force=true
+
+# Trigger docs deployment manually
+docs-deploy:
+    gh workflow run docs.yml
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Release
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Create a new release tag
+release version:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [[ ! "{{version}}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+        echo "Error: Version must be in format v1.2.3 or v1.2.3-rc1"
+        exit 1
+    fi
+    git tag -a "{{version}}" -m "Release {{version}}"
+    echo "Created tag {{version}}"
+    echo "Run 'git push origin {{version}}' to trigger release workflow"
+
+# List tags
+tags:
+    git tag -l --sort=-v:refname | head -10

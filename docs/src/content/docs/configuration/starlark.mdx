@@ -1,0 +1,190 @@
+---
+title: Starlark Configuration
+description: Write bz configurations using Starlark
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+bz uses [Starlark](https://github.com/bazelbuild/starlark), a Python-like language designed for configuration. If you've written Bazel BUILD files, you already know Starlark.
+
+## Why Starlark?
+
+- **Familiar syntax** - Python-like, easy to learn
+- **Deterministic** - No side effects, reproducible configs
+- **Composable** - Load and reuse configuration snippets
+- **Type-safe** - Catches errors early
+
+## Basic Syntax
+
+### Variables
+
+```starlark
+# Strings
+name = "rules_go"
+url = "https://bcr.bazel.build"
+
+# Numbers
+count = 5
+timeout = 30
+
+# Booleans
+verbose = True
+dry_run = False
+
+# Lists
+modules = ["rules_go", "rules_python", "gazelle"]
+
+# Dictionaries
+options = {
+    "timeout": 30,
+    "retries": 3,
+}
+```
+
+### Functions
+
+```starlark
+# Calling functions
+bcr = registry.http("https://bcr.bazel.build")
+
+# Named arguments
+sync.workflow(
+    name = "my-workflow",
+    origin = bcr,
+    destination = mirror,
+    modules = ["rules_go"],
+)
+```
+
+### Conditionals
+
+```starlark
+# if/else
+env_name = env("ENVIRONMENT")
+if env_name == "production":
+    registry_url = "https://prod-registry.example.com"
+else:
+    registry_url = "https://dev-registry.example.com"
+```
+
+<Aside type="note">
+Starlark doesn't support `while` loops or recursion to ensure configuration always terminates.
+</Aside>
+
+### List Comprehensions
+
+```starlark
+# Generate module list
+prefixes = ["rules_", "bazel_"]
+modules = [p + "go" for p in prefixes]
+# Result: ["rules_go", "bazel_go"]
+```
+
+## Environment Variables
+
+Use `env()` to read environment variables:
+
+```starlark
+# Read required variable
+token = env("GITHUB_TOKEN")
+
+# With default value
+registry = env("REGISTRY_URL") or "https://bcr.bazel.build"
+```
+
+<Aside type="caution">
+Only environment variables with the `BZ_` prefix or explicitly allowed names can be accessed for security.
+</Aside>
+
+## Complete Example
+
+```starlark
+# bz.star - Complete configuration example
+
+# Define registries
+bcr = registry.http("https://bcr.bazel.build")
+
+# Local mirror for development
+local_mirror = registry.file("./bazel-registry")
+
+# Git repository for team sharing
+team_registry = registry.git(
+    url = "https://github.com/myorg/bazel-registry.git",
+    branch = "main",
+)
+
+# Production HTTP server
+prod_server = registry.http_put(
+    url = "https://registry.example.com",
+    auth = auth.bearer(token = env("REGISTRY_TOKEN")),
+)
+
+# Modules to sync
+core_modules = [
+    "rules_go",
+    "rules_python",
+    "rules_rust",
+    "gazelle",
+]
+
+build_modules = [
+    "bazel_skylib",
+    "platforms",
+    "rules_cc",
+]
+
+# Development workflow - sync to local
+sync.workflow(
+    name = "dev",
+    origin = bcr,
+    destination = local_mirror,
+    modules = core_modules + build_modules,
+    versions = sync.latest(count = 1),
+)
+
+# Production workflow - sync all versions
+sync.workflow(
+    name = "prod",
+    origin = bcr,
+    destination = prod_server,
+    modules = core_modules,
+    versions = sync.all(),
+    transforms = [
+        sync.skip_yanked(),
+    ],
+)
+
+# Set defaults
+config.defaults(
+    verbose = True,
+)
+```
+
+## Loading Other Files
+
+You can split configuration across multiple files:
+
+```starlark
+# modules.star
+CORE_MODULES = ["rules_go", "rules_python"]
+BUILD_MODULES = ["bazel_skylib", "platforms"]
+```
+
+```starlark
+# bz.star
+load("modules.star", "CORE_MODULES", "BUILD_MODULES")
+
+sync.workflow(
+    name = "sync-all",
+    modules = CORE_MODULES + BUILD_MODULES,
+    ...
+)
+```
+
+## Best Practices
+
+1. **Use meaningful names** - `bcr` is clearer than `r1`
+2. **Group related modules** - Create lists like `core_modules`, `build_modules`
+3. **Use environment variables** - Never hardcode secrets
+4. **Comment your config** - Explain non-obvious choices
+5. **Keep it simple** - Starlark is for configuration, not business logic

@@ -1,0 +1,90 @@
+---
+title: Quick Start
+description: Get up and running with bz in minutes
+---
+
+import { Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+This guide will help you install bz and start using it to manage Bazel modules.
+
+## Installation
+
+<Tabs>
+  <TabItem label="Go Install">
+    ```bash
+    go install github.com/albertocavalcante/bz@latest
+    ```
+  </TabItem>
+  <TabItem label="From Source">
+    ```bash
+    git clone https://github.com/albertocavalcante/bz.git
+    cd bz
+    go build -o bz .
+    ```
+  </TabItem>
+</Tabs>
+
+## Basic Usage
+
+<Steps>
+1. **Search for modules**
+
+   Find modules in the Bazel Central Registry:
+
+   ```bash
+   bz mod search rules_go
+   ```
+
+   Output:
+   ```
+   rules_go - Go rules for Bazel
+   gazelle - Bazel BUILD file generator
+   ```
+
+2. **View module details**
+
+   Get detailed information about a module:
+
+   ```bash
+   bz mod show rules_go
+   ```
+
+   Output:
+   ```
+   Module: rules_go
+   Versions: 0.50.1, 0.50.0, 0.49.0, ...
+   Latest: 0.50.1
+   Homepage: https://github.com/bazel-contrib/rules_go
+   ```
+
+3. **Create a sync configuration** (optional)
+
+   Create a `bz.star` file to define sync workflows:
+
+   ```starlark
+   # bz.star - Sync configuration
+   bcr = registry.http("https://bcr.bazel.build")
+   local = registry.file("./bazel-registry")
+
+   sync.workflow(
+       name = "local-mirror",
+       origin = bcr,
+       destination = local,
+       modules = ["rules_go", "rules_python"],
+   )
+   ```
+
+4. **Run sync**
+
+   Execute your sync workflow:
+
+   ```bash
+   bz mod sync --workflow local-mirror
+   ```
+</Steps>
+
+## What's Next?
+
+- [Installation options](/bz/installation/) - Alternative installation methods
+- [Configuration](/bz/configuration/) - Learn about the Starlark configuration
+- [CLI Reference](/bz/cli/) - Explore all available commands

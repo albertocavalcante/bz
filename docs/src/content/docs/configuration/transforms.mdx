@@ -1,0 +1,233 @@
+---
+title: Transforms
+description: Transform modules as they sync
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Transforms modify modules as they flow from origin to destination. They're applied in order during the sync process.
+
+## Available Transforms
+
+### Skip Yanked Versions
+
+Skip versions marked as yanked in the source registry:
+
+```starlark
+sync.workflow(
+    name = "safe-sync",
+    origin = bcr,
+    destination = mirror,
+    modules = ["rules_go"],
+    transforms = [
+        sync.skip_yanked(),
+    ],
+)
+```
+
+<Aside type="tip">
+Yanked versions typically have known issues. It's usually a good idea to skip them.
+</Aside>
+
+### Rewrite Source URLs
+
+Rewrite URLs in `source.json` using regex patterns:
+
+```starlark
+sync.workflow(
+    name = "internal-sync",
+    origin = bcr,
+    destination = mirror,
+    modules = ["rules_go"],
+    transforms = [
+        sync.rewrite_source_urls(
+            pattern = "https://github.com",
+            replacement = "https://github.internal.example.com",
+        ),
+    ],
+)
+```
+
+This is useful for:
+- Redirecting to internal mirrors
+- Using authenticated proxies
+- Air-gapped environments
+
+#### Before Transform
+
+```json
+{
+  "url": "https://github.com/bazel-contrib/rules_go/archive/v0.50.1.tar.gz",
+  "integrity": "sha256-..."
+}
+```
+
+#### After Transform
+
+```json
+{
+  "url": "https://github.internal.example.com/bazel-contrib/rules_go/archive/v0.50.1.tar.gz",
+  "integrity": "sha256-..."
+}
+```
+
+### Include Patches
+
+Copy patch files along with module metadata:
+
+```starlark
+sync.workflow(
+    name = "with-patches",
+    origin = bcr,
+    destination = mirror,
+    modules = ["rules_go"],
+    transforms = [
+        sync.include_patches(),
+    ],
+)
+```
+
+<Aside type="note">
+This copies any patches referenced in `source.json` to the destination.
+</Aside>
+
+## Combining Transforms
+
+Apply multiple transforms in sequence:
+
+```starlark
+sync.workflow(
+    name = "full-transform",
+    origin = bcr,
+    destination = mirror,
+    modules = ["rules_go", "rules_python"],
+    transforms = [
+        # First: skip problematic versions
+        sync.skip_yanked(),
+
+        # Then: rewrite URLs for internal network
+        sync.rewrite_source_urls(
+            pattern = "https://github.com",
+            replacement = "https://artifactory.internal/github-proxy",
+        ),
+
+        # Finally: include any patches
+        sync.include_patches(),
+    ],
+)
+```
+
+## Version Selectors
+
+Version selectors determine which versions to sync. While not transforms, they affect what gets processed:
+
+### Latest N Versions
+
+Sync only the most recent versions:
+
+```starlark
+sync.workflow(
+    name = "latest-only",
+    origin = bcr,
+    destination = mirror,
+    modules = ["rules_go"],
+    versions = sync.latest(count = 3),  # Last 3 versions
+)
+```
+
+### All Versions
+
+Sync every available version:
+
+```starlark
+sync.workflow(
+    name = "full-mirror",
+    origin = bcr,
+    destination = mirror,
+    modules = ["rules_go"],
+    versions = sync.all(),
+)
+```
+
+### Version Range
+
+Sync versions within a semver range:
+
+```starlark
+sync.workflow(
+    name = "v0-only",
+    origin = bcr,
+    destination = mirror,
+    modules = ["rules_go"],
+    versions = sync.range(
+        min_version = "0.40.0",
+        max_version = "0.50.99",
+    ),
+)
+```
+
+### Since Date
+
+Sync versions released after a date:
+
+```starlark
+sync.workflow(
+    name = "recent-only",
+    origin = bcr,
+    destination = mirror,
+    modules = ["rules_go"],
+    versions = sync.since("2024-01-01"),
+)
+```
+
+## Examples
+
+### Air-gapped Environment
+
+```starlark
+# Source: Internet-connected machine
+bcr = registry.http("https://bcr.bazel.build")
+
+# Destination: Shared drive for air-gapped transfer
+export_dir = registry.file("/mnt/transfer/bazel-registry")
+
+sync.workflow(
+    name = "export",
+    origin = bcr,
+    destination = export_dir,
+    modules = ["rules_go", "rules_python", "bazel_skylib"],
+    versions = sync.all(),
+    transforms = [
+        sync.skip_yanked(),
+        # Rewrite to internal URL that air-gapped machines will use
+        sync.rewrite_source_urls(
+            pattern = "https://github.com/(.*)/archive/",
+            replacement = "https://internal-mirror/github/$1/archive/",
+        ),
+        sync.include_patches(),
+    ],
+)
+```
+
+### Artifactory Proxy
+
+```starlark
+bcr = registry.http("https://bcr.bazel.build")
+artifactory = registry.http_put(
+    url = "https://artifactory.example.com/bazel-registry",
+    auth = auth.bearer(token = env("ARTIFACTORY_TOKEN")),
+)
+
+sync.workflow(
+    name = "artifactory-sync",
+    origin = bcr,
+    destination = artifactory,
+    modules = ["rules_go"],
+    transforms = [
+        sync.rewrite_source_urls(
+            pattern = "https://github.com",
+            replacement = "https://artifactory.example.com/github-remote",
+        ),
+    ],
+)
+```

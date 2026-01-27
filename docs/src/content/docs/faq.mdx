@@ -1,0 +1,137 @@
+---
+title: FAQ
+description: Frequently asked questions about bz
+---
+
+## General
+
+### What is bz?
+
+bz is a command-line tool for managing Bazel modules. It allows you to search, inspect, and sync modules from registries like the Bazel Central Registry (BCR) to various destinations.
+
+### How is bz different from bazel mod?
+
+`bazel mod` is built into Bazel and handles dependency resolution for your project. bz is a separate tool focused on registry management - searching modules, viewing details, and syncing/mirroring registries.
+
+### Does bz replace Bazel?
+
+No. bz complements Bazel by providing module management capabilities. You still use Bazel to build your projects.
+
+## Configuration
+
+### Why use Starlark for configuration?
+
+Starlark is:
+- Familiar to Bazel users (same language as BUILD files)
+- Deterministic and reproducible
+- Expressive enough for complex configurations
+- Safe (no arbitrary code execution)
+
+### Can I use YAML or JSON instead?
+
+Currently, bz only supports Starlark configuration. This provides consistency with the Bazel ecosystem.
+
+### Where does bz look for the config file?
+
+By default, bz looks for `bz.star` in the current directory. Use `--config` to specify a different path:
+
+```bash
+bz mod sync --config /path/to/config.star --workflow myworkflow
+```
+
+## Registries
+
+### What registries does bz support?
+
+bz supports:
+- **HTTP/HTTPS** - Any BCR-compatible HTTP registry
+- **File** - Local filesystem paths
+- **Git** - Git repositories
+
+### Can I use private registries?
+
+Yes. Use authentication in your configuration:
+
+```starlark
+private = registry.http(
+    url = "https://private.example.com",
+    auth = auth.bearer(token = env("REGISTRY_TOKEN")),
+)
+```
+
+### How do I mirror BCR?
+
+See the [Mirror BCR guide](/bz/guides/mirror-bcr/) for step-by-step instructions.
+
+## Sync
+
+### What does sync actually do?
+
+Sync copies module files from a source registry to a destination:
+- `MODULE.bazel` - The module definition
+- `source.json` - Source download information
+- `patches/` - Any patches (if `include_patches` transform is used)
+
+### Does sync download the actual source archives?
+
+No. Sync only copies registry metadata. The actual source archives (tarballs, zip files) are downloaded by Bazel when building. If you need to mirror source archives too, you'll need additional tooling.
+
+### What happens if a module already exists?
+
+By default, bz skips modules that already exist in the destination. It only syncs new versions.
+
+### Can I sync only specific modules?
+
+Yes. Either list them in your workflow configuration or use `--modules`:
+
+```bash
+bz mod sync --workflow dev --modules rules_go,gazelle
+```
+
+## Troubleshooting
+
+### "workflow not found" error
+
+Make sure your configuration file defines a workflow with that name:
+
+```starlark
+sync.workflow(
+    name = "my-workflow",  # This is the name to use
+    ...
+)
+```
+
+### "registry configuration is required" error
+
+Check that your workflow has both `origin` and `destination` defined:
+
+```starlark
+sync.workflow(
+    origin = bcr,        # Source registry
+    destination = mirror,  # Destination registry
+    ...
+)
+```
+
+### "module not found" error
+
+The module might not exist in the source registry. Check with:
+
+```bash
+bz mod search <module-name>
+bz mod show <module-name>
+```
+
+### How do I debug sync issues?
+
+Use verbose mode:
+
+```bash
+bz mod sync --workflow dev --verbose
+```
+
+Or do a dry run first:
+
+```bash
+bz mod sync --workflow dev --dry-run
+```

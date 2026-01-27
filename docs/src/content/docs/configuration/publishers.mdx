@@ -1,0 +1,195 @@
+---
+title: Publishers
+description: Configure destinations for publishing modules
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Publishers are destinations where bz writes synced modules. They're specified using `registry.*` functions when used as a workflow destination.
+
+## File Publisher
+
+Write modules to a local filesystem:
+
+```starlark
+# Create a local registry mirror
+mirror = registry.file("/var/bazel-registry")
+
+sync.workflow(
+    name = "local-sync",
+    origin = bcr,
+    destination = mirror,  # Uses file publisher
+    modules = ["rules_go"],
+)
+```
+
+### Directory Structure
+
+The file publisher creates the standard BCR structure:
+
+```
+/var/bazel-registry/
+├── modules/
+│   └── rules_go/
+│       ├── metadata.json
+│       ├── 0.50.0/
+│       │   ├── MODULE.bazel
+│       │   └── source.json
+│       └── 0.50.1/
+│           ├── MODULE.bazel
+│           └── source.json
+└── bazel_registry.json
+```
+
+## HTTP PUT Publisher
+
+Publish modules to an HTTP server that supports PUT requests:
+
+```starlark
+# Basic HTTP PUT
+server = registry.http_put(
+    url = "https://registry.example.com",
+)
+
+# With authentication
+server = registry.http_put(
+    url = "https://registry.example.com",
+    auth = auth.bearer(token = env("UPLOAD_TOKEN")),
+)
+
+# With basic auth
+server = registry.http_put(
+    url = "https://registry.example.com",
+    auth = auth.basic(
+        username = env("REGISTRY_USER"),
+        password = env("REGISTRY_PASS"),
+    ),
+)
+```
+
+<Aside type="note">
+The HTTP publisher sends PUT requests to `{url}/{path}` for each file. Your server must handle these requests appropriately.
+</Aside>
+
+### Request Format
+
+For each file, bz sends:
+
+```http
+PUT /modules/rules_go/0.50.1/MODULE.bazel HTTP/1.1
+Host: registry.example.com
+Content-Type: application/octet-stream
+Authorization: Bearer <token>
+
+<file content>
+```
+
+## Git Publisher
+
+Push modules to a git repository:
+
+```starlark
+# GitHub repository
+repo = registry.git(
+    url = "https://github.com/myorg/bazel-registry.git",
+    branch = "main",
+)
+
+sync.workflow(
+    name = "git-sync",
+    origin = bcr,
+    destination = repo,  # Uses git publisher
+    modules = ["rules_go"],
+)
+```
+
+### Git Workflow
+
+The git publisher:
+1. Clones the repository (or pulls if already cloned)
+2. Writes module files to the working directory
+3. Commits changes with a descriptive message
+4. Pushes to the remote branch
+
+### Authentication
+
+```starlark
+# Using token (GitHub, GitLab)
+repo = registry.git(
+    url = "https://github.com/myorg/registry.git",
+    auth = auth.bearer(token = env("GITHUB_TOKEN")),
+)
+
+# Using SSH (requires SSH key setup)
+repo = registry.git(
+    url = "git@github.com:myorg/registry.git",
+)
+```
+
+## Publisher Selection
+
+The publisher is automatically selected based on the registry type and context:
+
+| Registry Type | As Origin | As Destination |
+|--------------|-----------|----------------|
+| `registry.http()` | HTTP GET | Not supported |
+| `registry.http_put()` | HTTP GET | HTTP PUT |
+| `registry.file()` | File read | File write |
+| `registry.git()` | Git clone | Git commit/push |
+
+## Examples
+
+### Mirror to Multiple Destinations
+
+```starlark
+bcr = registry.http("https://bcr.bazel.build")
+
+# Local development
+local = registry.file("./registry")
+
+# Team staging
+staging = registry.git(
+    url = "https://github.com/myorg/staging-registry.git",
+    branch = "main",
+)
+
+# Production server
+production = registry.http_put(
+    url = "https://registry.prod.example.com",
+    auth = auth.bearer(token = env("PROD_TOKEN")),
+)
+
+# Sync to local for development
+sync.workflow(
+    name = "dev",
+    origin = bcr,
+    destination = local,
+    modules = ["rules_go"],
+)
+
+# Sync to staging for testing
+sync.workflow(
+    name = "staging",
+    origin = bcr,
+    destination = staging,
+    modules = ["rules_go"],
+)
+
+# Sync to production
+sync.workflow(
+    name = "prod",
+    origin = bcr,
+    destination = production,
+    modules = ["rules_go"],
+)
+```
+
+### Dry Run
+
+Test publishing without writing:
+
+```bash
+bz mod sync --workflow prod --dry-run
+```
+
+This shows what would be published without actually writing files.

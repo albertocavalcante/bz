@@ -1,0 +1,158 @@
+---
+title: bz mod sync
+description: Sync modules from source to destination
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Sync Bazel modules from a source registry to a destination according to workflow configuration.
+
+## Synopsis
+
+```bash
+bz mod sync [flags]
+```
+
+## Description
+
+The `sync` command reads workflow definitions from a Starlark configuration file and syncs modules from the origin registry to the destination. It supports multiple destination types including local filesystems, HTTP servers, and git repositories.
+
+## Flags
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--workflow` | `-w` | Workflow name to execute (required unless `--list`) |
+| `--config` | `-c` | Config file path (default: `bz.star`) |
+| `--dry-run` | `-n` | Show what would be synced without writing |
+| `--list` | `-l` | List available workflows |
+| `--modules` | `-m` | Override workflow modules (comma-separated) |
+| `--verbose` | `-v` | Enable verbose output |
+
+## Examples
+
+### List Workflows
+
+```bash
+bz mod sync --list
+```
+
+Output:
+```
+Available workflows:
+  dev         - Sync to local development
+  staging     - Sync to staging server
+  production  - Sync to production registry
+```
+
+### Run a Workflow
+
+```bash
+bz mod sync --workflow dev
+```
+
+Output:
+```
+Syncing workflow: dev
+  rules_go@0.50.1: syncing
+  rules_go@0.50.0: skipped (exists)
+  rules_python@0.35.0: syncing
+
+Sync complete: 2 written, 1 skipped, 0 errors
+```
+
+### Dry Run
+
+Preview what would be synced without writing:
+
+```bash
+bz mod sync --workflow production --dry-run
+```
+
+Output:
+```
+[dry-run] Syncing workflow: production
+  [dry-run] would sync rules_go@0.50.1
+  [dry-run] would sync rules_go@0.50.0
+  [dry-run] would sync rules_python@0.35.0
+
+Dry run complete: 3 would be written
+```
+
+<Aside type="tip">
+Always use `--dry-run` first when syncing to production to verify what will be changed.
+</Aside>
+
+### Custom Config File
+
+```bash
+bz mod sync --workflow dev --config /path/to/custom.star
+```
+
+### Override Modules
+
+Sync only specific modules, ignoring the workflow's module list:
+
+```bash
+bz mod sync --workflow dev --modules rules_go,gazelle
+```
+
+### Verbose Output
+
+```bash
+bz mod sync --workflow dev --verbose
+```
+
+Output:
+```
+Loading config: bz.star
+Found workflow: dev
+  Origin: https://bcr.bazel.build
+  Destination: ./bazel-registry
+
+Processing module: rules_go
+  Fetching metadata...
+  Versions to sync: 0.50.1, 0.50.0
+  Syncing 0.50.1...
+    GET https://bcr.bazel.build/modules/rules_go/0.50.1/MODULE.bazel
+    GET https://bcr.bazel.build/modules/rules_go/0.50.1/source.json
+    Writing ./bazel-registry/modules/rules_go/0.50.1/MODULE.bazel
+    Writing ./bazel-registry/modules/rules_go/0.50.1/source.json
+  ...
+```
+
+## Configuration
+
+The sync command reads from a Starlark configuration file. See [Configuration](/bz/configuration/) for details.
+
+### Example Config
+
+```starlark
+# bz.star
+bcr = registry.http("https://bcr.bazel.build")
+mirror = registry.file("./bazel-registry")
+
+sync.workflow(
+    name = "dev",
+    origin = bcr,
+    destination = mirror,
+    modules = ["rules_go", "rules_python"],
+    versions = sync.latest(count = 2),
+    transforms = [
+        sync.skip_yanked(),
+    ],
+)
+```
+
+## Exit Codes
+
+| Code | Description |
+|------|-------------|
+| 0 | Success (all modules synced) |
+| 1 | Partial failure (some modules failed) |
+| 2 | Configuration error |
+
+## See Also
+
+- [Configuration](/bz/configuration/) - Configure sync workflows
+- [Transforms](/bz/configuration/transforms/) - Transform modules during sync
+- [mod show](/bz/cli/mod-show/) - View module details before syncing

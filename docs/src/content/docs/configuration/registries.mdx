@@ -1,0 +1,156 @@
+---
+title: Registries
+description: Configure source registries for reading modules
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Registries are sources where bz reads module metadata and content. bz supports several registry types.
+
+## HTTP Registry
+
+Connect to any BCR-compatible HTTP registry:
+
+```starlark
+# Bazel Central Registry
+bcr = registry.http("https://bcr.bazel.build")
+
+# Custom HTTP registry
+internal = registry.http("https://registry.internal.example.com")
+```
+
+### With Authentication
+
+```starlark
+private_registry = registry.http(
+    url = "https://private.example.com",
+    auth = auth.bearer(token = env("REGISTRY_TOKEN")),
+)
+```
+
+## File Registry
+
+Read from a local filesystem path:
+
+```starlark
+# Absolute path
+local = registry.file("/var/bazel-registry")
+
+# Relative path (from config file location)
+local = registry.file("./bazel-registry")
+
+# Home directory
+local = registry.file("~/bazel-registry")
+```
+
+<Aside type="tip">
+File registries are useful for local development and testing.
+</Aside>
+
+## Git Registry
+
+Clone and read from a git repository:
+
+```starlark
+# Public repository
+bcr_fork = registry.git(
+    url = "https://github.com/myorg/bazel-central-registry.git",
+)
+
+# With specific branch
+bcr_fork = registry.git(
+    url = "https://github.com/myorg/bazel-central-registry.git",
+    branch = "custom-modules",
+)
+
+# With authentication
+private_repo = registry.git(
+    url = "https://github.com/myorg/private-registry.git",
+    auth = auth.bearer(token = env("GITHUB_TOKEN")),
+)
+```
+
+## Registry Structure
+
+All registries must follow the BCR directory structure:
+
+```
+modules/
+├── rules_go/
+│   ├── metadata.json
+│   ├── 0.50.0/
+│   │   ├── MODULE.bazel
+│   │   └── source.json
+│   └── 0.50.1/
+│       ├── MODULE.bazel
+│       └── source.json
+└── rules_python/
+    ├── metadata.json
+    └── ...
+```
+
+### metadata.json
+
+Contains module metadata:
+
+```json
+{
+  "versions": ["0.50.0", "0.50.1"],
+  "yanked_versions": {}
+}
+```
+
+### MODULE.bazel
+
+The module's Bazel module file.
+
+### source.json
+
+Specifies how to fetch the module source:
+
+```json
+{
+  "url": "https://github.com/org/repo/archive/v0.50.1.tar.gz",
+  "integrity": "sha256-...",
+  "strip_prefix": "repo-0.50.1"
+}
+```
+
+## Registry Methods
+
+All registry types support these methods:
+
+| Method | Description |
+|--------|-------------|
+| `GetMetadata(module)` | Get module metadata |
+| `GetModuleBazel(module, version)` | Get MODULE.bazel content |
+| `GetSource(module, version)` | Get source.json content |
+| `ListModules()` | List all modules (if supported) |
+
+## Examples
+
+### Multiple Registries
+
+```starlark
+# Primary: Bazel Central Registry
+bcr = registry.http("https://bcr.bazel.build")
+
+# Fallback: Internal mirror
+mirror = registry.http("https://bcr-mirror.internal")
+
+# Custom modules
+custom = registry.file("/opt/custom-modules")
+```
+
+### Development Setup
+
+```starlark
+# Use local BCR fork for development
+bcr_dev = registry.file("../bazel-central-registry")
+
+# Or use git with a feature branch
+bcr_feature = registry.git(
+    url = "https://github.com/myuser/bazel-central-registry.git",
+    branch = "add-new-module",
+)
+```

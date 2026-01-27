@@ -1,0 +1,233 @@
+name: Nightly
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Force build even if no changes"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  check-changes:
+    runs-on: ubuntu-24.04
+    name: Check for Changes
+    timeout-minutes: 5
+    outputs:
+      should_build: ${{ steps.check.outputs.should_build }}
+      short_sha: ${{ steps.check.outputs.short_sha }}
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check for changes
+        id: check
+        run: |
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+
+          if [ "${{ inputs.force }}" == "true" ]; then
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+            echo "Force build requested"
+            exit 0
+          fi
+
+          if git rev-parse nightly >/dev/null 2>&1; then
+            NIGHTLY_SHA=$(git rev-parse nightly)
+            HEAD_SHA=$(git rev-parse HEAD)
+            if [ "$NIGHTLY_SHA" == "$HEAD_SHA" ]; then
+              echo "should_build=false" >> "$GITHUB_OUTPUT"
+              echo "No changes since last nightly"
+            else
+              echo "should_build=true" >> "$GITHUB_OUTPUT"
+              echo "Changes detected"
+            fi
+          else
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+            echo "No previous nightly"
+          fi
+
+  build:
+    needs: check-changes
+    if: needs.check-changes.outputs.should_build == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            goos: linux
+            goarch: amd64
+            name: linux-amd64
+          - os: ubuntu-24.04
+            goos: linux
+            goarch: arm64
+            name: linux-arm64
+          - os: macos-14
+            goos: darwin
+            goarch: arm64
+            name: darwin-arm64
+          - os: macos-14
+            goos: darwin
+            goarch: amd64
+            name: darwin-amd64
+          - os: windows-2022
+            goos: windows
+            goarch: amd64
+            name: windows-amd64
+
+    runs-on: ${{ matrix.os }}
+    name: Build (${{ matrix.name }})
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Get version
+        id: version
+        shell: bash
+        run: |
+          SHORT_SHA="${{ needs.check-changes.outputs.short_sha }}"
+          DATE=$(date +%Y%m%d)
+          echo "version=nightly.${DATE}.${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Build (Unix)
+        if: runner.os != 'Windows'
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          go build -ldflags "-s -w -X main.version=${{ steps.version.outputs.version }}" -o bz .
+          mkdir -p dist
+          tar -czvf dist/bz-${{ matrix.name }}.tar.gz bz
+          cd dist
+          shasum -a 256 bz-${{ matrix.name }}.tar.gz > bz-${{ matrix.name }}.tar.gz.sha256
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        shell: pwsh
+        run: |
+          go build -ldflags "-s -w -X main.version=${{ steps.version.outputs.version }}" -o bz.exe .
+          New-Item -ItemType Directory -Force -Path dist
+          Compress-Archive -Path bz.exe -DestinationPath dist/bz-${{ matrix.name }}.zip
+          $hash = (Get-FileHash -Algorithm SHA256 dist/bz-${{ matrix.name }}.zip).Hash.ToLower()
+          "$hash  bz-${{ matrix.name }}.zip" | Out-File -Encoding ASCII dist/bz-${{ matrix.name }}.zip.sha256
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.name }}
+          path: dist/bz-${{ matrix.name }}.*
+          if-no-files-found: error
+          retention-days: 3
+
+  release:
+    needs: [check-changes, build]
+    if: needs.check-changes.outputs.should_build == 'true'
+    runs-on: ubuntu-24.04
+    name: Create Release
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten
+        run: |
+          mkdir -p release
+          find artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" -o -name "*.sha256" \) -exec cp {} release/ \;
+          ls -la release/
+
+      - name: Generate notes
+        run: |
+          cat > notes.md << 'EOF'
+          ## Nightly Build
+
+          **Commit:** `${{ needs.check-changes.outputs.short_sha }}`
+          **Date:** $(date +%Y-%m-%d)
+
+          Automated nightly build from `main`. May be unstable.
+
+          ### Installation
+
+          ```bash
+          # macOS (Apple Silicon)
+          curl -fsSL https://github.com/albertocavalcante/bz/releases/download/nightly/bz-darwin-arm64.tar.gz | tar xz
+          sudo mv bz /usr/local/bin/
+
+          # macOS (Intel)
+          curl -fsSL https://github.com/albertocavalcante/bz/releases/download/nightly/bz-darwin-amd64.tar.gz | tar xz
+          sudo mv bz /usr/local/bin/
+
+          # Linux (x64)
+          curl -fsSL https://github.com/albertocavalcante/bz/releases/download/nightly/bz-linux-amd64.tar.gz | tar xz
+          sudo mv bz /usr/local/bin/
+
+          # Linux (arm64)
+          curl -fsSL https://github.com/albertocavalcante/bz/releases/download/nightly/bz-linux-arm64.tar.gz | tar xz
+          sudo mv bz /usr/local/bin/
+
+          # Windows (PowerShell)
+          Invoke-WebRequest -Uri https://github.com/albertocavalcante/bz/releases/download/nightly/bz-windows-amd64.zip -OutFile bz.zip
+          Expand-Archive bz.zip -DestinationPath .
+          ```
+
+          ### Checksums
+          ```
+          EOF
+          cat release/*.sha256 >> notes.md
+          echo '```' >> notes.md
+
+      - name: Delete old release
+        run: |
+          gh release delete nightly --yes || true
+          git push origin :refs/tags/nightly || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nightly
+          name: Nightly Build
+          draft: false
+          prerelease: true
+          body_path: notes.md
+          files: release/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,70 @@
+---
+title: CLI Reference
+description: Complete reference for bz commands
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+bz provides commands for searching, inspecting, and syncing Bazel modules.
+
+## Global Flags
+
+These flags are available for all commands:
+
+| Flag | Description |
+|------|-------------|
+| `--help, -h` | Show help for the command |
+| `--version, -v` | Show version information |
+| `--verbose` | Enable verbose output |
+
+## Commands
+
+<CardGrid>
+  <Card title="mod search" icon="magnifier">
+    Search for modules in the registry.
+
+    [Documentation →](/bz/cli/mod-search/)
+  </Card>
+  <Card title="mod show" icon="information">
+    Display detailed module information.
+
+    [Documentation →](/bz/cli/mod-show/)
+  </Card>
+  <Card title="mod sync" icon="rocket">
+    Sync modules from source to destination.
+
+    [Documentation →](/bz/cli/mod-sync/)
+  </Card>
+</CardGrid>
+
+## Quick Reference
+
+```bash
+# Search for modules
+bz mod search <query>
+
+# Show module details
+bz mod show <module>
+bz mod show <module>@<version>
+
+# Sync modules
+bz mod sync --workflow <name>
+bz mod sync --workflow <name> --dry-run
+bz mod sync --list
+```
+
+## Exit Codes
+
+| Code | Description |
+|------|-------------|
+| 0 | Success |
+| 1 | General error |
+| 2 | Invalid arguments |
+
+## Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `BZ_CONFIG` | Default config file path |
+| `BZ_VERBOSE` | Enable verbose mode (`true`/`false`) |
+| `BZ_REGISTRY` | Default registry URL |

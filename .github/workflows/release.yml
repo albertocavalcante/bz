@@ -1,0 +1,129 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            goos: linux
+            goarch: amd64
+            name: linux-amd64
+          - os: ubuntu-24.04
+            goos: linux
+            goarch: arm64
+            name: linux-arm64
+          - os: macos-14
+            goos: darwin
+            goarch: arm64
+            name: darwin-arm64
+          - os: macos-14
+            goos: darwin
+            goarch: amd64
+            name: darwin-amd64
+          - os: windows-2022
+            goos: windows
+            goarch: amd64
+            name: windows-amd64
+
+    runs-on: ${{ matrix.os }}
+    name: Build (${{ matrix.name }})
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Get version
+        id: version
+        shell: bash
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build (Unix)
+        if: runner.os != 'Windows'
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          go build -ldflags "-s -w -X main.version=${{ steps.version.outputs.version }}" -o bz .
+          mkdir -p dist
+          tar -czvf dist/bz-${{ matrix.name }}.tar.gz bz
+          cd dist
+          shasum -a 256 bz-${{ matrix.name }}.tar.gz > bz-${{ matrix.name }}.tar.gz.sha256
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        shell: pwsh
+        run: |
+          go build -ldflags "-s -w -X main.version=${{ steps.version.outputs.version }}" -o bz.exe .
+          New-Item -ItemType Directory -Force -Path dist
+          Compress-Archive -Path bz.exe -DestinationPath dist/bz-${{ matrix.name }}.zip
+          $hash = (Get-FileHash -Algorithm SHA256 dist/bz-${{ matrix.name }}.zip).Hash.ToLower()
+          "$hash  bz-${{ matrix.name }}.zip" | Out-File -Encoding ASCII dist/bz-${{ matrix.name }}.zip.sha256
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.name }}
+          path: dist/bz-${{ matrix.name }}.*
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    needs: build
+    runs-on: ubuntu-24.04
+    name: Create Release
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten
+        run: |
+          mkdir -p release
+          find artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" -o -name "*.sha256" \) -exec cp {} release/ \;
+          ls -la release/
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          prerelease: ${{ contains(github.ref, '-rc') || contains(github.ref, '-beta') || contains(github.ref, '-alpha') }}
+          generate_release_notes: true
+          files: release/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

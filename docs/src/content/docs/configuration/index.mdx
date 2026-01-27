@@ -1,0 +1,96 @@
+---
+title: Configuration Overview
+description: Learn how to configure bz with Starlark
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+bz uses [Starlark](https://github.com/bazelbuild/starlark) for configuration, providing a familiar Python-like syntax for Bazel users.
+
+## Configuration File
+
+By default, bz looks for a `bz.star` file in the current directory. You can specify a different path with `--config`:
+
+```bash
+bz mod sync --config /path/to/config.star
+```
+
+## Basic Structure
+
+A typical `bz.star` file consists of:
+
+1. **Registry definitions** - Sources and destinations for modules
+2. **Authentication** (optional) - Credentials for private registries
+3. **Workflow definitions** - Rules for syncing modules
+4. **Defaults** (optional) - Global settings
+
+```starlark
+# 1. Define registries
+bcr = registry.http("https://bcr.bazel.build")
+mirror = registry.file("/path/to/mirror")
+
+# 2. Optional: Authentication
+auth = auth.basic(
+    username = env("REGISTRY_USER"),
+    password = env("REGISTRY_PASS"),
+)
+
+# 3. Define workflows
+sync.workflow(
+    name = "sync-all",
+    origin = bcr,
+    destination = mirror,
+    modules = ["rules_go", "rules_python"],
+)
+
+# 4. Optional: Set defaults
+config.defaults(
+    verbose = True,
+    dry_run = False,
+)
+```
+
+## Configuration Sections
+
+<CardGrid>
+  <Card title="Starlark Basics" icon="document">
+    Learn the Starlark language basics for writing configurations.
+
+    [Learn more →](/bz/configuration/starlark/)
+  </Card>
+  <Card title="Registries" icon="setting">
+    Configure source and destination registries.
+
+    [Learn more →](/bz/configuration/registries/)
+  </Card>
+  <Card title="Publishers" icon="rocket">
+    Set up different publishing backends.
+
+    [Learn more →](/bz/configuration/publishers/)
+  </Card>
+  <Card title="Transforms" icon="puzzle">
+    Transform modules as they sync.
+
+    [Learn more →](/bz/configuration/transforms/)
+  </Card>
+</CardGrid>
+
+## Available Modules
+
+bz provides several Starlark modules:
+
+| Module | Description |
+|--------|-------------|
+| `registry` | Create registry connections (http, file, git) |
+| `auth` | Define authentication methods |
+| `sync` | Define sync workflows and version selectors |
+| `config` | Set global defaults |
+
+## Built-in Functions
+
+| Function | Description |
+|----------|-------------|
+| `env(name)` | Read environment variable |
+| `glob(pattern)` | Match files by pattern |
+| `print(msg)` | Print debug message |
+| `fail(msg)` | Abort with error |

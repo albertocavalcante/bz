@@ -1,0 +1,240 @@
+---
+title: Troubleshooting
+description: Solutions for common bz issues
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## Installation Issues
+
+### "command not found: bz"
+
+The bz binary isn't in your PATH. Solutions:
+
+```bash
+# Check if it's installed
+which bz
+
+# If using go install, add GOPATH/bin to PATH
+export PATH=$PATH:$(go env GOPATH)/bin
+
+# Add to your shell profile (~/.bashrc, ~/.zshrc)
+echo 'export PATH=$PATH:$(go env GOPATH)/bin' >> ~/.zshrc
+```
+
+### Build errors from source
+
+Ensure you have Go 1.21 or later:
+
+```bash
+go version
+```
+
+Try cleaning and rebuilding:
+
+```bash
+go clean -cache
+go build -o bz .
+```
+
+## Configuration Issues
+
+### "failed to load config"
+
+The Starlark configuration has a syntax error. Check for:
+
+1. **Missing commas** between function arguments
+2. **Unclosed brackets** or parentheses
+3. **Invalid variable names**
+
+Run with verbose to see the specific error:
+
+```bash
+bz mod sync --workflow dev --verbose
+```
+
+### "undefined: registry"
+
+The `registry` module isn't available. This usually means:
+
+1. You're using an invalid function name
+2. There's a typo in the module name
+
+Valid registry functions:
+```starlark
+registry.http(url)
+registry.file(path)
+registry.git(url, branch)
+registry.http_put(url, auth)
+```
+
+### "undefined: env"
+
+The `env()` function requires a string argument:
+
+```starlark
+# Wrong
+token = env(MY_VAR)
+
+# Correct
+token = env("MY_VAR")
+```
+
+### Environment variable not accessible
+
+By default, only variables with the `BZ_` prefix can be accessed. To use other variables, they must be explicitly allowed.
+
+<Aside type="tip">
+Rename your environment variables to use the `BZ_` prefix:
+```bash
+export BZ_REGISTRY_TOKEN="my-token"
+```
+
+```starlark
+token = env("BZ_REGISTRY_TOKEN")
+```
+</Aside>
+
+## Registry Issues
+
+### "module not found"
+
+The module doesn't exist in the registry. Verify:
+
+```bash
+# Search for similar names
+bz mod search <partial-name>
+
+# Check the exact name
+bz mod show <exact-name>
+```
+
+Common mistakes:
+- `rules-go` vs `rules_go` (underscore, not hyphen)
+- Case sensitivity
+
+### "HTTP 404" errors
+
+The URL might be incorrect or the module doesn't exist at that path. Check:
+
+1. Registry URL is correct
+2. Module path exists
+3. Version exists
+
+```bash
+# Test the URL directly
+curl -I https://bcr.bazel.build/modules/rules_go/metadata.json
+```
+
+### "HTTP 403" forbidden
+
+Authentication might be required or incorrect:
+
+```starlark
+# Check your auth configuration
+registry.http(
+    url = "https://private.example.com",
+    auth = auth.bearer(token = env("BZ_TOKEN")),
+)
+```
+
+Verify your token is set:
+```bash
+echo $BZ_TOKEN
+```
+
+### Timeout errors
+
+The registry might be slow or unreachable. Options:
+
+1. Check network connectivity
+2. Try again later
+3. Use a local mirror
+
+## Sync Issues
+
+### "workflow not found"
+
+The workflow name doesn't match. Check your config:
+
+```starlark
+sync.workflow(
+    name = "my-workflow",  # Use this exact name
+    ...
+)
+```
+
+```bash
+# List available workflows
+bz mod sync --list
+```
+
+### Sync skips all modules
+
+Modules might already exist in the destination. This is expected behavior.
+
+To see what's happening:
+```bash
+bz mod sync --workflow dev --verbose
+```
+
+To force resync, manually remove the modules from the destination first.
+
+### "destination not writable"
+
+Check permissions on the destination:
+
+```bash
+# For file destinations
+ls -la /path/to/registry
+
+# Fix permissions
+chmod -R u+w /path/to/registry
+```
+
+### Git push fails
+
+For git destinations, check:
+
+1. SSH keys or tokens are configured
+2. You have push access to the repository
+3. The branch exists or can be created
+
+```bash
+# Test git access
+git ls-remote https://github.com/myorg/registry.git
+```
+
+## Performance Issues
+
+### Sync is slow
+
+Try these optimizations:
+
+1. **Reduce versions** - Sync only what you need:
+   ```starlark
+   versions = sync.latest(count = 3)  # Instead of sync.all()
+   ```
+
+2. **Reduce modules** - Only sync required modules
+
+3. **Use dry-run** - Preview before actual sync:
+   ```bash
+   bz mod sync --workflow dev --dry-run
+   ```
+
+### High memory usage
+
+If syncing many modules/versions, memory usage can grow. Consider:
+
+1. Breaking into smaller workflows
+2. Syncing in batches
+
+## Getting Help
+
+If you're still stuck:
+
+1. Check existing [GitHub Issues](https://github.com/albertocavalcante/bz/issues)
+2. Run with `--verbose` and include the output when reporting
+3. Include your bz version (`bz --version`)
+4. Include relevant parts of your configuration (redact secrets!)

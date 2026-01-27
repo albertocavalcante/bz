@@ -1,0 +1,63 @@
+/* Custom styles for bz docs */
+
+:root {
+  /* Brand colors - blue/cyan theme for bz */
+  --sl-color-accent-low: #0c4a6e;
+  --sl-color-accent: #0284c7;
+  --sl-color-accent-high: #38bdf8;
+
+  /* Better code block styling */
+  --sl-color-bg-inline-code: rgba(2, 132, 199, 0.1);
+}
+
+:root[data-theme='light'] {
+  --sl-color-accent-low: #e0f2fe;
+  --sl-color-accent: #0284c7;
+  --sl-color-accent-high: #0c4a6e;
+}
+
+/* Hero section enhancements */
+.hero {
+  padding-block: 3rem;
+}
+
+/* Better table styling */
+table {
+  font-size: 0.9em;
+}
+
+table code {
+  font-size: 0.85em;
+}
+
+/* Sidebar badge styling tweaks */
+.sl-badge {
+  font-size: 0.65em;
+  padding: 0.15em 0.4em;
+}
+
+/* Terminal code blocks - add subtle glow */
+figure[data-rehype-pretty-code-figure] {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+/* Improve heading anchors */
+.sl-markdown-content :is(h1, h2, h3, h4, h5, h6) {
+  scroll-margin-top: 4rem;
+}
+
+/* Card grid improvements */
+.card-grid {
+  gap: 1.5rem;
+}
+
+/* Feature cards on homepage */
+article.card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+article.card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}

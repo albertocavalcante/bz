@@ -1,0 +1,98 @@
+---
+title: bz
+description: Bazel module management CLI with Starlark-based configuration
+template: splash
+hero:
+  tagline: A Bazel module management CLI with Starlark-based configuration for syncing modules from registries
+  actions:
+    - text: Get Started
+      link: /bz/getting-started/
+      icon: right-arrow
+    - text: Configuration
+      link: /bz/configuration/
+      icon: setting
+      variant: secondary
+    - text: GitHub
+      link: https://github.com/albertocavalcante/bz
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid, Code } from '@astrojs/starlight/components';
+
+## What is bz?
+
+bz is a CLI tool for managing Bazel modules. It provides commands to search, inspect, and sync modules from various registries like the [Bazel Central Registry](https://registry.bazel.build).
+
+**Key capability: Sync modules from any source to any destination.**
+
+```bash
+bz mod search rules_go   # Search for modules
+bz mod show rules_go     # View module details
+bz mod sync              # Sync modules to your registry
+```
+
+## Features
+
+<CardGrid stagger>
+  <Card title="Multi-Registry Support" icon="puzzle">
+    Connect to HTTP, file-based, or git registries. Query metadata, versions, and module content from any BCR-compatible source.
+  </Card>
+  <Card title="Starlark Configuration" icon="setting">
+    Define workflows using familiar Starlark syntax. Configure registries, authentication, transforms, and sync rules in a single `.star` file.
+  </Card>
+  <Card title="Flexible Publishing" icon="rocket">
+    Publish to local filesystems, HTTP servers (PUT), or git repositories. Perfect for air-gapped environments or internal mirrors.
+  </Card>
+  <Card title="Smart Transforms" icon="approve-check">
+    Rewrite URLs, skip yanked versions, include patches. Transform modules as they flow from source to destination.
+  </Card>
+</CardGrid>
+
+## Quick Example
+
+Create a `bz.star` configuration file:
+
+```starlark
+# Define source and destination registries
+bcr = registry.http("https://bcr.bazel.build")
+mirror = registry.file("/path/to/mirror")
+
+# Sync rules_go and rules_python to local mirror
+sync.workflow(
+    name = "mirror-essentials",
+    origin = bcr,
+    destination = mirror,
+    modules = ["rules_go", "rules_python"],
+    versions = sync.latest(count = 3),
+)
+```
+
+Then run:
+
+```bash
+bz mod sync --workflow mirror-essentials
+```
+
+## Use Cases
+
+<CardGrid>
+  <Card title="Mirror BCR" icon="document">
+    Create a local mirror of Bazel Central Registry for faster builds and reliability.
+
+    [Read guide →](/bz/guides/mirror-bcr/)
+  </Card>
+  <Card title="Air-gapped Setup" icon="seti:lock">
+    Sync modules to environments without internet access.
+
+    [Read guide →](/bz/guides/air-gapped/)
+  </Card>
+</CardGrid>
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `bz mod search <query>` | Search for modules by name |
+| `bz mod show <module>` | Display module metadata and versions |
+| `bz mod sync` | Sync modules according to workflow configuration |

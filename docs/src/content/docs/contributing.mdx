@@ -1,0 +1,176 @@
+---
+title: Contributing
+description: How to contribute to bz
+---
+
+import { Steps } from '@astrojs/starlight/components';
+
+We welcome contributions to bz! This guide explains how to get started.
+
+## Ways to Contribute
+
+- **Report bugs** - Open an issue describing the problem
+- **Suggest features** - Open an issue with your idea
+- **Improve documentation** - Fix typos, add examples, clarify explanations
+- **Submit code** - Fix bugs or implement features
+
+## Development Setup
+
+<Steps>
+1. **Fork and clone**
+
+   ```bash
+   git clone https://github.com/YOUR-USERNAME/bz.git
+   cd bz
+   ```
+
+2. **Install dependencies**
+
+   ```bash
+   go mod download
+   ```
+
+3. **Build**
+
+   ```bash
+   go build -o bz .
+   ```
+
+4. **Run tests**
+
+   ```bash
+   go test ./...
+   ```
+</Steps>
+
+## Code Structure
+
+```
+bz/
+├── cmd/           # CLI commands (Cobra)
+│   ├── mod/       # mod subcommands (search, show, sync)
+│   └── root.go    # Root command
+├── internal/      # Internal packages
+│   ├── config/    # Starlark configuration
+│   ├── registry/  # Registry implementations
+│   ├── publisher/ # Publisher implementations
+│   ├── starlark/  # Starlark interpreter
+│   └── sync/      # Sync service
+├── docs/          # Documentation (Starlight)
+└── main.go        # Entry point
+```
+
+## Making Changes
+
+<Steps>
+1. **Create a branch**
+
+   ```bash
+   git checkout -b feature/my-feature
+   # or
+   git checkout -b fix/my-bugfix
+   ```
+
+2. **Make your changes**
+
+   - Follow existing code style
+   - Add tests for new functionality
+   - Update documentation if needed
+
+3. **Run tests**
+
+   ```bash
+   go test ./...
+   ```
+
+4. **Run linter**
+
+   ```bash
+   golangci-lint run
+   ```
+
+5. **Commit**
+
+   ```bash
+   git add .
+   git commit -m "feat: add my feature"
+   ```
+
+   Use [Conventional Commits](https://www.conventionalcommits.org/):
+   - `feat:` - New feature
+   - `fix:` - Bug fix
+   - `docs:` - Documentation
+   - `refactor:` - Code refactoring
+   - `test:` - Tests
+   - `chore:` - Maintenance
+
+6. **Push and create PR**
+
+   ```bash
+   git push origin feature/my-feature
+   ```
+
+   Then open a Pull Request on GitHub.
+</Steps>
+
+## Pull Request Guidelines
+
+- Keep PRs focused - one feature or fix per PR
+- Include tests for new functionality
+- Update documentation if behavior changes
+- Ensure all tests pass
+- Respond to review feedback
+
+## Testing
+
+### Unit Tests
+
+```bash
+# Run all tests
+go test ./...
+
+# Run tests with coverage
+go test -cover ./...
+
+# Run specific package tests
+go test ./internal/registry/...
+```
+
+### Integration Tests
+
+```bash
+# Build and test CLI
+go build -o bz .
+./bz mod search rules_go
+./bz mod show rules_go
+```
+
+## Documentation
+
+Documentation lives in `docs/` and uses [Starlight](https://starlight.astro.build/).
+
+### Local Development
+
+```bash
+cd docs
+bun install
+bun run dev
+```
+
+Visit http://localhost:4321/bz/ to preview.
+
+> **Note:** We use [bun](https://bun.sh/) as the package manager for the docs. Do not use npm or yarn.
+
+### Writing Docs
+
+- Use MDX format (`.mdx` files)
+- Keep explanations clear and concise
+- Include code examples
+- Test that code examples work
+
+## Questions?
+
+- Open a [Discussion](https://github.com/albertocavalcante/bz/discussions) for questions
+- Open an [Issue](https://github.com/albertocavalcante/bz/issues) for bugs or features
+
+Thank you for contributing!

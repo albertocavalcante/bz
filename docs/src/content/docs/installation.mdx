@@ -1,0 +1,94 @@
+---
+title: Installation
+description: How to install bz on your system
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+## Requirements
+
+- Go 1.21 or later (for building from source)
+- Git (for git-based registries)
+
+## Install Methods
+
+<Tabs>
+  <TabItem label="Go Install">
+    The simplest way to install bz is using Go:
+
+    ```bash
+    go install github.com/albertocavalcante/bz@latest
+    ```
+
+    Make sure `$GOPATH/bin` is in your PATH.
+  </TabItem>
+
+  <TabItem label="From Source">
+    Clone and build from source:
+
+    ```bash
+    git clone https://github.com/albertocavalcante/bz.git
+    cd bz
+    go build -o bz .
+    ```
+
+    Move the binary to a location in your PATH:
+
+    ```bash
+    sudo mv bz /usr/local/bin/
+    ```
+  </TabItem>
+
+  <TabItem label="Bazelisk">
+    If you use Bazel, you can build with Bazel:
+
+    ```bash
+    git clone https://github.com/albertocavalcante/bz.git
+    cd bz
+    bazel build //...
+    ```
+
+    The binary will be at `bazel-bin/bz`.
+  </TabItem>
+</Tabs>
+
+## Verify Installation
+
+Check that bz is installed correctly:
+
+```bash
+bz --version
+```
+
+You should see the version number printed.
+
+## Shell Completion
+
+bz supports shell completion for bash, zsh, fish, and PowerShell.
+
+<Tabs>
+  <TabItem label="Bash">
+    ```bash
+    # Add to ~/.bashrc
+    source <(bz completion bash)
+    ```
+  </TabItem>
+
+  <TabItem label="Zsh">
+    ```bash
+    # Add to ~/.zshrc
+    source <(bz completion zsh)
+    ```
+  </TabItem>
+
+  <TabItem label="Fish">
+    ```bash
+    bz completion fish | source
+    ```
+  </TabItem>
+</Tabs>
+
+## Next Steps
+
+- [Quick Start](/bz/getting-started/) - Get started with bz
+- [Configuration](/bz/configuration/) - Configure bz with Starlark
