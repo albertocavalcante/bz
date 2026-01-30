@@ -17,6 +17,28 @@ pre-commit:
       glob: "*.{md,json,toml,yml,yaml}"
       run: dprint check
 
+    workflow-lint:
+      glob: ".github/workflows/*.{yml,yaml}"
+      run: |
+        if command -v ghalint &> /dev/null; then
+          ghalint run -c tools/lint/ghalint.yaml
+        fi
+        # actionlint runs shellcheck on embedded scripts automatically when installed
+        if command -v actionlint &> /dev/null; then
+          actionlint {staged_files}
+        else
+          echo "Warning: actionlint not installed. Install with: brew install actionlint shellcheck"
+        fi
+      fail_text: "Workflow lint failed. Install: brew install actionlint shellcheck"
+
+    workflow-pin:
+      glob: ".github/workflows/*.{yml,yaml}"
+      run: |
+        if command -v pinact &> /dev/null; then
+          pinact run --verify -c tools/lint/pinact.yaml
+        fi
+      fail_text: "Run 'pinact run -u -c tools/lint/pinact.yaml' to pin action versions"
+
 commit-msg:
   commands:
     semantic-commit:

@@ -117,27 +117,32 @@ linters:
     unparam:
       check-exported: false
 
+  # Defines a set of rules to ignore issues (moved from v1 issues.exclude-rules)
+  exclusions:
+    # Mode of generated files exclusion
+    generated: lax
+    # Excluding configuration per-path, per-linter, per-text
+    rules:
+      # Test files are more relaxed
+      - path: ".*_test\\.go$"
+        linters:
+          - dupl
+          - gocyclo
+          - goconst
+          - funlen
+          - errcheck
+          - gosec
+          - errorlint
+
+      # Main and cmd packages can use fmt.Print
+      - path: (main|cmd)
+        linters:
+          - forbidigo
+
+      # init() is valid for cobra commands
+      - path: cmd/
+        text: "don't use `init` function"
+
 issues:
-  exclude-rules:
-    # Test files are more relaxed
-    - path: ".*_test\\.go$"
-      linters:
-        - dupl
-        - gocyclo
-        - goconst
-        - funlen
-        - errcheck
-        - gosec
-        - errorlint
-
-    # Main and cmd packages can use fmt.Print
-    - path: (main|cmd)
-      linters:
-        - forbidigo
-
-    # init() is valid for cobra commands
-    - path: cmd/
-      text: "don't use `init` function"
-
   max-issues-per-linter: 0
   max-same-issues: 0

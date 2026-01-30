@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/suzuki-shunsuke/ghalint/main/json-schema/ghalint.json
+#
+# ghalint - GitHub Actions Linter Configuration
+# https://github.com/suzuki-shunsuke/ghalint
+#
+# Run locally: ghalint run -c tools/lint/ghalint.yaml
+#
+# NOTE: Only certain policies can be excluded:
+# - deny_inherit_secrets
+# - job_secrets
+# - action_ref_should_be_full_length_commit_sha
+# - github_app_should_limit_repositories
+#
+# Other policies (workflow_secrets, job_permissions, job_timeout_minutes_is_required,
+# checkout_persist_credentials_should_be_false) cannot be excluded and must be fixed.
+
+excludes: []

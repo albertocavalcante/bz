@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/suzuki-shunsuke/pinact/main/json-schema/pinact.json
+#
+# pinact - Pin GitHub Actions versions
+# https://github.com/suzuki-shunsuke/pinact
+#
+# Run: pinact run
+# Update pins: pinact run -u
+# Verify: pinact run --verify
+
+version: 3
+
+files:
+  - pattern: ".github/workflows/*.yml"
+  - pattern: ".github/workflows/*.yaml"
