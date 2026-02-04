@@ -69,6 +69,8 @@ github.com/MirrexOne/unqueryvet v1.4.0 h1:6KAkqqW2KUnkl9Z0VuTphC3IXRPoFqEkJEtyxx
 github.com/MirrexOne/unqueryvet v1.4.0/go.mod h1:IWwCwMQlSWjAIteW0t+28Q5vouyktfujzYznSIWiuOg=
 github.com/OpenPeeDeeP/depguard/v2 v2.2.1 h1:vckeWVESWp6Qog7UZSARNqfu/cZqvki8zsuj3piCMx4=
 github.com/OpenPeeDeeP/depguard/v2 v2.2.1/go.mod h1:q4DKzC4UcVaAvcfd41CZh0PWpGgzrVxUYBlgKNGquUo=
+github.com/albertocavalcante/go-bcr v0.0.0-20260204171121-c5dcf4fa037f h1:0f09KnM4Q/VxQjHTJDgKZYlZp/ES93QXHEJ2hjuAdUk=
+github.com/albertocavalcante/go-bcr v0.0.0-20260204171121-c5dcf4fa037f/go.mod h1:9uzeZFsC9JA97oLcvh6pgMwqI0hFwpWHFmKTOfMA/K0=
 github.com/albertocavalcante/go-bzlmod v0.0.0-20260123084147-305cb93e8bab h1:MVH1iRXKKla/dKgNIs05ZqMlzCBLmOdxVyIVv0cu7iQ=
 github.com/albertocavalcante/go-bzlmod v0.0.0-20260123084147-305cb93e8bab/go.mod h1:12kJUU2iylKywL9nLWatTSi+4IsCj3dYDP3PhRApjdw=
 github.com/alecthomas/assert/v2 v2.11.0 h1:2Q9r3ki8+JYXvGsDyBXwH3LcJ+WK5D0gc5E8vS6K3D0=
