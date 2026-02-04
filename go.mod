@@ -7,6 +7,7 @@ toolchain go1.25.5
 tool github.com/golangci/golangci-lint/v2/cmd/golangci-lint
 
 require (
+	github.com/albertocavalcante/go-bcr v0.0.0-20260204170306-7a96b653fa0e
 	github.com/albertocavalcante/go-bzlmod v0.0.0-20260123084147-305cb93e8bab
 	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/charmbracelet/bubbles v0.21.1-0.20250623103423-23b8fd6302d7
@@ -231,3 +232,5 @@ require (
 	mvdan.cc/gofumpt v0.9.2 // indirect
 	mvdan.cc/unparam v0.0.0-20251027182757-5beb8c8f8f15 // indirect
 )
+
+replace github.com/albertocavalcante/go-bcr => /Users/adsc/dev/ws/go-bcr
