@@ -103,13 +103,7 @@ jobs:
       contents: write
 
     steps:
-<<<<<<< HEAD
-      - uses: actions/checkout@v6
-||||||| parent of cadfc64 (ci: fix golangci-lint v2 config and pin all GitHub Actions)
-      - uses: actions/checkout@v4
-=======
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
->>>>>>> cadfc64 (ci: fix golangci-lint v2 config and pin all GitHub Actions)
         with:
           fetch-depth: 1
           persist-credentials: false
