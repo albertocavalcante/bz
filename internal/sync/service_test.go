@@ -2,12 +2,12 @@ package sync
 
 import (
 	"context"
-	"os"
 	"testing"
 
 	"github.com/albertocavalcante/bz/internal/config"
 	"github.com/albertocavalcante/bz/internal/publisher"
 	"github.com/albertocavalcante/bz/internal/registry"
+	"github.com/albertocavalcante/bz/internal/testutil"
 )
 
 func TestNewService(t *testing.T) {
@@ -326,8 +326,10 @@ func TestFilterRange(t *testing.T) {
 
 // Integration test with file-based registry and publisher
 func TestService_Run_Integration(t *testing.T) {
-	// Set up test registry
-	regDir := setupTestRegistry(t)
+	// Set up test registry using the shared testutil
+	regDir := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{
+		"rules_go": {Versions: []string{"0.49.0", "0.50.0"}},
+	})
 
 	// Set up destination directory
 	destDir := t.TempDir()
@@ -385,7 +387,9 @@ func TestService_Run_Integration(t *testing.T) {
 }
 
 func TestService_Run_DryRun(t *testing.T) {
-	regDir := setupTestRegistry(t)
+	regDir := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{
+		"rules_go": {Versions: []string{"0.49.0", "0.50.0"}},
+	})
 	destDir := t.TempDir()
 
 	cfg := &config.Config{
@@ -433,7 +437,9 @@ func TestService_Run_DryRun(t *testing.T) {
 }
 
 func TestService_Run_SkipExisting(t *testing.T) {
-	regDir := setupTestRegistry(t)
+	regDir := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{
+		"rules_go": {Versions: []string{"0.49.0", "0.50.0"}},
+	})
 	destDir := t.TempDir()
 
 	cfg := &config.Config{
@@ -478,7 +484,10 @@ func TestService_Run_SkipExisting(t *testing.T) {
 }
 
 func TestService_Run_ModulesOverride(t *testing.T) {
-	regDir := setupTestRegistry(t)
+	regDir := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{
+		"rules_go": {Versions: []string{"0.49.0", "0.50.0"}},
+		"protobuf": {Versions: []string{"21.7"}},
+	})
 	destDir := t.TempDir()
 
 	cfg := &config.Config{
@@ -513,49 +522,4 @@ func TestService_Run_ModulesOverride(t *testing.T) {
 	if result.ModulesProcessed != 1 {
 		t.Errorf("ModulesProcessed = %d, want 1", result.ModulesProcessed)
 	}
-}
-
-// setupTestRegistry creates a test BCR-compatible registry
-func setupTestRegistry(t *testing.T) string {
-	t.Helper()
-
-	root := t.TempDir()
-	modulesDir := root + "/modules"
-
-	// Create rules_go module
-	rulesGoDir := modulesDir + "/rules_go"
-	if err := os.MkdirAll(rulesGoDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	// Metadata
-	metadataJSON := `{
-		"homepage": "https://github.com/bazelbuild/rules_go",
-		"versions": ["0.49.0", "0.50.0"],
-		"yanked_versions": {}
-	}`
-	if err := os.WriteFile(rulesGoDir+"/metadata.json", []byte(metadataJSON), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	// Version 0.50.0
-	versionDir := rulesGoDir + "/0.50.0"
-	if err := os.MkdirAll(versionDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	moduleBazel := `module(name = "rules_go", version = "0.50.0")`
-	if err := os.WriteFile(versionDir+"/MODULE.bazel", []byte(moduleBazel), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	sourceJSON := `{
-		"url": "https://github.com/bazelbuild/rules_go/archive/v0.50.0.tar.gz",
-		"integrity": "sha256-abc123"
-	}`
-	if err := os.WriteFile(versionDir+"/source.json", []byte(sourceJSON), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	return root
 }

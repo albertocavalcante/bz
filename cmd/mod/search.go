@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/albertocavalcante/bz/internal/cli"
 	"github.com/albertocavalcante/bz/internal/registry"
 )
 
@@ -45,16 +46,21 @@ func init() {
 }
 
 func runSearch(cmd *cobra.Command, args []string) error {
+	// Check if command is disabled
+	if err := cli.CheckCommandAllowed("search"); err != nil {
+		return err
+	}
+
 	query := args[0]
 	ctx := cmd.Context()
 	if ctx == nil {
 		ctx = context.Background()
 	}
 
-	// Create registry from URL
-	reg, err := registry.New(registryFlag)
+	// Create network-aware registry
+	reg, err := createNetworkAwareRegistry()
 	if err != nil {
-		return fmt.Errorf("invalid registry: %w", err)
+		return err
 	}
 
 	// Search

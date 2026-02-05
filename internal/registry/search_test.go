@@ -2,13 +2,19 @@ package registry
 
 import (
 	"context"
-	"os"
-	"path/filepath"
 	"testing"
+
+	"github.com/albertocavalcante/bz/internal/testutil"
 )
 
 func TestSearch(t *testing.T) {
-	root := setupTestRegistry(t)
+	root := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{
+		"rules_go": {
+			Versions:       []string{"0.49.0", "0.50.0", "0.51.0-rc1"},
+			YankedVersions: map[string]string{"0.49.0": "buggy"},
+		},
+		"protobuf": {Versions: []string{"3.19.0", "3.20.0"}},
+	})
 	reg := NewFileRegistry(root)
 	ctx := context.Background()
 
@@ -75,22 +81,12 @@ func TestSearch(t *testing.T) {
 }
 
 func TestSearch_Relevance(t *testing.T) {
-	root := t.TempDir()
-	modulesDir := filepath.Join(root, ModulesDir)
-
-	// Create modules in non-alphabetical order
-	modules := []string{"grpc_rules", "rules_grpc", "grpc", "my_grpc_lib"}
-	for _, m := range modules {
-		dir := filepath.Join(modulesDir, m)
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			t.Fatal(err)
-		}
-		metaPath := filepath.Join(dir, MetadataFile)
-		if err := os.WriteFile(metaPath, []byte(`{"versions": ["1.0.0"]}`), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-
+	root := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{
+		"grpc_rules":  {Versions: []string{"1.0.0"}},
+		"rules_grpc":  {Versions: []string{"1.0.0"}},
+		"grpc":        {Versions: []string{"1.0.0"}},
+		"my_grpc_lib": {Versions: []string{"1.0.0"}},
+	})
 	reg := NewFileRegistry(root)
 	ctx := context.Background()
 

@@ -3,12 +3,14 @@ package mod
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 
+	"github.com/albertocavalcante/bz/internal/cli"
 	"github.com/albertocavalcante/bz/internal/module"
 	"github.com/albertocavalcante/bz/internal/registry"
 )
@@ -30,8 +32,9 @@ Examples:
   bz mod info rules_go@0.50.1            # Show specific version details
   bz mod info rules_go --json            # Output as JSON
   bz mod info rules_go --registry=/path  # Use local registry`,
-	Args: cobra.ExactArgs(1),
-	RunE: runInfo,
+	Args:              cobra.ExactArgs(1),
+	RunE:              runInfo,
+	ValidArgsFunction: completeModuleNamesForSingleArg,
 }
 
 func init() {
@@ -40,6 +43,11 @@ func init() {
 }
 
 func runInfo(cmd *cobra.Command, args []string) error {
+	// Check if command is disabled
+	if err := cli.CheckCommandAllowed("info"); err != nil {
+		return err
+	}
+
 	if len(args) == 0 {
 		return fmt.Errorf("module argument required")
 	}
@@ -49,10 +57,10 @@ func runInfo(cmd *cobra.Command, args []string) error {
 		ctx = context.Background()
 	}
 
-	// Create registry
-	reg, err := registry.New(registryFlag)
+	// Create network-aware registry
+	reg, err := createNetworkAwareRegistry()
 	if err != nil {
-		return fmt.Errorf("invalid registry: %w", err)
+		return err
 	}
 
 	out := cmd.OutOrStdout()
@@ -61,6 +69,9 @@ func runInfo(cmd *cobra.Command, args []string) error {
 	if version == "" {
 		meta, err := reg.GetMetadata(ctx, name)
 		if err != nil {
+			if errors.Is(err, registry.ErrModuleNotFound) {
+				return registry.WrapModuleNotFound(ctx, reg, name, err)
+			}
 			return fmt.Errorf("failed to fetch module metadata: %w", err)
 		}
 
@@ -73,6 +84,9 @@ func runInfo(cmd *cobra.Command, args []string) error {
 	// Version specified - fetch MODULE.bazel and parse it
 	content, err := reg.GetModuleBazel(ctx, name, version)
 	if err != nil {
+		if errors.Is(err, registry.ErrModuleNotFound) {
+			return registry.WrapModuleNotFound(ctx, reg, name, err)
+		}
 		return fmt.Errorf("failed to fetch module: %w", err)
 	}
 

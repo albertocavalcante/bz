@@ -10,56 +10,16 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/albertocavalcante/bz/internal/testutil"
 	"github.com/albertocavalcante/bz/internal/version"
 )
-
-// setupTestRegistry creates a file-based registry in tmpDir with the given modules.
-// Each module entry is: name -> []versions (latest version last).
-func setupTestRegistry(t *testing.T, tmpDir string, modules map[string][]string) string {
-	t.Helper()
-
-	registryDir := filepath.Join(tmpDir, "registry")
-	modulesDir := filepath.Join(registryDir, "modules")
-	require.NoError(t, os.MkdirAll(modulesDir, 0o755))
-
-	for name, versions := range modules {
-		moduleDir := filepath.Join(modulesDir, name)
-		require.NoError(t, os.MkdirAll(moduleDir, 0o755))
-
-		// Create metadata.json
-		metadata := map[string]any{
-			"versions": versions,
-		}
-		metadataBytes, err := json.Marshal(metadata)
-		require.NoError(t, err)
-		require.NoError(t, os.WriteFile(
-			filepath.Join(moduleDir, "metadata.json"),
-			metadataBytes,
-			0o644,
-		))
-
-		// Create version directories with MODULE.bazel
-		for _, ver := range versions {
-			verDir := filepath.Join(moduleDir, ver)
-			require.NoError(t, os.MkdirAll(verDir, 0o755))
-			content := "module(name = \"" + name + "\", version = \"" + ver + "\")\n"
-			require.NoError(t, os.WriteFile(
-				filepath.Join(verDir, "MODULE.bazel"),
-				[]byte(content),
-				0o644,
-			))
-		}
-	}
-
-	return registryDir
-}
 
 func TestOutdatedCmd_AllUpToDate(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Setup registry with rules_go having only 0.50.1
-	registryDir := setupTestRegistry(t, tmpDir, map[string][]string{
-		"rules_go": {"0.50.0", "0.50.1"},
+	registryDir := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{
+		"rules_go": {Versions: []string{"0.50.0", "0.50.1"}},
 	})
 
 	// Setup MODULE.bazel with current latest version
@@ -97,9 +57,9 @@ func TestOutdatedCmd_HasUpdates(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Setup registry with newer versions available
-	registryDir := setupTestRegistry(t, tmpDir, map[string][]string{
-		"rules_go":     {"0.46.0", "0.48.0", "0.50.1"},
-		"rules_python": {"0.30.0", "0.31.0", "1.0.0"},
+	registryDir := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{
+		"rules_go":     {Versions: []string{"0.46.0", "0.48.0", "0.50.1"}},
+		"rules_python": {Versions: []string{"0.30.0", "0.31.0", "1.0.0"}},
 	})
 
 	// Setup MODULE.bazel with older versions
@@ -146,8 +106,8 @@ bazel_dep(name = "rules_python", version = "0.31.0")
 func TestOutdatedCmd_JSONOutput(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	registryDir := setupTestRegistry(t, tmpDir, map[string][]string{
-		"rules_go": {"0.46.0", "0.50.1"},
+	registryDir := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{
+		"rules_go": {Versions: []string{"0.46.0", "0.50.1"}},
 	})
 
 	moduleContent := `module(name = "test_module", version = "1.0.0")
@@ -222,8 +182,8 @@ func TestOutdatedCmd_ModuleNotInRegistry(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Setup registry WITHOUT rules_go
-	registryDir := setupTestRegistry(t, tmpDir, map[string][]string{
-		"rules_python": {"0.31.0"},
+	registryDir := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{
+		"rules_python": {Versions: []string{"0.31.0"}},
 	})
 
 	moduleContent := `module(name = "test_module", version = "1.0.0")

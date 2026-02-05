@@ -113,6 +113,14 @@ type Registry interface {
 	String() string
 }
 
+// SourceGetter is an optional interface for registries that can fetch source.json.
+// Not all registries support this, so callers should use type assertion.
+type SourceGetter interface {
+	// GetSource fetches the source.json content for a specific version.
+	// Returns ErrModuleNotFound or ErrVersionNotFound as appropriate.
+	GetSource(ctx context.Context, module, version string) ([]byte, error)
+}
+
 // Metadata represents the contents of a module's metadata.json.
 type Metadata struct {
 	Homepage       string            `json:"homepage,omitempty"`

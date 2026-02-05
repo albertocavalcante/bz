@@ -8,15 +8,17 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/albertocavalcante/bz/internal/testutil"
 )
 
 func TestUpdateCmd_UpdatesAllDependencies(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Setup registry with newer versions available
-	registryDir := setupTestRegistry(t, tmpDir, map[string][]string{
-		"rules_go":     {"0.46.0", "0.48.0", "0.50.1"},
-		"rules_python": {"0.30.0", "0.31.0", "1.0.0"},
+	registryDir := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{
+		"rules_go":     {Versions: []string{"0.46.0", "0.48.0", "0.50.1"}},
+		"rules_python": {Versions: []string{"0.30.0", "0.31.0", "1.0.0"}},
 	})
 
 	// Setup MODULE.bazel with older versions
@@ -64,9 +66,9 @@ bazel_dep(name = "rules_python", version = "0.31.0")
 func TestUpdateCmd_UpdatesSpecificDependency(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	registryDir := setupTestRegistry(t, tmpDir, map[string][]string{
-		"rules_go":     {"0.46.0", "0.50.1"},
-		"rules_python": {"0.30.0", "1.0.0"},
+	registryDir := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{
+		"rules_go":     {Versions: []string{"0.46.0", "0.50.1"}},
+		"rules_python": {Versions: []string{"0.30.0", "1.0.0"}},
 	})
 
 	moduleContent := `module(name = "test_module", version = "1.0.0")
@@ -108,10 +110,10 @@ bazel_dep(name = "rules_python", version = "0.30.0")
 func TestUpdateCmd_UpdatesMultipleSpecificDependencies(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	registryDir := setupTestRegistry(t, tmpDir, map[string][]string{
-		"rules_go":     {"0.46.0", "0.50.1"},
-		"rules_python": {"0.30.0", "1.0.0"},
-		"rules_java":   {"7.0.0", "8.0.0"},
+	registryDir := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{
+		"rules_go":     {Versions: []string{"0.46.0", "0.50.1"}},
+		"rules_python": {Versions: []string{"0.30.0", "1.0.0"}},
+		"rules_java":   {Versions: []string{"7.0.0", "8.0.0"}},
 	})
 
 	moduleContent := `module(name = "test_module", version = "1.0.0")
@@ -153,8 +155,8 @@ bazel_dep(name = "rules_java", version = "7.0.0")
 func TestUpdateCmd_DryRun(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	registryDir := setupTestRegistry(t, tmpDir, map[string][]string{
-		"rules_go": {"0.46.0", "0.50.1"},
+	registryDir := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{
+		"rules_go": {Versions: []string{"0.46.0", "0.50.1"}},
 	})
 
 	moduleContent := `module(name = "test_module", version = "1.0.0")
@@ -199,8 +201,8 @@ bazel_dep(name = "rules_go", version = "0.46.0")
 func TestUpdateCmd_AllUpToDate(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	registryDir := setupTestRegistry(t, tmpDir, map[string][]string{
-		"rules_go": {"0.50.0", "0.50.1"},
+	registryDir := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{
+		"rules_go": {Versions: []string{"0.50.0", "0.50.1"}},
 	})
 
 	moduleContent := `module(name = "test_module", version = "1.0.0")
@@ -257,8 +259,8 @@ func TestUpdateCmd_NoDeps(t *testing.T) {
 func TestUpdateCmd_ModuleNotFound(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	registryDir := setupTestRegistry(t, tmpDir, map[string][]string{
-		"rules_go": {"0.50.1"},
+	registryDir := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{
+		"rules_go": {Versions: []string{"0.50.1"}},
 	})
 
 	moduleContent := `module(name = "test_module", version = "1.0.0")
@@ -296,8 +298,8 @@ func TestUpdateCmd_ModuleNotInRegistry(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Setup registry WITHOUT rules_go
-	registryDir := setupTestRegistry(t, tmpDir, map[string][]string{
-		"rules_python": {"1.0.0"},
+	registryDir := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{
+		"rules_python": {Versions: []string{"1.0.0"}},
 	})
 
 	moduleContent := `module(name = "test_module", version = "1.0.0")
@@ -348,8 +350,8 @@ func TestUpdateCmd_SkipsPrereleases(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Registry has a prerelease as the highest version
-	registryDir := setupTestRegistry(t, tmpDir, map[string][]string{
-		"rules_go": {"0.46.0", "0.50.1", "0.51.0-rc1"},
+	registryDir := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{
+		"rules_go": {Versions: []string{"0.46.0", "0.50.1", "0.51.0-rc1"}},
 	})
 
 	moduleContent := `module(name = "test_module", version = "1.0.0")
@@ -386,8 +388,8 @@ bazel_dep(name = "rules_go", version = "0.46.0")
 func TestUpdateCmd_PreservesOtherContent(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	registryDir := setupTestRegistry(t, tmpDir, map[string][]string{
-		"rules_go": {"0.46.0", "0.50.1"},
+	registryDir := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{
+		"rules_go": {Versions: []string{"0.46.0", "0.50.1"}},
 	})
 
 	moduleContent := `# This is a comment
@@ -433,8 +435,8 @@ register_toolchains("@rules_go//go:toolchain")
 func TestUpdateCmd_PreservesDevDependencyFlag(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	registryDir := setupTestRegistry(t, tmpDir, map[string][]string{
-		"gazelle": {"0.36.0", "0.38.0"},
+	registryDir := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{
+		"gazelle": {Versions: []string{"0.36.0", "0.38.0"}},
 	})
 
 	moduleContent := `module(name = "test_module", version = "1.0.0")
@@ -472,8 +474,8 @@ bazel_dep(name = "gazelle", version = "0.36.0", dev_dependency = True)
 func TestUpdateCmd_MixedFoundAndNotFound(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	registryDir := setupTestRegistry(t, tmpDir, map[string][]string{
-		"rules_go": {"0.46.0", "0.50.1"},
+	registryDir := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{
+		"rules_go": {Versions: []string{"0.46.0", "0.50.1"}},
 	})
 
 	moduleContent := `module(name = "test_module", version = "1.0.0")
@@ -516,9 +518,9 @@ bazel_dep(name = "rules_go", version = "0.46.0")
 func TestUpdateCmd_DryRunSpecificModule(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	registryDir := setupTestRegistry(t, tmpDir, map[string][]string{
-		"rules_go":     {"0.46.0", "0.50.1"},
-		"rules_python": {"0.30.0", "1.0.0"},
+	registryDir := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{
+		"rules_go":     {Versions: []string{"0.46.0", "0.50.1"}},
+		"rules_python": {Versions: []string{"0.30.0", "1.0.0"}},
 	})
 
 	moduleContent := `module(name = "test_module", version = "1.0.0")
@@ -564,8 +566,8 @@ bazel_dep(name = "rules_python", version = "0.30.0")
 func TestUpdateCmd_MultilineBaselDep(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	registryDir := setupTestRegistry(t, tmpDir, map[string][]string{
-		"rules_go": {"0.46.0", "0.50.1"},
+	registryDir := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{
+		"rules_go": {Versions: []string{"0.46.0", "0.50.1"}},
 	})
 
 	// bazel_dep with version on the same line but multiline format
@@ -604,10 +606,10 @@ bazel_dep(name = "rules_go", version = "0.46.0", repo_name = "io_bazel_rules_go"
 func TestUpdateCmd_ShowsUpdateType(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	registryDir := setupTestRegistry(t, tmpDir, map[string][]string{
-		"rules_go":     {"0.46.0", "0.50.1"}, // minor update
-		"rules_python": {"0.30.0", "1.0.0"},  // major update
-		"rules_java":   {"7.0.0", "7.0.1"},   // patch update
+	registryDir := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{
+		"rules_go":     {Versions: []string{"0.46.0", "0.50.1"}}, // minor update
+		"rules_python": {Versions: []string{"0.30.0", "1.0.0"}},  // major update
+		"rules_java":   {Versions: []string{"7.0.0", "7.0.1"}},   // patch update
 	})
 
 	moduleContent := `module(name = "test_module", version = "1.0.0")
@@ -646,33 +648,13 @@ bazel_dep(name = "rules_java", version = "7.0.0")
 func TestUpdateCmd_YankedVersionsSkipped(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Create registry with yanked version manually
-	registryDir := filepath.Join(tmpDir, "registry")
-	modulesDir := filepath.Join(registryDir, "modules", "rules_go")
-	require.NoError(t, os.MkdirAll(modulesDir, 0o755))
-
-	// Create metadata.json with yanked version
-	metadata := `{
-		"versions": ["0.46.0", "0.50.0", "0.50.1"],
-		"yanked_versions": {"0.50.1": "security issue"}
-	}`
-	require.NoError(t, os.WriteFile(
-		filepath.Join(modulesDir, "metadata.json"),
-		[]byte(metadata),
-		0o644,
-	))
-
-	// Create version directories
-	for _, ver := range []string{"0.46.0", "0.50.0", "0.50.1"} {
-		verDir := filepath.Join(modulesDir, ver)
-		require.NoError(t, os.MkdirAll(verDir, 0o755))
-		content := `module(name = "rules_go", version = "` + ver + `")`
-		require.NoError(t, os.WriteFile(
-			filepath.Join(verDir, "MODULE.bazel"),
-			[]byte(content),
-			0o644,
-		))
-	}
+	// Create registry with yanked version using the testutil
+	registryDir := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{
+		"rules_go": {
+			Versions:       []string{"0.46.0", "0.50.0", "0.50.1"},
+			YankedVersions: map[string]string{"0.50.1": "security issue"},
+		},
+	})
 
 	moduleContent := `module(name = "test_module", version = "1.0.0")
 

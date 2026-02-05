@@ -7,6 +7,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/albertocavalcante/bz/internal/cli"
 	"github.com/albertocavalcante/go-bzlmod/ast"
 )
 
@@ -149,7 +150,7 @@ func (f *File) WriteDepsTable(w io.Writer) error {
 	for _, dep := range f.Deps {
 		dev := ""
 		if dep.DevDependency {
-			dev = "yes"
+			dev = cli.Muted("yes")
 		}
 		fmt.Fprintf(tw, "%s\t%s\t%s\n", dep.Name.String(), dep.Version.String(), dev)
 	}
@@ -175,7 +176,7 @@ func (f *File) WriteFullTable(w io.Writer) error {
 		for _, dep := range f.Deps {
 			dev := ""
 			if dep.DevDependency {
-				dev = " (dev)"
+				dev = cli.Muted(" (dev)")
 			}
 			fmt.Fprintf(tw, "  %s\t%s%s\n", dep.Name.String(), dep.Version.String(), dev)
 		}

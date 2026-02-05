@@ -24,8 +24,9 @@ Examples:
   bz mod rm rules_go
   bz mod rm rules_go rules_python
   bz mod rm --dry-run rules_go`,
-	Args: cobra.MinimumNArgs(1),
-	RunE: runRm,
+	Args:              cobra.MinimumNArgs(1),
+	RunE:              runRm,
+	ValidArgsFunction: completeInstalledModules,
 }
 
 func init() {

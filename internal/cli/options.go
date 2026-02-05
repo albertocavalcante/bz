@@ -2,6 +2,7 @@
 package cli
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/charmbracelet/lipgloss"
@@ -15,6 +16,17 @@ type Options struct {
 
 	// NoColor disables colored output.
 	NoColor bool
+
+	// Offline enables strict offline mode - no network access, use cache only.
+	// Useful for air-gapped environments.
+	Offline bool
+
+	// PreferOffline prefers cached data but falls back to network if needed.
+	// This is a cache-first strategy.
+	PreferOffline bool
+
+	// Registry overrides the default registry URL.
+	Registry string
 }
 
 // Global holds the current CLI options.
@@ -46,4 +58,52 @@ func ConfigureLipgloss() {
 	if !IsColorEnabled() {
 		lipgloss.SetColorProfile(termenv.Ascii)
 	}
+}
+
+// IsOffline returns true if strict offline mode is enabled.
+// This also respects the BZ_OFFLINE environment variable.
+func IsOffline() bool {
+	if Global.Offline {
+		return true
+	}
+	// Also respect BZ_OFFLINE environment variable
+	if val, ok := os.LookupEnv("BZ_OFFLINE"); ok && val != "" && val != "0" && val != "false" {
+		return true
+	}
+	return false
+}
+
+// IsPreferOffline returns true if cache-first mode is enabled.
+// This also respects the BZ_PREFER_OFFLINE environment variable.
+func IsPreferOffline() bool {
+	if Global.PreferOffline {
+		return true
+	}
+	// Also respect BZ_PREFER_OFFLINE environment variable
+	if val, ok := os.LookupEnv("BZ_PREFER_OFFLINE"); ok && val != "" && val != "0" && val != "false" {
+		return true
+	}
+	return false
+}
+
+// GetRegistry returns the registry URL if overridden, empty string otherwise.
+// This also respects the BZ_REGISTRY environment variable.
+func GetRegistry() string {
+	if Global.Registry != "" {
+		return Global.Registry
+	}
+	// Also respect BZ_REGISTRY environment variable
+	if val, ok := os.LookupEnv("BZ_REGISTRY"); ok && val != "" {
+		return val
+	}
+	return ""
+}
+
+// ValidateOfflineFlags checks that --offline and --prefer-offline are not both set.
+// Returns an error if both flags are set simultaneously.
+func ValidateOfflineFlags() error {
+	if Global.Offline && Global.PreferOffline {
+		return fmt.Errorf("--offline and --prefer-offline are mutually exclusive")
+	}
+	return nil
 }

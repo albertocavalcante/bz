@@ -284,5 +284,6 @@ func (r *HTTPRegistry) GetSource(ctx context.Context, module, version string) ([
 	return data, nil
 }
 
-// Verify HTTPRegistry implements Registry.
+// Verify HTTPRegistry implements Registry and SourceGetter.
 var _ Registry = (*HTTPRegistry)(nil)
+var _ SourceGetter = (*HTTPRegistry)(nil)

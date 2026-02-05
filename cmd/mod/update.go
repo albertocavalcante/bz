@@ -10,8 +10,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/albertocavalcante/bz/internal/cli"
 	"github.com/albertocavalcante/bz/internal/module"
-	"github.com/albertocavalcante/bz/internal/registry"
 	"github.com/albertocavalcante/bz/internal/version"
 )
 
@@ -55,6 +55,11 @@ type updateInfo struct {
 }
 
 func runUpdate(cmd *cobra.Command, args []string) error {
+	// Check if command is disabled
+	if err := cli.CheckCommandAllowed("update"); err != nil {
+		return err
+	}
+
 	modulePath, err := module.Find()
 	if err != nil {
 		return err
@@ -77,9 +82,10 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		ctx = context.Background()
 	}
 
-	reg, err := registry.New(registryFlag)
+	// Create network-aware registry
+	reg, err := createNetworkAwareRegistry()
 	if err != nil {
-		return fmt.Errorf("invalid registry: %w", err)
+		return err
 	}
 
 	// Build set of modules to update (empty means all)

@@ -123,5 +123,6 @@ func (r *FileRegistry) GetSource(ctx context.Context, module, version string) ([
 	return data, nil
 }
 
-// Verify FileRegistry implements Registry.
+// Verify FileRegistry implements Registry and SourceGetter.
 var _ Registry = (*FileRegistry)(nil)
+var _ SourceGetter = (*FileRegistry)(nil)
