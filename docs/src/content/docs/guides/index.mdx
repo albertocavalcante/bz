@@ -1,21 +1,34 @@
 ---
 title: Guides
-description: Step-by-step guides for common bz tasks
+description: Step-by-step guides for common bz workflows
 ---
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
 
-These guides walk you through common use cases for bz.
+Practical guides for using bz in real-world scenarios.
 
 <CardGrid>
-  <Card title="Mirror BCR" icon="document">
-    Create a local mirror of the Bazel Central Registry for faster builds and offline access.
+  <Card title="Air-gapped & Offline Usage" icon="seti:lock">
+    Set up bz for environments without internet access. Learn to use the cache system for fully offline operation.
 
-    [Read guide →](/bz/guides/mirror-bcr/)
+    [Read guide](/bz/guides/air-gapped/)
   </Card>
-  <Card title="Air-gapped Setup" icon="seti:lock">
-    Set up bz for environments without internet access.
+  <Card title="Security Features" icon="warning">
+    Vulnerability scanning, license compliance, and SBOM generation. Integrate security checks into your CI/CD pipeline.
 
-    [Read guide →](/bz/guides/air-gapped/)
+    [Read guide](/bz/guides/security/)
+  </Card>
+  <Card title="Mirror BCR" icon="document">
+    Create a local mirror of the Bazel Central Registry for faster builds and reliability.
+
+    [Read guide](/bz/guides/mirror-bcr/)
   </Card>
 </CardGrid>
+
+## Quick Links
+
+| Guide | Description |
+|-------|-------------|
+| [Air-gapped Setup](/bz/guides/air-gapped/) | Offline mode, cache commands, and disconnected environments |
+| [Security Features](/bz/guides/security/) | `bz audit`, `bz mod licenses`, `bz sbom` |
+| [Mirror BCR](/bz/guides/mirror-bcr/) | Registry sync with Starlark configuration |

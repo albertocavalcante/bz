@@ -1,96 +1,150 @@
 ---
 title: Configuration Overview
-description: Learn how to configure bz with Starlark
+description: Learn how to configure bz
 ---
 
-import { Card, CardGrid } from '@astrojs/starlight/components';
+import { Card, CardGrid, Aside } from '@astrojs/starlight/components';
 
-bz uses [Starlark](https://github.com/bazelbuild/starlark) for configuration, providing a familiar Python-like syntax for Bazel users.
+bz supports two types of configuration:
 
-## Configuration File
+1. **TOML files** - For persistent settings like network mode, cache directory, and registry URL
+2. **Starlark files** - For registry sync workflows (advanced feature)
 
-By default, bz looks for a `bz.star` file in the current directory. You can specify a different path with `--config`:
+## Quick Start
 
-```bash
-bz mod sync --config /path/to/config.star
+Most users only need TOML configuration for basic settings:
+
+```toml
+# ~/.config/bz/config.toml
+[network]
+mode = "prefer-offline"           # Use cache when available
+
+[cache]
+dir = "~/.cache/bz"
 ```
 
-## Basic Structure
+For registry sync workflows, use Starlark configuration in `bz.star`.
 
-A typical `bz.star` file consists of:
+## Configuration Types
 
-1. **Registry definitions** - Sources and destinations for modules
-2. **Authentication** (optional) - Credentials for private registries
-3. **Workflow definitions** - Rules for syncing modules
-4. **Defaults** (optional) - Global settings
+<CardGrid>
+  <Card title="TOML Configuration" icon="setting">
+    Configure network mode, cache settings, and disabled commands. Used for everyday bz settings.
+
+    [Learn more](/bz/configuration/toml/)
+  </Card>
+  <Card title="Starlark Configuration" icon="document">
+    Define registry sync workflows with Starlark. Used for mirroring BCR to internal registries.
+
+    [Learn more](/bz/configuration/starlark/)
+  </Card>
+</CardGrid>
+
+---
+
+## TOML Configuration
+
+TOML files configure bz's runtime behavior. Files are loaded from multiple locations with later files overriding earlier ones.
+
+### File Locations
+
+| Location | Purpose |
+|----------|---------|
+| `/etc/bz/config.toml` | System-wide defaults |
+| `~/.config/bz/config.toml` | User preferences |
+| `.bz.toml` | Project-specific settings |
+
+### Example
+
+```toml
+[network]
+mode = "prefer-offline"
+registry = "https://bcr.bazel.build"
+timeout = "30s"
+
+[cache]
+dir = "~/.cache/bz"
+
+[commands]
+disabled = []
+```
+
+### Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `BZ_OFFLINE` | Enable offline mode |
+| `BZ_PREFER_OFFLINE` | Enable prefer-offline mode |
+| `BZ_REGISTRY` | Override registry URL |
+| `BZ_CACHE_DIR` | Override cache directory |
+| `BZ_DISABLE_COMMANDS` | Disable commands (comma-separated) |
+
+[Full TOML documentation](/bz/configuration/toml/)
+
+---
+
+## Starlark Configuration
+
+Starlark files (`bz.star`) define sync workflows for mirroring modules between registries. This is an advanced feature for organizations maintaining internal registries.
+
+### Basic Example
 
 ```starlark
-# 1. Define registries
+# bz.star
 bcr = registry.http("https://bcr.bazel.build")
 mirror = registry.file("/path/to/mirror")
 
-# 2. Optional: Authentication
-auth = auth.basic(
-    username = env("REGISTRY_USER"),
-    password = env("REGISTRY_PASS"),
-)
-
-# 3. Define workflows
 sync.workflow(
     name = "sync-all",
     origin = bcr,
     destination = mirror,
     modules = ["rules_go", "rules_python"],
 )
-
-# 4. Optional: Set defaults
-config.defaults(
-    verbose = True,
-    dry_run = False,
-)
 ```
 
-## Configuration Sections
+Run with:
+```bash
+bz mod sync sync-all
+```
+
+### Starlark Documentation
 
 <CardGrid>
   <Card title="Starlark Basics" icon="document">
     Learn the Starlark language basics for writing configurations.
 
-    [Learn more →](/bz/configuration/starlark/)
+    [Learn more](/bz/configuration/starlark/)
   </Card>
   <Card title="Registries" icon="setting">
     Configure source and destination registries.
 
-    [Learn more →](/bz/configuration/registries/)
+    [Learn more](/bz/configuration/registries/)
   </Card>
   <Card title="Publishers" icon="rocket">
     Set up different publishing backends.
 
-    [Learn more →](/bz/configuration/publishers/)
+    [Learn more](/bz/configuration/publishers/)
   </Card>
   <Card title="Transforms" icon="puzzle">
     Transform modules as they sync.
 
-    [Learn more →](/bz/configuration/transforms/)
+    [Learn more](/bz/configuration/transforms/)
   </Card>
 </CardGrid>
 
-## Available Modules
+---
 
-bz provides several Starlark modules:
+## Configuration Precedence
 
-| Module | Description |
-|--------|-------------|
-| `registry` | Create registry connections (http, file, git) |
-| `auth` | Define authentication methods |
-| `sync` | Define sync workflows and version selectors |
-| `config` | Set global defaults |
+All configuration is merged in this order (later overrides earlier):
 
-## Built-in Functions
+1. Built-in defaults
+2. System config (`/etc/bz/config.toml`)
+3. User config (`~/.config/bz/config.toml`)
+4. Project config (`.bz.toml`)
+5. Environment variables
+6. CLI flags
 
-| Function | Description |
-|----------|-------------|
-| `env(name)` | Read environment variable |
-| `glob(pattern)` | Match files by pattern |
-| `print(msg)` | Print debug message |
-| `fail(msg)` | Abort with error |
+<Aside type="tip">
+CLI flags always take precedence. Use them to override any configuration for a single command.
+</Aside>

@@ -3,9 +3,9 @@ title: Quick Start
 description: Get up and running with bz in minutes
 ---
 
-import { Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+import { Steps, Tabs, TabItem, Aside } from '@astrojs/starlight/components';
 
-This guide will help you install bz and start using it to manage Bazel modules.
+This guide will help you install bz and start using it to manage Bazel module dependencies.
 
 ## Installation
 
@@ -24,67 +24,192 @@ This guide will help you install bz and start using it to manage Bazel modules.
   </TabItem>
 </Tabs>
 
+Verify the installation:
+
+```bash
+bz version
+```
+
 ## Basic Usage
 
 <Steps>
-1. **Search for modules**
+1. **Initialize a Bazel module**
 
-   Find modules in the Bazel Central Registry:
-
-   ```bash
-   bz mod search rules_go
-   ```
-
-   Output:
-   ```
-   rules_go - Go rules for Bazel
-   gazelle - Bazel BUILD file generator
-   ```
-
-2. **View module details**
-
-   Get detailed information about a module:
+   Create a new MODULE.bazel file:
 
    ```bash
-   bz mod show rules_go
+   bz init --name=my_project
    ```
 
-   Output:
-   ```
-   Module: rules_go
-   Versions: 0.50.1, 0.50.0, 0.49.0, ...
-   Latest: 0.50.1
-   Homepage: https://github.com/bazel-contrib/rules_go
-   ```
-
-3. **Create a sync configuration** (optional)
-
-   Create a `bz.star` file to define sync workflows:
-
+   This creates a MODULE.bazel with:
    ```starlark
-   # bz.star - Sync configuration
-   bcr = registry.http("https://bcr.bazel.build")
-   local = registry.file("./bazel-registry")
-
-   sync.workflow(
-       name = "local-mirror",
-       origin = bcr,
-       destination = local,
-       modules = ["rules_go", "rules_python"],
+   module(
+       name = "my_project",
+       version = "0.0.0",
    )
    ```
 
-4. **Run sync**
+2. **Add dependencies**
 
-   Execute your sync workflow:
+   Add modules from the Bazel Central Registry:
 
    ```bash
-   bz mod sync --workflow local-mirror
+   bz mod add rules_go@0.50.1
+   bz mod add rules_python@0.35.0
+   ```
+
+   Your MODULE.bazel now includes:
+   ```starlark
+   bazel_dep(name = "rules_go", version = "0.50.1")
+   bazel_dep(name = "rules_python", version = "0.35.0")
+   ```
+
+3. **List your dependencies**
+
+   View all dependencies in your MODULE.bazel:
+
+   ```bash
+   bz mod list
+   ```
+
+   Output:
+   ```
+   rules_go@0.50.1
+   rules_python@0.35.0
+   ```
+
+4. **Check for updates**
+
+   See if newer versions are available:
+
+   ```bash
+   bz mod outdated
+   ```
+
+   Output:
+   ```
+   Module         Current  Latest
+   ------         -------  ------
+   rules_go       0.50.1   0.50.2
+   ```
+
+5. **Update dependencies**
+
+   Update to the latest versions:
+
+   ```bash
+   bz mod update
    ```
 </Steps>
 
+## Explore Your Dependencies
+
+### Visualize the dependency graph
+
+```bash
+bz mod graph
+```
+
+Output:
+```
+my_project
+├── rules_go@0.50.1
+│   ├── bazel_skylib@1.5.0
+│   └── platforms@0.0.8
+└── rules_python@0.35.0
+    └── bazel_skylib@1.5.0
+```
+
+### Get dependency statistics
+
+```bash
+bz mod stats
+```
+
+Output:
+```
+Dependency Statistics:
+  Direct dependencies:     2
+  Transitive dependencies: 3
+  Total modules:           5
+  Max depth:               2
+  Dev dependencies:        0
+```
+
+### Find out why a module is included
+
+```bash
+bz mod why bazel_skylib
+```
+
+Output:
+```
+bazel_skylib is required by:
+  my_project -> rules_go@0.50.1 -> bazel_skylib@1.5.0
+  my_project -> rules_python@0.35.0 -> bazel_skylib@1.5.0
+```
+
+## Security Checks
+
+### Scan for vulnerabilities
+
+```bash
+bz audit
+```
+
+### Check license compliance
+
+```bash
+bz mod licenses
+bz mod licenses --check --deny=GPL-3.0
+```
+
+## Shell Completions
+
+Enable tab completion for your shell:
+
+<Tabs>
+<TabItem label="Bash">
+```bash
+bz completion bash > /etc/bash_completion.d/bz
+```
+</TabItem>
+<TabItem label="Zsh">
+```bash
+bz completion zsh > "${fpath[1]}/_bz"
+```
+</TabItem>
+<TabItem label="Fish">
+```bash
+bz completion fish > ~/.config/fish/completions/bz.fish
+```
+</TabItem>
+</Tabs>
+
+## Check Your Setup
+
+Run the doctor command to verify everything is configured correctly:
+
+```bash
+bz doctor
+```
+
+Output:
+```
+Checking Bazel setup...
+
+✓ Bazel installed (7.0.0)
+✓ MODULE.bazel found
+✓ .bazelversion found (7.0.0)
+✓ Bzlmod enabled (default in Bazel 7+)
+✓ Registry reachable (bcr.bazel.build)
+
+All checks passed!
+```
+
 ## What's Next?
 
-- [Installation options](/bz/installation/) - Alternative installation methods
-- [Configuration](/bz/configuration/) - Learn about the Starlark configuration
-- [CLI Reference](/bz/cli/) - Explore all available commands
+- [CLI Reference](/bz/cli/) - Complete command documentation
+- [Configuration](/bz/configuration/) - TOML config and environment variables
+- [Air-gapped Setup](/bz/guides/air-gapped/) - Offline usage guide
+- [Security Features](/bz/guides/security/) - Vulnerability scanning and SBOM generation

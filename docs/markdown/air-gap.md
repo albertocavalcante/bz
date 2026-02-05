@@ -1,11 +1,19 @@
----
-title: Air-gapped & Offline Usage
-description: Use bz in environments without internet access
----
-
-import { Steps, Aside, Tabs, TabItem, FileTree } from '@astrojs/starlight/components';
+# Air-gapped & Offline Usage Guide
 
 This guide explains how to use bz in air-gapped (disconnected) environments where machines cannot access the internet.
+
+## Table of Contents
+
+- [Overview](#overview)
+- [Quick Start](#quick-start)
+- [Cache Commands](#cache-commands)
+- [Network Modes](#network-modes)
+- [Advanced: Registry Mirroring](#advanced-registry-mirroring)
+- [Complete Air-gapped Setup](#complete-air-gapped-setup)
+- [Troubleshooting](#troubleshooting)
+- [CI/CD Integration](#cicd-integration)
+
+---
 
 ## Overview
 
@@ -15,59 +23,61 @@ bz provides first-class support for offline and air-gapped environments through:
 2. **Offline mode** - Operate entirely from cache without network access
 3. **Registry sync** - Mirror BCR to local/internal registries
 
-## Quick Start: Cache-based Offline
+---
+
+## Quick Start
 
 The simplest approach uses bz's built-in cache commands:
 
-<Steps>
-1. **On a connected machine, download dependencies:**
+### 1. On a connected machine, download dependencies:
 
-   ```bash
-   # Cache all dependencies from your MODULE.bazel
-   bz cache download
+```bash
+# Cache all dependencies from your MODULE.bazel
+bz cache download
 
-   # Or cache specific modules
-   bz cache download rules_go rules_python gazelle
-   ```
+# Or cache specific modules
+bz cache download rules_go rules_python gazelle
+```
 
-2. **Verify the cache is complete:**
+### 2. Verify the cache is complete:
 
-   ```bash
-   bz cache verify
-   ```
+```bash
+bz cache verify
+```
 
-3. **Transfer the cache:**
+### 3. Transfer the cache:
 
-   ```bash
-   # The cache is at ~/.cache/bz by default
-   rsync -av ~/.cache/bz/ user@airgap-machine:~/.cache/bz/
+```bash
+# The cache is at ~/.cache/bz by default
+rsync -av ~/.cache/bz/ user@airgap-machine:~/.cache/bz/
 
-   # Or use tar/zip for sneakernet
-   tar -czf bz-cache.tar.gz ~/.cache/bz
-   ```
+# Or use tar/zip for sneakernet
+tar -czf bz-cache.tar.gz ~/.cache/bz
+```
 
-4. **On the air-gapped machine, enable offline mode:**
+### 4. On the air-gapped machine, enable offline mode:
 
-   ```bash
-   # Option 1: Environment variable
-   export BZ_OFFLINE=1
+```bash
+# Option 1: Environment variable
+export BZ_OFFLINE=1
 
-   # Option 2: Config file (~/.config/bz/config.toml)
-   # [network]
-   # mode = "offline"
+# Option 2: Config file (~/.config/bz/config.toml)
+# [network]
+# mode = "offline"
 
-   # Option 3: CLI flag
-   bz mod list --offline
-   ```
+# Option 3: CLI flag
+bz mod list --offline
+```
 
-5. **Verify and use:**
+### 5. Verify and use:
 
-   ```bash
-   bz cache verify
-   bz mod list
-   bz mod outdated
-   ```
-</Steps>
+```bash
+bz cache verify
+bz mod list
+bz mod outdated
+```
+
+---
 
 ## Cache Commands
 
@@ -98,6 +108,7 @@ bz cache verify --json
 ```
 
 Example output:
+
 ```
 Verifying cache for MODULE.bazel dependencies...
 
@@ -115,6 +126,7 @@ bz cache stats
 ```
 
 Output:
+
 ```
 Cache directory: /home/user/.cache/bz
 Total modules:   15
@@ -142,40 +154,38 @@ bz cache clear rules_go gazelle
 
 bz supports three network modes:
 
-| Mode | Description | Use Case |
-|------|-------------|----------|
-| `online` | Always fetch from network (default) | Normal development |
-| `prefer-offline` | Use cache if available, fallback to network | Speed up builds |
-| `offline` | Never access network, fail if not cached | Air-gapped machines |
+| Mode             | Description                                 | Use Case            |
+| ---------------- | ------------------------------------------- | ------------------- |
+| `online`         | Always fetch from network (default)         | Normal development  |
+| `prefer-offline` | Use cache if available, fallback to network | Speed up builds     |
+| `offline`        | Never access network, fail if not cached    | Air-gapped machines |
 
 ### Setting Network Mode
 
-<Tabs>
-<TabItem label="CLI Flag">
+**CLI Flag:**
+
 ```bash
 bz mod list --offline
 bz mod outdated --prefer-offline
 ```
-</TabItem>
-<TabItem label="Environment Variable">
+
+**Environment Variable:**
+
 ```bash
 export BZ_OFFLINE=1
 # or
 export BZ_PREFER_OFFLINE=1
 ```
-</TabItem>
-<TabItem label="Config File">
+
+**Config File:**
+
 ```toml
 # ~/.config/bz/config.toml
 [network]
 mode = "offline"
 ```
-</TabItem>
-</Tabs>
 
-<Aside type="note">
-`--offline` and `--prefer-offline` are mutually exclusive. If both are set, `--offline` takes precedence.
-</Aside>
+Note: `--offline` and `--prefer-offline` are mutually exclusive. If both are set, `--offline` takes precedence.
 
 ---
 
@@ -232,13 +242,10 @@ Run the sync:
 bz mod sync --config bz-export.star export
 ```
 
-<Aside type="caution">
-The `rewrite_source_urls` transform changes where Bazel downloads source archives from. You must also mirror the actual source archives at that location.
-</Aside>
+**Important:** The `rewrite_source_urls` transform changes where Bazel downloads source archives from. You must also mirror the actual source archives at that location.
 
 ### Setting Up the Air-gapped Registry
 
-<Steps>
 1. **Transfer the registry:**
 
    ```bash
@@ -263,7 +270,6 @@ The `rewrite_source_urls` transform changes where Bazel downloads source archive
    mode = "offline"
    registry = "file:///opt/bazel/registry"
    ```
-</Steps>
 
 ---
 
@@ -273,21 +279,21 @@ Here's a complete example for an air-gapped deployment:
 
 ### Directory Structure
 
-<FileTree>
-- /opt/bazel/
-  - registry/
-    - bazel_registry.json
-    - modules/
-      - rules_go/
-        - metadata.json
-        - 0.50.1/
-          - MODULE.bazel
-          - source.json
-      - rules_python/
-      - ...
-  - cache/
-    - modules/ (bz cache)
-</FileTree>
+```
+/opt/bazel/
+├── registry/
+│   ├── bazel_registry.json
+│   └── modules/
+│       ├── rules_go/
+│       │   ├── metadata.json
+│       │   └── 0.50.1/
+│       │       ├── MODULE.bazel
+│       │       └── source.json
+│       ├── rules_python/
+│       └── ...
+└── cache/
+    └── modules/ (bz cache)
+```
 
 ### System Configuration
 
@@ -322,7 +328,6 @@ build --experimental_downloader_config=/etc/bazel-downloader.cfg
 
 When you need to add new modules or update versions:
 
-<Steps>
 1. **On connected machine:** Update your module list and run sync
 
    ```bash
@@ -341,19 +346,6 @@ When you need to add new modules or update versions:
    bz cache download
    bz cache verify
    ```
-</Steps>
-
-<Aside type="tip">
-Consider using git for the registry to make incremental updates easier:
-
-```starlark
-export_git = registry.git(
-    url = "/mnt/export/bazel-registry.git",
-)
-```
-
-Then transfer the git repository and pull changes on the air-gapped side.
-</Aside>
 
 ---
 
@@ -394,11 +386,11 @@ bz mod list --offline
 
 Default cache locations by platform:
 
-| Platform | Default Path |
-|----------|--------------|
-| Linux | `~/.cache/bz` |
-| macOS | `~/.cache/bz` |
-| Windows | `%LOCALAPPDATA%\bz\cache` |
+| Platform | Default Path              |
+| -------- | ------------------------- |
+| Linux    | `~/.cache/bz`             |
+| macOS    | `~/.cache/bz`             |
+| Windows  | `%LOCALAPPDATA%\bz\cache` |
 
 Override with `--cache-dir` flag or `BZ_CACHE_DIR` environment variable.
 
@@ -406,13 +398,15 @@ Override with `--cache-dir` flag or `BZ_CACHE_DIR` environment variable.
 
 ## CI/CD Integration
 
+### Air-gapped Runners
+
 For CI/CD pipelines with limited or no internet access:
 
 ```yaml
 # .github/workflows/build.yml
 jobs:
   build:
-    runs-on: self-hosted  # Air-gapped runner
+    runs-on: self-hosted # Air-gapped runner
     env:
       BZ_OFFLINE: "1"
       BZ_CACHE_DIR: "/opt/shared-cache/bz"
@@ -423,6 +417,8 @@ jobs:
       - name: Build
         run: bazel build //...
 ```
+
+### Runners with Slow Connections
 
 For runners with internet access but slow connections:
 

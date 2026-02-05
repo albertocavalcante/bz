@@ -1,15 +1,15 @@
 ---
 title: bz
-description: Bazel module management CLI with Starlark-based configuration
+description: CLI for Bzlmod - Bazel's module system
 template: splash
 hero:
-  tagline: A Bazel module management CLI with Starlark-based configuration for syncing modules from registries
+  tagline: Manage MODULE.bazel dependencies, query registries, scan for vulnerabilities, and streamline your Bazel workflow
   actions:
     - text: Get Started
       link: /bz/getting-started/
       icon: right-arrow
-    - text: Configuration
-      link: /bz/configuration/
+    - text: CLI Reference
+      link: /bz/cli/
       icon: setting
       variant: secondary
     - text: GitHub
@@ -22,77 +22,122 @@ import { Card, CardGrid, Code } from '@astrojs/starlight/components';
 
 ## What is bz?
 
-bz is a CLI tool for managing Bazel modules. It provides commands to search, inspect, and sync modules from various registries like the [Bazel Central Registry](https://registry.bazel.build).
-
-**Key capability: Sync modules from any source to any destination.**
+bz is a CLI tool for managing Bazel modules (Bzlmod). It helps you manage MODULE.bazel dependencies, query the Bazel Central Registry, analyze your dependency graph, and ensure security compliance.
 
 ```bash
-bz mod search rules_go   # Search for modules
-bz mod show rules_go     # View module details
-bz mod sync              # Sync modules to your registry
+# Quick start
+bz init --name=my_project        # Initialize module
+bz mod add rules_go@0.50.1       # Add dependencies
+bz mod list                      # List dependencies
+bz mod graph                     # Visualize dependency tree
+bz audit                         # Scan for vulnerabilities
 ```
 
 ## Features
 
 <CardGrid stagger>
-  <Card title="Multi-Registry Support" icon="puzzle">
-    Connect to HTTP, file-based, or git registries. Query metadata, versions, and module content from any BCR-compatible source.
+  <Card title="Dependency Management" icon="document">
+    Add, remove, update, and search for Bazel modules. Check for outdated dependencies and update them with a single command.
   </Card>
-  <Card title="Starlark Configuration" icon="setting">
-    Define workflows using familiar Starlark syntax. Configure registries, authentication, transforms, and sync rules in a single `.star` file.
+  <Card title="Dependency Analysis" icon="magnifier">
+    Visualize your dependency graph in ASCII, DOT, Mermaid, or JSON. Understand why modules are included with `bz mod why`.
   </Card>
-  <Card title="Flexible Publishing" icon="rocket">
-    Publish to local filesystems, HTTP servers (PUT), or git repositories. Perfect for air-gapped environments or internal mirrors.
+  <Card title="Security & Compliance" icon="seti:lock">
+    Scan for vulnerabilities with OSV integration. Check license compliance. Generate SPDX and CycloneDX SBOMs.
   </Card>
-  <Card title="Smart Transforms" icon="approve-check">
-    Rewrite URLs, skip yanked versions, include patches. Transform modules as they flow from source to destination.
+  <Card title="Air-gap Support" icon="setting">
+    Full offline mode with local cache. Download dependencies for air-gapped environments. Verify cache completeness.
+  </Card>
+  <Card title="Registry Sync" icon="rocket">
+    Mirror modules from BCR to internal registries. Starlark-based configuration for complex sync workflows.
+  </Card>
+  <Card title="Developer Experience" icon="approve-check">
+    Shell completions, JSON output for scripting, environment diagnostics with `bz doctor`, colored output.
   </Card>
 </CardGrid>
 
-## Quick Example
+## Quick Examples
 
-Create a `bz.star` configuration file:
-
-```starlark
-# Define source and destination registries
-bcr = registry.http("https://bcr.bazel.build")
-mirror = registry.file("/path/to/mirror")
-
-# Sync rules_go and rules_python to local mirror
-sync.workflow(
-    name = "mirror-essentials",
-    origin = bcr,
-    destination = mirror,
-    modules = ["rules_go", "rules_python"],
-    versions = sync.latest(count = 3),
-)
-```
-
-Then run:
+### Manage Dependencies
 
 ```bash
-bz mod sync --workflow mirror-essentials
+bz mod add rules_go@0.50.1 rules_python@0.35.0
+bz mod rm rules_go
+bz mod update
+bz mod outdated
 ```
+
+### Analyze Dependencies
+
+```bash
+bz mod graph                     # ASCII tree
+bz mod graph --format=dot | dot -Tpng -o deps.png
+bz mod stats                     # Dependency statistics
+bz mod why protobuf              # Why is protobuf included?
+```
+
+### Security & Compliance
+
+```bash
+bz audit                         # Vulnerability scan
+bz audit --severity=high         # Only high/critical
+bz mod licenses                  # List all licenses
+bz mod licenses --check --deny=GPL-3.0
+bz sbom --format=cyclonedx       # Generate SBOM
+```
+
+### Offline/Air-gapped Usage
+
+```bash
+bz cache download                # Download dependencies
+bz cache verify                  # Verify cache
+bz mod list --offline            # Use cache only
+```
+
+## Command Reference
+
+| Command | Description |
+|---------|-------------|
+| `bz init` | Initialize a new MODULE.bazel |
+| `bz mod add` | Add dependencies |
+| `bz mod rm` | Remove dependencies |
+| `bz mod list` | List dependencies |
+| `bz mod info` | Show module information |
+| `bz mod update` | Update dependencies |
+| `bz mod outdated` | Check for updates |
+| `bz mod search` | Search registry |
+| `bz mod graph` | Dependency graph |
+| `bz mod stats` | Dependency statistics |
+| `bz mod why` | Explain dependency path |
+| `bz mod licenses` | License information |
+| `bz mod sync` | Sync registries |
+| `bz audit` | Vulnerability scan |
+| `bz sbom` | Generate SBOM |
+| `bz cache download` | Download to cache |
+| `bz cache verify` | Verify cache |
+| `bz cache stats` | Cache statistics |
+| `bz cache clear` | Clear cache |
+| `bz doctor` | Environment diagnostics |
+| `bz registry ping` | Test connectivity |
+| `bz completion` | Shell completions |
+| `bz version` | Version info |
 
 ## Use Cases
 
 <CardGrid>
+  <Card title="Air-gapped Setup" icon="seti:lock">
+    Use bz in environments without internet access. Download dependencies, transfer them, and work offline.
+
+    [Read guide](/bz/guides/air-gapped/)
+  </Card>
+  <Card title="Security Pipeline" icon="warning">
+    Integrate vulnerability scanning and license compliance into your CI/CD pipeline.
+
+    [Read guide](/bz/guides/security/)
+  </Card>
   <Card title="Mirror BCR" icon="document">
     Create a local mirror of Bazel Central Registry for faster builds and reliability.
 
-    [Read guide →](/bz/guides/mirror-bcr/)
-  </Card>
-  <Card title="Air-gapped Setup" icon="seti:lock">
-    Sync modules to environments without internet access.
-
-    [Read guide →](/bz/guides/air-gapped/)
+    [Read guide](/bz/guides/mirror-bcr/)
   </Card>
 </CardGrid>
-
-## Commands
-
-| Command | Description |
-|---------|-------------|
-| `bz mod search <query>` | Search for modules by name |
-| `bz mod show <module>` | Display module metadata and versions |
-| `bz mod sync` | Sync modules according to workflow configuration |

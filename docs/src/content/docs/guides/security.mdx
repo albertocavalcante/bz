@@ -1,0 +1,433 @@
+---
+title: Security Features
+description: Vulnerability scanning, license compliance, and SBOM generation with bz
+---
+
+import { Steps, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+bz provides several security-focused features to help you manage supply chain risks in your Bazel projects.
+
+## Overview
+
+| Feature | Command | Description |
+|---------|---------|-------------|
+| Vulnerability Scanning | `bz audit` | Check dependencies against OSV database |
+| License Compliance | `bz mod licenses` | Audit and enforce license policies |
+| SBOM Generation | `bz sbom` | Generate software bills of materials |
+
+---
+
+## Vulnerability Scanning
+
+The `bz audit` command scans your dependencies for known security vulnerabilities using the [Open Source Vulnerabilities (OSV)](https://osv.dev/) database.
+
+### Basic Usage
+
+```bash
+# Scan all dependencies in MODULE.bazel
+bz audit
+
+# Output as JSON (for CI/CD integration)
+bz audit --json
+
+# Filter by severity
+bz audit --severity=high       # Only high and critical
+bz audit --severity=critical   # Only critical
+```
+
+### Example Output
+
+```
+Module      Version  ID              Severity  Summary
+------      -------  --              --------  -------
+protobuf    25.3     GHSA-8r3f-844c  HIGH      Buffer overflow in...
+rules_go    0.49.0   GHSA-xyzw-1234  MEDIUM    Path traversal in...
+
+2 vulnerabilities found
+```
+
+### Show Fix Suggestions
+
+```bash
+bz audit --fix
+```
+
+Output:
+```
+Module      Version  ID              Severity  Summary           Fixed In
+------      -------  --              --------  -------           --------
+protobuf    25.3     GHSA-8r3f-844c  HIGH      Buffer overflow   25.4
+
+Suggested fixes:
+  bz mod update protobuf --version=25.4
+```
+
+### Ecosystem Mapping
+
+<Aside type="note">
+OSV doesn't have a native "Bazel" ecosystem. bz automatically maps known Bazel modules to their underlying ecosystems:
+
+| Bazel Module | OSV Ecosystem |
+|--------------|---------------|
+| `rules_go`, `gazelle` | Go |
+| `rules_python` | PyPI |
+| `rules_rust` | crates.io |
+| `rules_nodejs` | npm |
+| `rules_java` | Maven |
+</Aside>
+
+For modules without automatic mapping, use `--ecosystem`:
+
+```bash
+# Force all modules to query the Go ecosystem
+bz audit --ecosystem=Go
+
+# Query PyPI ecosystem
+bz audit --ecosystem=PyPI
+```
+
+Modules without a mapping and no `--ecosystem` flag will be skipped with a warning.
+
+### CI/CD Integration
+
+The `bz audit` command returns a non-zero exit code when vulnerabilities are found:
+
+```yaml
+# GitHub Actions example
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install bz
+        run: go install github.com/albertocavalcante/bz@latest
+      - name: Security audit
+        run: bz audit --severity=high
+```
+
+```yaml
+# GitLab CI example
+security_scan:
+  script:
+    - bz audit --json > audit-report.json
+  artifacts:
+    reports:
+      security: audit-report.json
+  allow_failure: false
+```
+
+### JSON Output Schema
+
+```json
+{
+  "total": 5,
+  "vulnerable": 2,
+  "vulnerabilities": [
+    {
+      "module": "protobuf",
+      "version": "25.3",
+      "id": "GHSA-8r3f-844c-2wh3",
+      "summary": "Buffer overflow in Protocol Buffers",
+      "severity": "HIGH",
+      "fixed": "25.4",
+      "link": "https://osv.dev/vulnerability/GHSA-8r3f-844c-2wh3",
+      "aliases": ["CVE-2024-12345"]
+    }
+  ]
+}
+```
+
+---
+
+## License Compliance
+
+The `bz mod licenses` command helps you understand and enforce license policies for your dependencies.
+
+### List All Licenses
+
+```bash
+bz mod licenses
+```
+
+Output:
+```
+Module          Version  License
+------          -------  -------
+bazel_skylib    1.5.0    Apache-2.0
+rules_go        0.50.1   Apache-2.0
+rules_python    0.35.0   Apache-2.0
+protobuf        25.4     BSD-3-Clause
+
+Summary: 3 Apache-2.0, 1 BSD-3-Clause
+```
+
+### License Summary
+
+```bash
+bz mod licenses --summary
+```
+
+Output:
+```
+License       Count
+-------       -----
+Apache-2.0    3
+BSD-3-Clause  1
+```
+
+### Policy Enforcement
+
+Enforce license policies using `--check` with `--allow` or `--deny`:
+
+<Tabs>
+<TabItem label="Deny List">
+```bash
+# Fail if any copyleft licenses are found
+bz mod licenses --check --deny=GPL-2.0,GPL-3.0,LGPL-2.1,LGPL-3.0
+```
+
+If a denied license is found:
+```
+license policy violation:
+  - protobuf@25.3: GPL-3.0
+```
+Exit code: 1
+</TabItem>
+<TabItem label="Allow List">
+```bash
+# Only allow specific permissive licenses
+bz mod licenses --check --allow=MIT,Apache-2.0,BSD-2-Clause,BSD-3-Clause
+```
+
+If an unlisted license is found:
+```
+license policy violation:
+  - custom_module@1.0.0: Proprietary
+```
+Exit code: 1
+</TabItem>
+</Tabs>
+
+### CI/CD Integration
+
+```yaml
+# GitHub Actions
+- name: License check
+  run: bz mod licenses --check --deny=GPL-2.0,GPL-3.0,LGPL-3.0
+```
+
+### Common License Identifiers
+
+| License | SPDX Identifier |
+|---------|-----------------|
+| Apache License 2.0 | `Apache-2.0` |
+| MIT License | `MIT` |
+| BSD 2-Clause | `BSD-2-Clause` |
+| BSD 3-Clause | `BSD-3-Clause` |
+| GNU GPL v2 | `GPL-2.0` |
+| GNU GPL v3 | `GPL-3.0` |
+| GNU LGPL v3 | `LGPL-3.0` |
+| Mozilla Public License 2.0 | `MPL-2.0` |
+
+<Aside type="tip">
+License information comes from the registry's `source.json` files. If a module shows "Unknown", the registry may not have license metadata for that version.
+</Aside>
+
+---
+
+## SBOM Generation
+
+Generate Software Bills of Materials (SBOMs) in industry-standard formats for compliance and supply chain transparency.
+
+### Supported Formats
+
+| Format | Standard | Use Case |
+|--------|----------|----------|
+| SPDX 2.3 | ISO/IEC 5962:2021 | Compliance, legal review |
+| CycloneDX 1.4 | OWASP | Security tools, vulnerability management |
+
+### Generate SPDX SBOM
+
+```bash
+# Output to stdout
+bz sbom
+
+# Write to file
+bz sbom --output=sbom.spdx.json
+```
+
+Example SPDX output (truncated):
+```json
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "my_project",
+  "documentNamespace": "https://spdx.org/spdxdocs/my_project-0.1.0-...",
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-Package-rules-go-0.50.1",
+      "name": "rules_go",
+      "versionInfo": "0.50.1",
+      "downloadLocation": "https://bcr.bazel.build/modules/rules_go/0.50.1/source.tar.gz",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:bazel/rules_go@0.50.1"
+        }
+      ]
+    }
+  ]
+}
+```
+
+### Generate CycloneDX SBOM
+
+```bash
+bz sbom --format=cyclonedx --output=sbom.cdx.json
+```
+
+Example CycloneDX output (truncated):
+```json
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.4",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2024-01-15T10:30:00Z",
+    "component": {
+      "type": "application",
+      "name": "my_project",
+      "version": "0.1.0"
+    }
+  },
+  "components": [
+    {
+      "type": "library",
+      "name": "rules_go",
+      "version": "0.50.1",
+      "purl": "pkg:bazel/rules_go@0.50.1"
+    }
+  ]
+}
+```
+
+### Include/Exclude Transitive Dependencies
+
+```bash
+# Include all transitive dependencies (default)
+bz sbom --include-transitive=true
+
+# Direct dependencies only
+bz sbom --include-transitive=false
+```
+
+### CI/CD Integration
+
+```yaml
+# Generate SBOM on release
+jobs:
+  release:
+    steps:
+      - name: Generate SBOM
+        run: |
+          bz sbom --format=spdx --output=sbom.spdx.json
+          bz sbom --format=cyclonedx --output=sbom.cdx.json
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: |
+            sbom.spdx.json
+            sbom.cdx.json
+```
+
+---
+
+## Complete Security Pipeline
+
+Here's a complete security workflow combining all features:
+
+```yaml
+# .github/workflows/security.yml
+name: Security Checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '0 0 * * *'  # Daily at midnight
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Install bz
+        run: go install github.com/albertocavalcante/bz@latest
+
+      - name: Vulnerability scan
+        run: bz audit --json > audit-report.json
+        continue-on-error: true
+
+      - name: License compliance
+        run: bz mod licenses --check --deny=GPL-2.0,GPL-3.0,LGPL-3.0
+
+      - name: Generate SBOM
+        run: |
+          bz sbom --format=spdx --output=sbom.spdx.json
+          bz sbom --format=cyclonedx --output=sbom.cdx.json
+
+      - name: Upload security artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports
+          path: |
+            audit-report.json
+            sbom.spdx.json
+            sbom.cdx.json
+
+      - name: Fail on critical vulnerabilities
+        run: |
+          critical=$(jq '[.vulnerabilities[] | select(.severity == "CRITICAL")] | length' audit-report.json)
+          if [ "$critical" -gt 0 ]; then
+            echo "Found $critical critical vulnerabilities"
+            exit 1
+          fi
+```
+
+---
+
+## Best Practices
+
+### Regular Scanning
+
+- Run `bz audit` daily or on every PR
+- Set severity thresholds appropriate to your risk tolerance
+- Review and update dependencies regularly with `bz mod outdated` and `bz mod update`
+
+### License Governance
+
+- Define an organizational license policy (allow list or deny list)
+- Enforce policy in CI/CD pipelines
+- Review "Unknown" licenses manually
+
+### SBOM Management
+
+- Generate SBOMs for every release
+- Store SBOMs alongside release artifacts
+- Use both SPDX and CycloneDX for maximum tool compatibility
+
+### Supply Chain Security
+
+- Pin dependency versions explicitly (avoid floating versions)
+- Use `bz cache verify` to ensure reproducible builds
+- Consider air-gapped setups for sensitive environments
