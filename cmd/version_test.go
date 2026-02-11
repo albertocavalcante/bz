@@ -34,7 +34,7 @@ func TestVersionCmd_JSONOutput(t *testing.T) {
 	output := stdout.String()
 
 	// Verify it's valid JSON
-	var result map[string]interface{}
+	var result map[string]any
 	err := json.Unmarshal([]byte(output), &result)
 	require.NoError(t, err)
 

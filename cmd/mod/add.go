@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -165,13 +166,7 @@ func validateModule(ctx context.Context, reg registry.Registry, name, version st
 	}
 
 	// Check if the requested version exists
-	versionExists := false
-	for _, v := range meta.Versions {
-		if v == version {
-			versionExists = true
-			break
-		}
-	}
+	versionExists := slices.Contains(meta.Versions, version)
 
 	if !versionExists {
 		return newVersionNotFoundError(name, version, meta.Versions)
@@ -209,10 +204,7 @@ func newVersionNotFoundError(name, version string, availableVersions []string) e
 
 	// Show up to 5 most recent versions (versions are typically ordered oldest to newest)
 	maxVersions := 5
-	start := len(availableVersions) - maxVersions
-	if start < 0 {
-		start = 0
-	}
+	start := max(len(availableVersions)-maxVersions, 0)
 
 	versionsToShow := make([]string, 0, maxVersions)
 	// Reverse order to show newest first

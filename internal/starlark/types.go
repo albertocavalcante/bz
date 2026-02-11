@@ -18,7 +18,7 @@ import (
 //   - []T -> List
 //   - map[string]T -> Dict
 //   - starlark.Value -> returned as-is
-func ToValue(v interface{}) (starlark.Value, error) {
+func ToValue(v any) (starlark.Value, error) {
 	if v == nil {
 		return starlark.None, nil
 	}
@@ -41,7 +41,7 @@ func toValueReflect(rv reflect.Value) (starlark.Value, error) {
 	}
 
 	// Dereference pointers
-	if rv.Kind() == reflect.Ptr {
+	if rv.Kind() == reflect.Pointer {
 		if rv.IsNil() {
 			return starlark.None, nil
 		}
@@ -125,13 +125,13 @@ func mapToDict(rv reflect.Value) (starlark.Value, error) {
 //   - *[]T (for Starlark lists/tuples)
 //   - *map[string]T (for Starlark dicts)
 //   - *interface{} (returns the raw converted value)
-func FromValue(v starlark.Value, target interface{}) error {
+func FromValue(v starlark.Value, target any) error {
 	if target == nil {
 		return NewTypeError("non-nil pointer", "nil")
 	}
 
 	rv := reflect.ValueOf(target)
-	if rv.Kind() != reflect.Ptr {
+	if rv.Kind() != reflect.Pointer {
 		return NewTypeError("pointer", rv.Kind().String())
 	}
 	if rv.IsNil() {
@@ -291,7 +291,7 @@ func dictToMap(v starlark.Value, rv reflect.Value) error {
 // toGoValue converts a Starlark value to its natural Go representation.
 //
 //nolint:nilnil // nil is a valid Go representation of Starlark None
-func toGoValue(v starlark.Value) (interface{}, error) {
+func toGoValue(v starlark.Value) (any, error) {
 	switch val := v.(type) {
 	case starlark.NoneType:
 		return nil, nil
@@ -320,8 +320,8 @@ func toGoValue(v starlark.Value) (interface{}, error) {
 }
 
 // listToGoSlice converts a Starlark list to []interface{}.
-func listToGoSlice(list *starlark.List) ([]interface{}, error) {
-	result := make([]interface{}, list.Len())
+func listToGoSlice(list *starlark.List) ([]any, error) {
+	result := make([]any, list.Len())
 	for i := 0; i < list.Len(); i++ {
 		val, err := toGoValue(list.Index(i))
 		if err != nil {
@@ -333,8 +333,8 @@ func listToGoSlice(list *starlark.List) ([]interface{}, error) {
 }
 
 // tupleToGoSlice converts a Starlark tuple to []interface{}.
-func tupleToGoSlice(tuple starlark.Tuple) ([]interface{}, error) {
-	result := make([]interface{}, len(tuple))
+func tupleToGoSlice(tuple starlark.Tuple) ([]any, error) {
+	result := make([]any, len(tuple))
 	for i, v := range tuple {
 		val, err := toGoValue(v)
 		if err != nil {
@@ -346,8 +346,8 @@ func tupleToGoSlice(tuple starlark.Tuple) ([]interface{}, error) {
 }
 
 // dictToGoMap converts a Starlark dict to map[string]interface{}.
-func dictToGoMap(dict *starlark.Dict) (map[string]interface{}, error) {
-	result := make(map[string]interface{}, dict.Len())
+func dictToGoMap(dict *starlark.Dict) (map[string]any, error) {
+	result := make(map[string]any, dict.Len())
 	for _, item := range dict.Items() {
 		key, ok := item[0].(starlark.String)
 		if !ok {

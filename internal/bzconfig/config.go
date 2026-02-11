@@ -5,6 +5,7 @@ package bzconfig
 import (
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/BurntSushi/toml"
 )
@@ -175,12 +176,7 @@ func (c *Config) IsPreferOffline() bool {
 
 // IsCommandDisabled returns true if the command is disabled.
 func (c *Config) IsCommandDisabled(cmd string) bool {
-	for _, disabled := range c.Commands.Disabled {
-		if disabled == cmd {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(c.Commands.Disabled, cmd)
 }
 
 // GetRegistry returns the effective registry URL.

@@ -125,10 +125,7 @@ func printMetadataTable(w io.Writer, name string, meta *registry.Metadata) error
 	if len(meta.Versions) > 0 {
 		fmt.Fprintln(tw)
 		fmt.Fprintln(tw, "Recent versions:")
-		start := len(meta.Versions) - 5
-		if start < 0 {
-			start = 0
-		}
+		start := max(len(meta.Versions)-5, 0)
 		for i := len(meta.Versions) - 1; i >= start; i-- {
 			v := meta.Versions[i]
 			yanked := ""
@@ -198,9 +195,9 @@ func printModuleTable(w io.Writer, name, version string, mod *module.File) error
 
 func printModuleJSON(w io.Writer, name, version string, mod *module.File) error {
 	// Build a simplified output structure
-	deps := make([]map[string]interface{}, 0, len(mod.Deps))
+	deps := make([]map[string]any, 0, len(mod.Deps))
 	for _, dep := range mod.Deps {
-		d := map[string]interface{}{
+		d := map[string]any{
 			"name":    dep.Name.String(),
 			"version": dep.Version.String(),
 		}
@@ -210,7 +207,7 @@ func printModuleJSON(w io.Writer, name, version string, mod *module.File) error 
 		deps = append(deps, d)
 	}
 
-	output := map[string]interface{}{
+	output := map[string]any{
 		"name":         name,
 		"version":      version,
 		"dependencies": deps,

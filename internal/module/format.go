@@ -7,8 +7,9 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/albertocavalcante/bz/internal/cli"
 	"github.com/albertocavalcante/go-bzlmod/ast"
+
+	"github.com/albertocavalcante/bz/internal/cli"
 )
 
 // Dep is a simplified dependency for output.

@@ -139,7 +139,7 @@ func (p *GitPublisher) clone() error {
 
 	args := []string{"clone", "--depth", "1", "--branch", p.branch, p.repoURL, p.workDir}
 
-	cmd := exec.CommandContext(ctx, "git", args...) //nolint:gosec // git is a trusted command
+	cmd := exec.CommandContext(ctx, "git", args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 
@@ -158,7 +158,7 @@ func (p *GitPublisher) gitCommand(ctx context.Context, args ...string) error {
 // runGitCommand runs a git command and returns an error if it fails.
 // The stdout is discarded; only stderr is captured for error messages.
 func (p *GitPublisher) runGitCommand(ctx context.Context, args ...string) error {
-	cmd := exec.CommandContext(ctx, "git", args...) //nolint:gosec // git is a trusted command
+	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = p.workDir
 
 	var stderr bytes.Buffer

@@ -50,7 +50,7 @@ type statsResult struct {
 	TotalVersions  int       `json:"total_versions"`
 	TotalSizeBytes int64     `json:"total_size_bytes"`
 	TotalSize      string    `json:"total_size"`
-	LastUpdated    time.Time `json:"last_updated,omitempty"`
+	LastUpdated    time.Time `json:"last_updated"`
 }
 
 func runStats(cmd *cobra.Command, args []string) error {

@@ -243,7 +243,7 @@ func TestInterpreter_Load(t *testing.T) {
 func TestTypes_ToValue(t *testing.T) {
 	tests := []struct {
 		name     string
-		input    interface{}
+		input    any
 		expected string // Type name
 		checkVal func(t *testing.T, v starlark.Value)
 	}{

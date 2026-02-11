@@ -187,9 +187,9 @@ func createSourceJSON(t *testing.T, verDir, name, version string, mod TestModule
 // SplitDepArg splits a dependency string in "name@version" format.
 // Returns (name, version). If no @ is present, returns (input, "").
 func SplitDepArg(dep string) (name, version string) {
-	idx := strings.Index(dep, "@")
-	if idx == -1 {
+	before, after, ok := strings.Cut(dep, "@")
+	if !ok {
 		return dep, ""
 	}
-	return dep[:idx], dep[idx+1:]
+	return before, after
 }

@@ -128,7 +128,7 @@ func TestToStarlark(t *testing.T) {
 	})
 
 	t.Run("converts nested structure", func(t *testing.T) {
-		v, err := ToStarlark(map[string]interface{}{
+		v, err := ToStarlark(map[string]any{
 			"strings": []string{"a", "b"},
 			"number":  42,
 		})
@@ -261,7 +261,7 @@ func TestFromStarlark(t *testing.T) {
 			starlark.String("a"),
 			starlark.MakeInt(42),
 		})
-		var s []interface{}
+		var s []any
 		err := FromStarlark(list, &s)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -296,7 +296,7 @@ func TestFromStarlark(t *testing.T) {
 		_ = dict.SetKey(starlark.String("str"), starlark.String("value"))
 		_ = dict.SetKey(starlark.String("num"), starlark.MakeInt(42))
 
-		var m map[string]interface{}
+		var m map[string]any
 		err := FromStarlark(dict, &m)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)

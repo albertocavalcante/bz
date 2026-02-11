@@ -438,7 +438,7 @@ func TestStruct(t *testing.T) {
 func TestToStarlarkValue(t *testing.T) {
 	tests := []struct {
 		name     string
-		input    interface{}
+		input    any
 		expected starlark.Value
 	}{
 		{"nil", nil, starlark.None},
@@ -466,13 +466,13 @@ func TestToStarlarkValue(t *testing.T) {
 	})
 
 	t.Run("interface slice", func(t *testing.T) {
-		result := ToStarlarkValue([]interface{}{"a", 1, true})
+		result := ToStarlarkValue([]any{"a", 1, true})
 		list := result.(*starlark.List)
 		assert.Equal(t, 3, list.Len())
 	})
 
 	t.Run("map", func(t *testing.T) {
-		result := ToStarlarkValue(map[string]interface{}{
+		result := ToStarlarkValue(map[string]any{
 			"key": "value",
 		})
 		dict := result.(*starlark.Dict)
@@ -492,7 +492,7 @@ func TestFromStarlarkValue(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    starlark.Value
-		expected interface{}
+		expected any
 	}{
 		{"none", starlark.None, nil},
 		{"bool true", starlark.Bool(true), true},
@@ -515,7 +515,7 @@ func TestFromStarlarkValue(t *testing.T) {
 			starlark.MakeInt(1),
 		})
 		result := FromStarlarkValue(list)
-		slice := result.([]interface{})
+		slice := result.([]any)
 		assert.Equal(t, "a", slice[0])
 		assert.Equal(t, int64(1), slice[1])
 	})
@@ -525,7 +525,7 @@ func TestFromStarlarkValue(t *testing.T) {
 		_ = dict.SetKey(starlark.String("key"), starlark.String("value"))
 
 		result := FromStarlarkValue(dict)
-		m := result.(map[string]interface{})
+		m := result.(map[string]any)
 		assert.Equal(t, "value", m["key"])
 	})
 }

@@ -12,7 +12,7 @@ import (
 // It uses struct tags to parse arguments automatically.
 type Func struct {
 	name    string
-	fn      interface{}
+	fn      any
 	argType reflect.Type
 }
 
@@ -40,7 +40,7 @@ type Func struct {
 //   - []string
 //   - map[string]string
 //   - starlark.Value (for any Starlark value)
-func WrapFunc(name string, fn interface{}) *starlark.Builtin {
+func WrapFunc(name string, fn any) *starlark.Builtin {
 	wrapper := &Func{
 		name: name,
 		fn:   fn,
@@ -59,7 +59,7 @@ func WrapFunc(name string, fn interface{}) *starlark.Builtin {
 	}
 
 	// Check first parameter is *starlark.Thread
-	threadType := reflect.TypeOf((*starlark.Thread)(nil))
+	threadType := reflect.TypeFor[*starlark.Thread]()
 	if fnType.In(0) != threadType {
 		panic(fmt.Sprintf("WrapFunc: %s: first parameter must be *starlark.Thread", name))
 	}
@@ -72,8 +72,8 @@ func WrapFunc(name string, fn interface{}) *starlark.Builtin {
 	wrapper.argType = argType
 
 	// Check return types
-	valueType := reflect.TypeOf((*starlark.Value)(nil)).Elem()
-	errorType := reflect.TypeOf((*error)(nil)).Elem()
+	valueType := reflect.TypeFor[starlark.Value]()
+	errorType := reflect.TypeFor[error]()
 	if !fnType.Out(0).Implements(valueType) {
 		panic(fmt.Sprintf("WrapFunc: %s: first return value must implement starlark.Value", name))
 	}
@@ -280,7 +280,7 @@ func (f *Func) setField(fieldVal reflect.Value, info argInfo, val starlark.Value
 
 	case reflect.Interface:
 		// Check if it's starlark.Value
-		if fieldVal.Type().Implements(reflect.TypeOf((*starlark.Value)(nil)).Elem()) {
+		if fieldVal.Type().Implements(reflect.TypeFor[starlark.Value]()) {
 			fieldVal.Set(reflect.ValueOf(val))
 		} else {
 			return fmt.Errorf("%s: %s: unsupported interface type %s", f.name, info.name, fieldVal.Type())

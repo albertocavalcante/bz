@@ -61,7 +61,7 @@ func NewUnpacker(fnName string, args starlark.Tuple, kwargs []starlark.Tuple) *U
 //   - *[]string: accepts starlark.List of strings
 //   - *map[string]string: accepts starlark.Dict with string keys and values
 //   - *starlark.Value: accepts any value
-func (u *Unpacker) Required(name string, dest interface{}) error {
+func (u *Unpacker) Required(name string, dest any) error {
 	// Check positional args first
 	if u.argIndex < len(u.args) {
 		val := u.args[u.argIndex]
@@ -85,7 +85,7 @@ func (u *Unpacker) Required(name string, dest interface{}) error {
 // If the argument is not provided, the default value is used.
 //
 // Supported destination types are the same as Required.
-func (u *Unpacker) Optional(name string, dest interface{}, defaultVal interface{}) error {
+func (u *Unpacker) Optional(name string, dest any, defaultVal any) error {
 	// Check positional args first
 	if u.argIndex < len(u.args) {
 		val := u.args[u.argIndex]
@@ -133,7 +133,7 @@ func (u *Unpacker) RemainingArgs() starlark.Tuple {
 }
 
 // convert converts a Starlark value to a Go value.
-func (u *Unpacker) convert(name string, val starlark.Value, dest interface{}) error {
+func (u *Unpacker) convert(name string, val starlark.Value, dest any) error {
 	switch d := dest.(type) {
 	case *string:
 		s, ok := val.(starlark.String)
@@ -216,7 +216,7 @@ func (u *Unpacker) convert(name string, val starlark.Value, dest interface{}) er
 }
 
 // setDefault sets the default value on the destination.
-func (u *Unpacker) setDefault(dest interface{}, defaultVal interface{}) error {
+func (u *Unpacker) setDefault(dest any, defaultVal any) error {
 	switch d := dest.(type) {
 	case *string:
 		if defaultVal == nil {

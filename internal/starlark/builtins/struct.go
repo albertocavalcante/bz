@@ -29,7 +29,7 @@ func NewStructBuilder(constructor string) *StructBuilder {
 
 // Set adds a field to the struct.
 // The value is automatically converted to a Starlark value using ToStarlarkValue.
-func (b *StructBuilder) Set(key string, value interface{}) *StructBuilder {
+func (b *StructBuilder) Set(key string, value any) *StructBuilder {
 	b.fields[key] = ToStarlarkValue(value)
 	return b
 }
@@ -56,7 +56,7 @@ func (b *StructBuilder) Build() *starlarkstruct.Struct {
 //   - []interface{} -> List
 //   - map[string]interface{} -> Dict
 //   - starlark.Value -> passed through unchanged
-func ToStarlarkValue(v interface{}) starlark.Value {
+func ToStarlarkValue(v any) starlark.Value {
 	if v == nil {
 		return starlark.None
 	}
@@ -80,13 +80,13 @@ func ToStarlarkValue(v interface{}) starlark.Value {
 			elems[i] = starlark.String(s)
 		}
 		return starlark.NewList(elems)
-	case []interface{}:
+	case []any:
 		elems := make([]starlark.Value, len(val))
 		for i, elem := range val {
 			elems[i] = ToStarlarkValue(elem)
 		}
 		return starlark.NewList(elems)
-	case map[string]interface{}:
+	case map[string]any:
 		dict := starlark.NewDict(len(val))
 		for k, v := range val {
 			_ = dict.SetKey(starlark.String(k), ToStarlarkValue(v))
@@ -108,7 +108,7 @@ func ToStarlarkValue(v interface{}) starlark.Value {
 //   - starlark.List -> []interface{}
 //   - starlark.Dict -> map[string]interface{}
 //   - other -> the original starlark.Value
-func FromStarlarkValue(v starlark.Value) interface{} {
+func FromStarlarkValue(v starlark.Value) any {
 	switch val := v.(type) {
 	case starlark.NoneType:
 		return nil
@@ -122,13 +122,13 @@ func FromStarlarkValue(v starlark.Value) interface{} {
 	case starlark.String:
 		return string(val)
 	case *starlark.List:
-		result := make([]interface{}, val.Len())
+		result := make([]any, val.Len())
 		for i := 0; i < val.Len(); i++ {
 			result[i] = FromStarlarkValue(val.Index(i))
 		}
 		return result
 	case *starlark.Dict:
-		result := make(map[string]interface{})
+		result := make(map[string]any)
 		for _, item := range val.Items() {
 			if key, ok := item[0].(starlark.String); ok {
 				result[string(key)] = FromStarlarkValue(item[1])

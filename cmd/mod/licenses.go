@@ -153,7 +153,7 @@ func getLicense(ctx context.Context, reg registry.Registry, moduleName, version 
 	}
 
 	// Parse source.json and look for license field
-	var source map[string]interface{}
+	var source map[string]any
 	if err := json.Unmarshal(sourceData, &source); err != nil {
 		return "Unknown"
 	}

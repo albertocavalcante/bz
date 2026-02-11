@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -58,15 +59,16 @@ func setupSBOMTestRegistry(t *testing.T, tmpDir string, modules map[string]sbomM
 			require.NoError(t, os.MkdirAll(verDir, 0o755))
 
 			// Build MODULE.bazel content with dependencies
-			content := "module(name = \"" + name + "\", version = \"" + ver + "\")\n"
+			var content strings.Builder
+			content.WriteString("module(name = \"" + name + "\", version = \"" + ver + "\")\n")
 			if deps, ok := info.deps[ver]; ok {
 				for _, dep := range deps {
-					content += "bazel_dep(name = \"" + dep.name + "\", version = \"" + dep.version + "\")\n"
+					content.WriteString("bazel_dep(name = \"" + dep.name + "\", version = \"" + dep.version + "\")\n")
 				}
 			}
 			require.NoError(t, os.WriteFile(
 				filepath.Join(verDir, "MODULE.bazel"),
-				[]byte(content),
+				[]byte(content.String()),
 				0o644,
 			))
 

@@ -20,7 +20,7 @@ import (
 //   - []T: starlark.List (elements converted recursively)
 //   - map[string]T: starlark.Dict (values converted recursively)
 //   - starlark.Value: returned as-is
-func ToStarlark(v interface{}) (starlark.Value, error) {
+func ToStarlark(v any) (starlark.Value, error) {
 	if v == nil {
 		return starlark.None, nil
 	}
@@ -77,7 +77,7 @@ func ToStarlark(v interface{}) (starlark.Value, error) {
 		}
 		return dict, nil
 
-	case reflect.Ptr:
+	case reflect.Pointer:
 		if rv.IsNil() {
 			return starlark.None, nil
 		}
@@ -101,13 +101,13 @@ func ToStarlark(v interface{}) (starlark.Value, error) {
 //   - *map[string]string: from starlark.Dict with string keys and values
 //   - *map[string]interface{}: from starlark.Dict (values converted recursively)
 //   - *starlark.Value: any value stored directly
-func FromStarlark(val starlark.Value, dest interface{}) error {
+func FromStarlark(val starlark.Value, dest any) error {
 	if dest == nil {
 		return fmt.Errorf("destination is nil")
 	}
 
 	rv := reflect.ValueOf(dest)
-	if rv.Kind() != reflect.Ptr {
+	if rv.Kind() != reflect.Pointer {
 		return fmt.Errorf("destination must be a pointer, got %T", dest)
 	}
 	if rv.IsNil() {
@@ -139,13 +139,13 @@ func FromStarlark(val starlark.Value, dest interface{}) error {
 	case *[]string:
 		return convertToStringSlice(val, d)
 
-	case *[]interface{}:
+	case *[]any:
 		return convertToInterfaceSlice(val, d)
 
 	case *map[string]string:
 		return convertToStringMap(val, d)
 
-	case *map[string]interface{}:
+	case *map[string]any:
 		return convertToInterfaceMap(val, d)
 
 	default:
@@ -231,12 +231,12 @@ func convertToStringSlice(val starlark.Value, dest *[]string) error {
 	return nil
 }
 
-func convertToInterfaceSlice(val starlark.Value, dest *[]interface{}) error {
+func convertToInterfaceSlice(val starlark.Value, dest *[]any) error {
 	list, ok := val.(*starlark.List)
 	if !ok {
 		return fmt.Errorf("expected list, got %s", val.Type())
 	}
-	result := make([]interface{}, list.Len())
+	result := make([]any, list.Len())
 	for i := 0; i < list.Len(); i++ {
 		v, err := toGoValue(list.Index(i))
 		if err != nil {
@@ -269,12 +269,12 @@ func convertToStringMap(val starlark.Value, dest *map[string]string) error {
 	return nil
 }
 
-func convertToInterfaceMap(val starlark.Value, dest *map[string]interface{}) error {
+func convertToInterfaceMap(val starlark.Value, dest *map[string]any) error {
 	dict, ok := val.(*starlark.Dict)
 	if !ok {
 		return fmt.Errorf("expected dict, got %s", val.Type())
 	}
-	result := make(map[string]interface{})
+	result := make(map[string]any)
 	for _, item := range dict.Items() {
 		k, ok := item[0].(starlark.String)
 		if !ok {
@@ -339,7 +339,7 @@ func convertReflect(val starlark.Value, dest reflect.Value) error {
 }
 
 // toGoValue converts a Starlark value to a Go interface{} value.
-func toGoValue(val starlark.Value) (interface{}, error) {
+func toGoValue(val starlark.Value) (any, error) {
 	switch v := val.(type) {
 	case starlark.NoneType:
 		return nil, nil //nolint:nilnil // nil is the correct Go representation of Starlark None
@@ -356,7 +356,7 @@ func toGoValue(val starlark.Value) (interface{}, error) {
 	case starlark.Float:
 		return float64(v), nil
 	case *starlark.List:
-		result := make([]interface{}, v.Len())
+		result := make([]any, v.Len())
 		for i := 0; i < v.Len(); i++ {
 			elem, err := toGoValue(v.Index(i))
 			if err != nil {
@@ -366,7 +366,7 @@ func toGoValue(val starlark.Value) (interface{}, error) {
 		}
 		return result, nil
 	case *starlark.Dict:
-		result := make(map[string]interface{})
+		result := make(map[string]any)
 		for _, item := range v.Items() {
 			k, ok := item[0].(starlark.String)
 			if !ok {
@@ -380,7 +380,7 @@ func toGoValue(val starlark.Value) (interface{}, error) {
 		}
 		return result, nil
 	case starlark.Tuple:
-		result := make([]interface{}, len(v))
+		result := make([]any, len(v))
 		for i, elem := range v {
 			val, err := toGoValue(elem)
 			if err != nil {

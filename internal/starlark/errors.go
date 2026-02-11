@@ -149,6 +149,6 @@ func NewTypeError(expected, got string) error {
 }
 
 // NewTypeErrorf creates a formatted type conversion error.
-func NewTypeErrorf(format string, args ...interface{}) error {
+func NewTypeErrorf(format string, args ...any) error {
 	return fmt.Errorf("%w: %s", ErrInvalidType, fmt.Sprintf(format, args...))
 }
