@@ -65,3 +65,6 @@ pre-push:
   commands:
     go-build:
       run: go build ./...
+
+    lint:
+      run: go tool -modfile=tools.go.mod golangci-lint run --config=tools/lint/golangci.toml

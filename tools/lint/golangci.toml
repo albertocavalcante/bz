@@ -1,0 +1,186 @@
+version = "2"
+
+[run]
+timeout = "5m"
+modules-download-mode = "readonly"
+tests = false
+
+# ─── Formatters ──────────────────────────────────────────────────────────────
+
+[formatters]
+enable = ["gofmt", "goimports"]
+
+[formatters.settings.goimports]
+local-prefixes = ["github.com/albertocavalcante/bz"]
+
+# ─── Linters ─────────────────────────────────────────────────────────────────
+
+[linters]
+default = "standard"
+enable = [
+  # Bug detection
+  "bodyclose",
+  "durationcheck",
+  "errorlint",
+  "fatcontext",
+  "nilerr",
+  "nilnil",
+  "noctx",
+
+  # Code quality
+  "copyloopvar",
+  "dupl",
+  "goconst",
+  "gocritic",
+  "gocyclo",
+  "gomoddirectives",
+  "goprintffuncname",
+  "misspell",
+  "nakedret",
+  "nolintlint",
+  "prealloc",
+  "predeclared",
+  "revive",
+  "unconvert",
+  "unparam",
+  "usestdlibvars",
+  "wastedassign",
+  "whitespace",
+
+  # Security
+  "gosec",
+]
+
+[linters.settings.errcheck]
+check-type-assertions = false
+check-blank = false
+exclude-functions = [
+  "fmt.Fprintf",
+  "fmt.Fprintln",
+  "fmt.Printf",
+  "fmt.Println",
+  "(io.Writer).Write",
+  "(http.ResponseWriter).Write",
+  "(*tabwriter.Writer).Flush",
+  "(io.Closer).Close",
+]
+
+[linters.settings.govet]
+enable-all = true
+disable = ["fieldalignment", "shadow"]
+
+[linters.settings.staticcheck]
+checks = ["all", "-SA1019"]
+
+[linters.settings.gocyclo]
+min-complexity = 25
+
+[linters.settings.goconst]
+min-len = 3
+min-occurrences = 4
+
+[linters.settings.gocritic]
+enabled-tags = ["diagnostic", "performance"]
+disabled-tags = ["style"]
+disabled-checks = ["hugeParam"]
+
+[linters.settings.misspell]
+locale = "US"
+
+[linters.settings.nakedret]
+max-func-lines = 30
+
+[linters.settings.gosec]
+excludes = [
+  "G304", # File path from variable - expected for file tools
+  "G306", # WriteFile permissions - 0644 is fine for non-sensitive
+  "G301", # Directory permissions - 0755 is standard
+]
+
+[linters.settings.nolintlint]
+require-explanation = true
+require-specific = true
+
+[linters.settings.revive]
+[[linters.settings.revive.rules]]
+name = "blank-imports"
+
+[[linters.settings.revive.rules]]
+name = "context-as-argument"
+
+[[linters.settings.revive.rules]]
+name = "context-keys-type"
+
+[[linters.settings.revive.rules]]
+name = "dot-imports"
+
+[[linters.settings.revive.rules]]
+name = "error-return"
+
+[[linters.settings.revive.rules]]
+name = "error-naming"
+
+[[linters.settings.revive.rules]]
+name = "error-strings"
+
+[[linters.settings.revive.rules]]
+name = "exported"
+
+[[linters.settings.revive.rules]]
+name = "increment-decrement"
+
+[[linters.settings.revive.rules]]
+name = "indent-error-flow"
+
+[[linters.settings.revive.rules]]
+name = "range"
+
+[[linters.settings.revive.rules]]
+name = "receiver-naming"
+
+[[linters.settings.revive.rules]]
+name = "time-naming"
+
+[[linters.settings.revive.rules]]
+name = "var-declaration"
+
+[[linters.settings.revive.rules]]
+name = "var-naming"
+
+[[linters.settings.revive.rules]]
+name = "package-comments"
+
+[[linters.settings.revive.rules]]
+name = "errorf"
+
+[[linters.settings.revive.rules]]
+name = "empty-block"
+
+[[linters.settings.revive.rules]]
+name = "superfluous-else"
+
+[[linters.settings.revive.rules]]
+name = "unreachable-code"
+
+[linters.settings.unparam]
+check-exported = false
+
+[linters.exclusions]
+generated = "lax"
+presets = ["comments", "std-error-handling", "common-false-positives"]
+
+[[linters.exclusions.rules]]
+path = '.*_test\.go$'
+linters = ["dupl", "gocyclo", "goconst", "funlen", "errcheck", "gosec", "errorlint"]
+
+[[linters.exclusions.rules]]
+path = "(main|cmd)"
+linters = ["forbidigo"]
+
+[[linters.exclusions.rules]]
+path = "cmd/"
+text = "don't use `init` function"
+
+[issues]
+max-issues-per-linter = 0
+max-same-issues = 0

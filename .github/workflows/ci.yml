@@ -63,11 +63,14 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Sync tool dependencies
+        run: go mod tidy -modfile=tools.go.mod
+
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@1e7e51e28fd01011a2e17f9e60b3e0412063ca8a # v9.2.0
         with:
           version: latest
-          args: --timeout=5m
+          args: --config=tools/lint/golangci.toml
 
   actionlint:
     runs-on: ubuntu-24.04

@@ -31,6 +31,14 @@ test-coverage:
     go test -race -coverprofile=coverage.out ./...
     go tool cover -html=coverage.out -o coverage.html
 
+# Run tests with gotestsum
+test-sum:
+    go tool -modfile=tools.go.mod gotestsum --format pkgname-and-test-fails -- ./...
+
+# Run tests with gotestsum and race detector
+test-sum-race:
+    go tool -modfile=tools.go.mod gotestsum --format pkgname-and-test-fails -- -race ./...
+
 # Run benchmarks
 bench:
     go test -bench=. -benchmem ./...
@@ -41,20 +49,19 @@ bench:
 
 # Run linters
 lint:
-    golangci-lint run --timeout=5m
+    go tool -modfile=tools.go.mod golangci-lint run --config=tools/lint/golangci.toml
 
 # Lint and fix
 lint-fix:
-    golangci-lint run --fix --timeout=5m
+    go tool -modfile=tools.go.mod golangci-lint run --config=tools/lint/golangci.toml --fix
 
-# Format code
+# Format code (via linter formatters)
 fmt:
-    go fmt ./...
-    gofumpt -w .
+    go tool -modfile=tools.go.mod golangci-lint run --config=tools/lint/golangci.toml --fix
 
 # Check formatting (CI)
 fmt-check:
-    test -z "$(gofmt -l .)"
+    go tool -modfile=tools.go.mod golangci-lint run --config=tools/lint/golangci.toml
 
 # Lint GitHub Actions
 lint-actions:
@@ -67,6 +74,7 @@ lint-actions:
 # Tidy dependencies
 tidy:
     go mod tidy
+    go mod tidy -modfile=tools.go.mod
 
 # Download dependencies
 deps:
@@ -75,6 +83,29 @@ deps:
 # Verify dependencies
 verify:
     go mod verify
+
+# Sync tool dependencies
+sync-tools:
+    go mod tidy -modfile=tools.go.mod
+
+# Update tools to latest versions
+update-tools:
+    go get -modfile=tools.go.mod -tool github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+    go get -modfile=tools.go.mod -tool gotest.tools/gotestsum@latest
+    go mod tidy -modfile=tools.go.mod
+
+# Setup development environment
+setup:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    go mod tidy
+    go mod tidy -modfile=tools.go.mod
+    if command -v lefthook &>/dev/null; then
+        lefthook install
+    else
+        echo "Note: lefthook not installed. Install with: brew install lefthook"
+    fi
+    echo "Development environment ready."
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Install
