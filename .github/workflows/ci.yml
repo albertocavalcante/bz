@@ -33,7 +33,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Go
-        uses: actions/setup-go@40f1582302633cf483dc284489ae94db1c9cc1ce # v6.0.0
+        uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
         with:
           go-version-file: go.mod
           cache: true
@@ -68,7 +68,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Go
-        uses: actions/setup-go@40f1582302633cf483dc284489ae94db1c9cc1ce # v6.0.0
+        uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
         with:
           go-version-file: go.mod
           cache: true
@@ -77,7 +77,7 @@ jobs:
         run: go mod tidy -modfile=tools.go.mod
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@1e7e51e28fd01011a2e17f9e60b3e0412063ca8a # v9.2.0
+        uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 # v9.2.0
         with:
           version: v2.1.6
           args: --config=tools/lint/golangci.toml
@@ -96,7 +96,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Go
-        uses: actions/setup-go@40f1582302633cf483dc284489ae94db1c9cc1ce # v6.0.0
+        uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
         with:
           go-version-file: go.mod
           cache: true
@@ -122,7 +122,7 @@ jobs:
           persist-credentials: false
 
       - name: Run actionlint
-        uses: reviewdog/action-actionlint@f4bb4d50c4c9e45cc64f413d2bc438ea1cf2d9d5 # v1.70.0
+        uses: reviewdog/action-actionlint@e58ee9d111489c31395fbe4857b0be6e7635dbda # v1.70.0
         with:
           fail_level: error
           filter_mode: nofilter
