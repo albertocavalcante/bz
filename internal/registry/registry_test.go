@@ -5,6 +5,7 @@ import (
 )
 
 func TestPathBuilders(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		fn       func() string
@@ -44,6 +45,7 @@ func TestPathBuilders(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := tt.fn()
 			if got != tt.expected {
 				t.Errorf("got %q, want %q", got, tt.expected)
@@ -53,6 +55,7 @@ func TestPathBuilders(t *testing.T) {
 }
 
 func TestMetadata_LatestVersion(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		meta     Metadata
@@ -112,6 +115,7 @@ func TestMetadata_LatestVersion(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := tt.meta.LatestVersion()
 			if got != tt.expected {
 				t.Errorf("got %q, want %q", got, tt.expected)
@@ -121,6 +125,7 @@ func TestMetadata_LatestVersion(t *testing.T) {
 }
 
 func TestIsPrerelease(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		version  string
 		expected bool
@@ -137,6 +142,7 @@ func TestIsPrerelease(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.version, func(t *testing.T) {
+			t.Parallel()
 			got := isPrerelease(tt.version)
 			if got != tt.expected {
 				t.Errorf("isPrerelease(%q) = %v, want %v", tt.version, got, tt.expected)

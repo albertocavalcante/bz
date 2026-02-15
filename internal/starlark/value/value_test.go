@@ -7,7 +7,9 @@ import (
 )
 
 func TestBase(t *testing.T) {
+	t.Parallel()
 	t.Run("NewBase creates base with name", func(t *testing.T) {
+		t.Parallel()
 		b := NewBase("test_type")
 		if b.Name() != "test_type" {
 			t.Errorf("expected name 'test_type', got %q", b.Name())
@@ -15,6 +17,7 @@ func TestBase(t *testing.T) {
 	})
 
 	t.Run("String returns name", func(t *testing.T) {
+		t.Parallel()
 		b := NewBase("my_value")
 		if b.String() != "my_value" {
 			t.Errorf("expected String() = 'my_value', got %q", b.String())
@@ -22,6 +25,7 @@ func TestBase(t *testing.T) {
 	})
 
 	t.Run("Type returns name", func(t *testing.T) {
+		t.Parallel()
 		b := NewBase("custom_type")
 		if b.Type() != "custom_type" {
 			t.Errorf("expected Type() = 'custom_type', got %q", b.Type())
@@ -29,6 +33,7 @@ func TestBase(t *testing.T) {
 	})
 
 	t.Run("Truth returns true", func(t *testing.T) {
+		t.Parallel()
 		b := NewBase("test")
 		if b.Truth() != starlark.True {
 			t.Error("expected Truth() = true")
@@ -36,6 +41,7 @@ func TestBase(t *testing.T) {
 	})
 
 	t.Run("Hash returns error", func(t *testing.T) {
+		t.Parallel()
 		b := NewBase("unhashable")
 		_, err := b.Hash()
 		if err == nil {
@@ -47,17 +53,21 @@ func TestBase(t *testing.T) {
 	})
 
 	t.Run("Freeze does not panic", func(t *testing.T) {
+		t.Parallel()
 		b := NewBase("test")
 		b.Freeze() // Should not panic
 	})
 }
 
 func TestBaseImplementsValue(t *testing.T) {
+	t.Parallel()
 	var _ starlark.Value = (*Base)(nil)
 }
 
 func TestAttrAccessor(t *testing.T) {
+	t.Parallel()
 	t.Run("NewAttrAccessor creates empty accessor", func(t *testing.T) {
+		t.Parallel()
 		a := NewAttrAccessor()
 		if a.Len() != 0 {
 			t.Errorf("expected Len() = 0, got %d", a.Len())
@@ -65,6 +75,7 @@ func TestAttrAccessor(t *testing.T) {
 	})
 
 	t.Run("Set and Get attribute", func(t *testing.T) {
+		t.Parallel()
 		a := NewAttrAccessor()
 		a.Set("name", starlark.String("test"))
 
@@ -82,6 +93,7 @@ func TestAttrAccessor(t *testing.T) {
 	})
 
 	t.Run("Attr returns value", func(t *testing.T) {
+		t.Parallel()
 		a := NewAttrAccessor()
 		a.Set("count", starlark.MakeInt(42))
 
@@ -100,6 +112,7 @@ func TestAttrAccessor(t *testing.T) {
 	})
 
 	t.Run("Attr returns error for missing attribute", func(t *testing.T) {
+		t.Parallel()
 		a := NewAttrAccessor()
 		_, err := a.Attr("missing")
 		if err == nil {
@@ -108,6 +121,7 @@ func TestAttrAccessor(t *testing.T) {
 	})
 
 	t.Run("AttrNames returns sorted names", func(t *testing.T) {
+		t.Parallel()
 		a := NewAttrAccessor()
 		a.Set("zebra", starlark.String("z"))
 		a.Set("alpha", starlark.String("a"))
@@ -123,6 +137,7 @@ func TestAttrAccessor(t *testing.T) {
 	})
 
 	t.Run("Has returns true for existing attribute", func(t *testing.T) {
+		t.Parallel()
 		a := NewAttrAccessor()
 		a.Set("exists", starlark.True)
 
@@ -135,6 +150,7 @@ func TestAttrAccessor(t *testing.T) {
 	})
 
 	t.Run("Delete removes attribute", func(t *testing.T) {
+		t.Parallel()
 		a := NewAttrAccessor()
 		a.Set("temp", starlark.String("value"))
 		a.Delete("temp")
@@ -145,6 +161,7 @@ func TestAttrAccessor(t *testing.T) {
 	})
 
 	t.Run("Clear removes all attributes", func(t *testing.T) {
+		t.Parallel()
 		a := NewAttrAccessor()
 		a.Set("a", starlark.String("1"))
 		a.Set("b", starlark.String("2"))
@@ -156,6 +173,7 @@ func TestAttrAccessor(t *testing.T) {
 	})
 
 	t.Run("Get returns nil for missing attribute", func(t *testing.T) {
+		t.Parallel()
 		a := NewAttrAccessor()
 		if a.Get("missing") != nil {
 			t.Error("expected Get('missing') = nil")
@@ -166,8 +184,11 @@ func TestAttrAccessor(t *testing.T) {
 // TestAttrAccessorProvidesHasAttrsMethods verifies that AttrAccessor
 // provides the methods needed for HasAttrs when composed with Base.
 func TestAttrAccessorProvidesHasAttrsMethods(t *testing.T) {
+	t.Parallel(
 	// AttrAccessor provides Attr and AttrNames, which are part of HasAttrs.
 	// It's designed to be composed with Base to satisfy the full interface.
+	)
+
 	a := NewAttrAccessor()
 
 	// Verify Attr method exists and works

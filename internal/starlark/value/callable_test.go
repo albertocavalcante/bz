@@ -8,7 +8,9 @@ import (
 )
 
 func TestWrapFunc(t *testing.T) {
+	t.Parallel()
 	t.Run("wraps simple function with required arg", func(t *testing.T) {
+		t.Parallel()
 		type Args struct {
 			Name string `starlark:"name,required"`
 		}
@@ -33,6 +35,7 @@ func TestWrapFunc(t *testing.T) {
 	})
 
 	t.Run("handles optional args with defaults", func(t *testing.T) {
+		t.Parallel()
 		type Args struct {
 			Name    string `starlark:"name,required"`
 			Timeout int    `starlark:"timeout"`
@@ -66,6 +69,7 @@ func TestWrapFunc(t *testing.T) {
 	})
 
 	t.Run("handles kwargs", func(t *testing.T) {
+		t.Parallel()
 		type Args struct {
 			URL     string `starlark:"url,required"`
 			Timeout int    `starlark:"timeout"`
@@ -92,6 +96,7 @@ func TestWrapFunc(t *testing.T) {
 	})
 
 	t.Run("handles bool arg", func(t *testing.T) {
+		t.Parallel()
 		type Args struct {
 			Enabled bool `starlark:"enabled,required"`
 		}
@@ -111,6 +116,7 @@ func TestWrapFunc(t *testing.T) {
 	})
 
 	t.Run("handles string list arg", func(t *testing.T) {
+		t.Parallel()
 		type Args struct {
 			Items []string `starlark:"items,required"`
 		}
@@ -136,6 +142,7 @@ func TestWrapFunc(t *testing.T) {
 	})
 
 	t.Run("handles string map arg", func(t *testing.T) {
+		t.Parallel()
 		type Args struct {
 			Headers map[string]string `starlark:"headers,required"`
 		}
@@ -159,6 +166,7 @@ func TestWrapFunc(t *testing.T) {
 	})
 
 	t.Run("handles starlark.Value arg", func(t *testing.T) {
+		t.Parallel()
 		type Args struct {
 			Value starlark.Value `starlark:"value,required"`
 		}
@@ -179,6 +187,7 @@ func TestWrapFunc(t *testing.T) {
 	})
 
 	t.Run("returns error for missing required arg", func(t *testing.T) {
+		t.Parallel()
 		type Args struct {
 			Name string `starlark:"name,required"`
 		}
@@ -195,6 +204,7 @@ func TestWrapFunc(t *testing.T) {
 	})
 
 	t.Run("returns error for wrong type", func(t *testing.T) {
+		t.Parallel()
 		type Args struct {
 			Name string `starlark:"name,required"`
 		}
@@ -211,6 +221,7 @@ func TestWrapFunc(t *testing.T) {
 	})
 
 	t.Run("returns error for unexpected positional arg", func(t *testing.T) {
+		t.Parallel()
 		type Args struct {
 			Name string `starlark:"name,required"`
 		}
@@ -230,6 +241,7 @@ func TestWrapFunc(t *testing.T) {
 	})
 
 	t.Run("returns error for unknown kwarg", func(t *testing.T) {
+		t.Parallel()
 		type Args struct {
 			Name string `starlark:"name,required"`
 		}
@@ -249,6 +261,7 @@ func TestWrapFunc(t *testing.T) {
 	})
 
 	t.Run("propagates function error", func(t *testing.T) {
+		t.Parallel()
 		type Args struct {
 			Fail bool `starlark:"fail,required"`
 		}
@@ -271,6 +284,7 @@ func TestWrapFunc(t *testing.T) {
 	})
 
 	t.Run("handles int64 arg", func(t *testing.T) {
+		t.Parallel()
 		type Args struct {
 			Value int64 `starlark:"value,required"`
 		}
@@ -292,7 +306,9 @@ func TestWrapFunc(t *testing.T) {
 }
 
 func TestWrapFuncPanics(t *testing.T) {
+	t.Parallel()
 	t.Run("panics on non-function", func(t *testing.T) {
+		t.Parallel()
 		defer func() {
 			if r := recover(); r == nil {
 				t.Error("expected panic for non-function")
@@ -302,6 +318,7 @@ func TestWrapFuncPanics(t *testing.T) {
 	})
 
 	t.Run("panics on wrong number of params", func(t *testing.T) {
+		t.Parallel()
 		defer func() {
 			if r := recover(); r == nil {
 				t.Error("expected panic for wrong param count")
@@ -313,6 +330,7 @@ func TestWrapFuncPanics(t *testing.T) {
 	})
 
 	t.Run("panics on wrong first param type", func(t *testing.T) {
+		t.Parallel()
 		defer func() {
 			if r := recover(); r == nil {
 				t.Error("expected panic for wrong first param")
@@ -325,6 +343,7 @@ func TestWrapFuncPanics(t *testing.T) {
 	})
 
 	t.Run("panics on non-struct second param", func(t *testing.T) {
+		t.Parallel()
 		defer func() {
 			if r := recover(); r == nil {
 				t.Error("expected panic for non-struct second param")
@@ -337,7 +356,9 @@ func TestWrapFuncPanics(t *testing.T) {
 }
 
 func TestNewBuiltin(t *testing.T) {
+	t.Parallel()
 	t.Run("creates simple builtin", func(t *testing.T) {
+		t.Parallel()
 		fn := NewBuiltin("add", func(_ *starlark.Thread, args starlark.Tuple, _ []starlark.Tuple) (starlark.Value, error) {
 			if len(args) != 2 {
 				return nil, errors.New("expected 2 args")

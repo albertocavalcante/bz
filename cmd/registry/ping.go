@@ -61,10 +61,7 @@ type pingResult struct {
 }
 
 func runPing(cmd *cobra.Command, args []string) error {
-	ctx := cmd.Context()
-	if ctx == nil {
-		ctx = context.Background()
-	}
+	ctx := cmdContext(cmd)
 
 	// Determine registry URL
 	registryURL := defaultRegistryURL

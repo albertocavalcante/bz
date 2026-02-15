@@ -7,7 +7,10 @@ import (
 )
 
 func TestLoadContent(t *testing.T) {
+	t.Parallel()
+
 	t.Run("parses module declaration", func(t *testing.T) {
+		t.Parallel()
 		content := `module(name = "test_module", version = "1.0.0")`
 		f, err := LoadContent("MODULE.bazel", []byte(content))
 		if err != nil {
@@ -22,6 +25,7 @@ func TestLoadContent(t *testing.T) {
 	})
 
 	t.Run("parses dependencies", func(t *testing.T) {
+		t.Parallel()
 		content := `
 module(name = "test", version = "1.0.0")
 bazel_dep(name = "rules_go", version = "0.50.1")
@@ -43,6 +47,7 @@ bazel_dep(name = "gazelle", version = "0.38.0", dev_dependency = True)
 	})
 
 	t.Run("parses extensions", func(t *testing.T) {
+		t.Parallel()
 		content := `
 module(name = "test", version = "1.0.0")
 go = use_extension("@rules_go//go:extensions.bzl", "go")
@@ -60,6 +65,7 @@ go = use_extension("@rules_go//go:extensions.bzl", "go")
 	})
 
 	t.Run("parses overrides", func(t *testing.T) {
+		t.Parallel()
 		content := `
 module(name = "test", version = "1.0.0")
 bazel_dep(name = "rules_go", version = "0.50.1")
@@ -79,6 +85,7 @@ git_override(module_name = "gazelle", remote = "https://github.com/test/test.git
 	})
 
 	t.Run("handles empty file", func(t *testing.T) {
+		t.Parallel()
 		f, err := LoadContent("MODULE.bazel", []byte(""))
 		if err != nil {
 			t.Fatalf("LoadContent failed: %v", err)
@@ -93,6 +100,8 @@ git_override(module_name = "gazelle", remote = "https://github.com/test/test.git
 }
 
 func TestWriteDepsTable(t *testing.T) {
+	t.Parallel()
+
 	content := `
 module(name = "mymod", version = "2.0.0")
 bazel_dep(name = "rules_go", version = "0.50.1")
@@ -117,6 +126,8 @@ bazel_dep(name = "rules_go", version = "0.50.1")
 }
 
 func TestWriteJSON(t *testing.T) {
+	t.Parallel()
+
 	content := `
 module(name = "mymod", version = "1.0.0")
 bazel_dep(name = "rules_go", version = "0.50.1")
@@ -141,6 +152,8 @@ bazel_dep(name = "rules_go", version = "0.50.1")
 }
 
 func TestFormatBazelDep(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
 		modName string
@@ -166,6 +179,7 @@ func TestFormatBazelDep(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := FormatBazelDep(tt.modName, tt.version, tt.dev)
 			if got != tt.want {
 				t.Errorf("FormatBazelDep() = %q, want %q", got, tt.want)

@@ -8,6 +8,7 @@ import (
 )
 
 func TestLevenshteinDistance(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		a        string
@@ -66,6 +67,7 @@ func TestLevenshteinDistance(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result := LevenshteinDistance(tt.a, tt.b)
 			if result != tt.expected {
 				t.Errorf("LevenshteinDistance(%q, %q) = %d, want %d", tt.a, tt.b, result, tt.expected)
@@ -75,6 +77,7 @@ func TestLevenshteinDistance(t *testing.T) {
 }
 
 func TestFindSuggestions(t *testing.T) {
+	t.Parallel()
 	modules := []string{
 		"rules_go",
 		"rules_python",
@@ -159,6 +162,7 @@ func TestFindSuggestions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result := FindSuggestions(tt.query, tt.modules, tt.maxResults)
 			if len(result) != len(tt.expected) {
 				t.Errorf("FindSuggestions(%q) = %v, want %v", tt.query, result, tt.expected)
@@ -174,6 +178,7 @@ func TestFindSuggestions(t *testing.T) {
 }
 
 func TestFindSuggestionsCaseInsensitive(t *testing.T) {
+	t.Parallel()
 	modules := []string{"rules_go", "Rules_Python", "GAZELLE"}
 
 	// Query with different case should still find suggestions
@@ -187,6 +192,7 @@ func TestFindSuggestionsCaseInsensitive(t *testing.T) {
 }
 
 func TestSuggestionThreshold(t *testing.T) {
+	t.Parallel()
 	modules := []string{"rules_go", "rules_python"}
 
 	// A query that's too different shouldn't suggest anything
@@ -203,6 +209,7 @@ func TestSuggestionThreshold(t *testing.T) {
 }
 
 func TestFormatSuggestion(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name        string
 		suggestions []string
@@ -232,6 +239,7 @@ func TestFormatSuggestion(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result := FormatSuggestion(tt.suggestions)
 			if result != tt.expected {
 				t.Errorf("FormatSuggestion(%v) = %q, want %q", tt.suggestions, result, tt.expected)
@@ -241,6 +249,7 @@ func TestFormatSuggestion(t *testing.T) {
 }
 
 func TestModuleNotFoundError(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name        string
 		module      string
@@ -269,6 +278,7 @@ func TestModuleNotFoundError(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := &ModuleNotFoundError{
 				Module:      tt.module,
 				Suggestions: tt.suggestions,
@@ -287,6 +297,7 @@ func TestModuleNotFoundError(t *testing.T) {
 }
 
 func TestWrapModuleNotFound(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 
 	// Create a mock registry with modules
@@ -297,6 +308,7 @@ func TestWrapModuleNotFound(t *testing.T) {
 	})
 
 	t.Run("wraps ErrModuleNotFound with suggestions", func(t *testing.T) {
+		t.Parallel()
 		err := WrapModuleNotFound(ctx, mockReg, "rule_go", ErrModuleNotFound)
 
 		var notFoundErr *ModuleNotFoundError
@@ -323,6 +335,7 @@ func TestWrapModuleNotFound(t *testing.T) {
 	})
 
 	t.Run("passes through non-module-not-found errors", func(t *testing.T) {
+		t.Parallel()
 		otherErr := fmt.Errorf("some other error")
 		err := WrapModuleNotFound(ctx, mockReg, "rule_go", otherErr)
 
@@ -332,6 +345,7 @@ func TestWrapModuleNotFound(t *testing.T) {
 	})
 
 	t.Run("handles no close matches", func(t *testing.T) {
+		t.Parallel()
 		err := WrapModuleNotFound(ctx, mockReg, "completely_different_name", ErrModuleNotFound)
 
 		var notFoundErr *ModuleNotFoundError

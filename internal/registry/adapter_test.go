@@ -59,9 +59,11 @@ func (m *mockBCRRegistry) Type() string {
 }
 
 func TestBCRAdapter_GetMetadata(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 
 	t.Run("success", func(t *testing.T) {
+		t.Parallel()
 		mock := &mockBCRRegistry{
 			metadata: &bcr.Metadata{
 				Versions:       []string{"1.0.0", "2.0.0"},
@@ -97,6 +99,7 @@ func TestBCRAdapter_GetMetadata(t *testing.T) {
 	})
 
 	t.Run("not found", func(t *testing.T) {
+		t.Parallel()
 		mock := &mockBCRRegistry{
 			metaErr:     &bcr.NotFoundError{Module: "nonexistent"},
 			baseURL:     "https://bcr.bazel.build",
@@ -115,9 +118,11 @@ func TestBCRAdapter_GetMetadata(t *testing.T) {
 }
 
 func TestBCRAdapter_GetModuleBazel(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 
 	t.Run("success", func(t *testing.T) {
+		t.Parallel()
 		content := []byte(`module(name = "testmod", version = "1.0.0")`)
 		mock := &mockBCRRegistry{
 			moduleFile:  content,
@@ -136,6 +141,7 @@ func TestBCRAdapter_GetModuleBazel(t *testing.T) {
 	})
 
 	t.Run("version not found", func(t *testing.T) {
+		t.Parallel()
 		mock := &mockBCRRegistry{
 			moduleErr:   &bcr.NotFoundError{Module: "testmod", Version: "9.9.9"},
 			baseURL:     "https://bcr.bazel.build",
@@ -154,9 +160,11 @@ func TestBCRAdapter_GetModuleBazel(t *testing.T) {
 }
 
 func TestBCRAdapter_ListModules(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 
 	t.Run("success", func(t *testing.T) {
+		t.Parallel()
 		mock := &mockBCRRegistry{
 			modules:     []string{"rules_go", "rules_python"},
 			baseURL:     "file:///path/to/registry",
@@ -174,6 +182,7 @@ func TestBCRAdapter_ListModules(t *testing.T) {
 	})
 
 	t.Run("not supported", func(t *testing.T) {
+		t.Parallel()
 		mock := &mockBCRRegistry{
 			listErr:     bcr.ErrListingNotSupported,
 			baseURL:     "https://bcr.bazel.build",
@@ -192,6 +201,7 @@ func TestBCRAdapter_ListModules(t *testing.T) {
 }
 
 func TestBCRAdapter_Type(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		typ  string
@@ -203,6 +213,7 @@ func TestBCRAdapter_Type(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			mock := &mockBCRRegistry{
 				registryTyp: tt.typ,
 			}
@@ -215,6 +226,7 @@ func TestBCRAdapter_Type(t *testing.T) {
 }
 
 func TestBCRAdapter_String(t *testing.T) {
+	t.Parallel()
 	mock := &mockBCRRegistry{
 		baseURL: "https://bcr.bazel.build",
 	}

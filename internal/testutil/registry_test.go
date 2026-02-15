@@ -11,7 +11,10 @@ import (
 )
 
 func TestSetupTestRegistry_BasicModules(t *testing.T) {
+	t.Parallel(
 	// Test creating a basic registry with just versions
+	)
+
 	registryDir := SetupTestRegistry(t, map[string]TestModule{
 		"rules_go": {
 			Versions: []string{"0.49.0", "0.50.0", "0.50.1"},
@@ -53,7 +56,10 @@ func TestSetupTestRegistry_BasicModules(t *testing.T) {
 }
 
 func TestSetupTestRegistry_WithDependencies(t *testing.T) {
+	t.Parallel(
 	// Test creating modules with dependencies
+	)
+
 	registryDir := SetupTestRegistry(t, map[string]TestModule{
 		"rules_go": {
 			Versions: []string{"0.50.1"},
@@ -79,7 +85,10 @@ func TestSetupTestRegistry_WithDependencies(t *testing.T) {
 }
 
 func TestSetupTestRegistry_WithDevDependencies(t *testing.T) {
+	t.Parallel(
 	// Test creating modules with dev dependencies
+	)
+
 	registryDir := SetupTestRegistry(t, map[string]TestModule{
 		"my_project": {
 			Versions: []string{"1.0.0"},
@@ -108,7 +117,10 @@ func TestSetupTestRegistry_WithDevDependencies(t *testing.T) {
 }
 
 func TestSetupTestRegistry_WithLicense(t *testing.T) {
+	t.Parallel(
 	// Test creating modules with license information
+	)
+
 	registryDir := SetupTestRegistry(t, map[string]TestModule{
 		"rules_go": {
 			Versions: []string{"0.50.1"},
@@ -142,7 +154,10 @@ func TestSetupTestRegistry_WithLicense(t *testing.T) {
 }
 
 func TestSetupTestRegistry_WithYankedVersions(t *testing.T) {
+	t.Parallel(
 	// Test creating modules with yanked versions
+	)
+
 	registryDir := SetupTestRegistry(t, map[string]TestModule{
 		"rules_go": {
 			Versions:       []string{"0.49.0", "0.50.0", "0.50.1"},
@@ -163,7 +178,10 @@ func TestSetupTestRegistry_WithYankedVersions(t *testing.T) {
 }
 
 func TestSetupTestRegistry_ComplexScenario(t *testing.T) {
+	t.Parallel(
 	// Test a complex scenario with multiple features
+	)
+
 	registryDir := SetupTestRegistry(t, map[string]TestModule{
 		"rules_go": {
 			Versions: []string{"0.49.0", "0.50.0", "0.50.1"},
@@ -201,7 +219,10 @@ func TestSetupTestRegistry_ComplexScenario(t *testing.T) {
 }
 
 func TestSetupTestRegistry_EmptyVersionDeps(t *testing.T) {
+	t.Parallel(
 	// Versions not in Deps map should have no dependencies
+	)
+
 	registryDir := SetupTestRegistry(t, map[string]TestModule{
 		"rules_go": {
 			Versions: []string{"0.49.0", "0.50.1"},
@@ -229,7 +250,10 @@ func TestSetupTestRegistry_EmptyVersionDeps(t *testing.T) {
 }
 
 func TestSetupTestRegistry_SourceJSON_AlwaysCreated(t *testing.T) {
+	t.Parallel(
 	// source.json should always be created even without license
+	)
+
 	registryDir := SetupTestRegistry(t, map[string]TestModule{
 		"rules_go": {
 			Versions: []string{"0.50.1"},
@@ -256,6 +280,7 @@ func TestSetupTestRegistry_SourceJSON_AlwaysCreated(t *testing.T) {
 }
 
 func TestSplitDepArg(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		input       string
 		wantName    string
@@ -270,6 +295,7 @@ func TestSplitDepArg(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
+			t.Parallel()
 			name, version := SplitDepArg(tt.input)
 			assert.Equal(t, tt.wantName, name)
 			assert.Equal(t, tt.wantVersion, version)

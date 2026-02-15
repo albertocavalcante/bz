@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -110,10 +109,7 @@ func runAudit(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	ctx := cmd.Context()
-	if ctx == nil {
-		ctx = context.Background()
-	}
+	ctx := cmdContext(cmd)
 
 	// Determine minimum severity filter
 	minSeverity := osv.SeverityUnknown

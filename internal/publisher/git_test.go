@@ -63,6 +63,7 @@ func runGit(t *testing.T, dir string, args ...string) {
 }
 
 func TestGitPublisher_Type(t *testing.T) {
+	t.Parallel()
 	skipIfNoGit(t)
 	remoteDir := setupTestGitRepo(t)
 
@@ -78,6 +79,7 @@ func TestGitPublisher_Type(t *testing.T) {
 }
 
 func TestGitPublisher_Put(t *testing.T) {
+	t.Parallel()
 	skipIfNoGit(t)
 	remoteDir := setupTestGitRepo(t)
 
@@ -109,6 +111,7 @@ func TestGitPublisher_Put(t *testing.T) {
 }
 
 func TestGitPublisher_Exists(t *testing.T) {
+	t.Parallel()
 	skipIfNoGit(t)
 	remoteDir := setupTestGitRepo(t)
 
@@ -140,6 +143,7 @@ func TestGitPublisher_Exists(t *testing.T) {
 }
 
 func TestGitPublisher_Finalize(t *testing.T) {
+	t.Parallel()
 	skipIfNoGit(t)
 	remoteDir := setupTestGitRepo(t)
 
@@ -185,6 +189,7 @@ func TestGitPublisher_Finalize(t *testing.T) {
 }
 
 func TestGitPublisher_Finalize_NoChanges(t *testing.T) {
+	t.Parallel()
 	skipIfNoGit(t)
 	remoteDir := setupTestGitRepo(t)
 
@@ -204,6 +209,7 @@ func TestGitPublisher_Finalize_NoChanges(t *testing.T) {
 }
 
 func TestGitPublisher_Close(t *testing.T) {
+	t.Parallel()
 	skipIfNoGit(t)
 	remoteDir := setupTestGitRepo(t)
 
@@ -232,6 +238,7 @@ func TestGitPublisher_Close(t *testing.T) {
 }
 
 func TestGitPublisher_DefaultBranch(t *testing.T) {
+	t.Parallel()
 	skipIfNoGit(t)
 	remoteDir := setupTestGitRepo(t)
 
@@ -248,6 +255,7 @@ func TestGitPublisher_DefaultBranch(t *testing.T) {
 }
 
 func TestGitPublisher_EmptyURL(t *testing.T) {
+	t.Parallel()
 	_, err := NewGitPublisher("", "main")
 	if err == nil {
 		t.Error("NewGitPublisher() expected error for empty URL")
@@ -255,6 +263,7 @@ func TestGitPublisher_EmptyURL(t *testing.T) {
 }
 
 func TestGitPublisher_InvalidRepo(t *testing.T) {
+	t.Parallel()
 	skipIfNoGit(t)
 
 	// Try to clone a non-existent repo

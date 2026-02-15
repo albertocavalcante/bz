@@ -1,7 +1,6 @@
 package mod
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -52,10 +51,7 @@ func runInfo(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("module argument required")
 	}
 	name, version := parseModuleArg(args[0])
-	ctx := cmd.Context()
-	if ctx == nil {
-		ctx = context.Background()
-	}
+	ctx := cmdContext(cmd)
 
 	// Create network-aware registry
 	reg, err := createNetworkAwareRegistry()

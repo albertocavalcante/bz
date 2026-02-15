@@ -98,10 +98,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 
 	// Validate modules exist in registry (unless --no-verify is set)
 	if !addNoVerify {
-		ctx := cmd.Context()
-		if ctx == nil {
-			ctx = context.Background()
-		}
+		ctx := cmdContext(cmd)
 
 		// Create network-aware registry
 		reg, err := createNetworkAwareRegistry()

@@ -173,10 +173,7 @@ func runSBOM(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	ctx := cmd.Context()
-	if ctx == nil {
-		ctx = context.Background()
-	}
+	ctx := cmdContext(cmd)
 
 	reg, err := registry.New(sbomRegistryFlag)
 	if err != nil {

@@ -10,6 +10,7 @@ import (
 )
 
 func TestSyncLatest(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		code     string
@@ -45,6 +46,7 @@ func TestSyncLatest(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			thread := &starlark.Thread{Name: "test"}
 			syncModule := starlarkstruct.FromStringDict(starlark.String("sync"), SyncModule())
 			globals := starlark.StringDict{"sync": syncModule}
@@ -67,6 +69,7 @@ func TestSyncLatest(t *testing.T) {
 }
 
 func TestSyncAll(t *testing.T) {
+	t.Parallel()
 	thread := &starlark.Thread{Name: "test"}
 	syncModule := starlarkstruct.FromStringDict(starlark.String("sync"), SyncModule())
 	globals := starlark.StringDict{"sync": syncModule}
@@ -80,6 +83,7 @@ func TestSyncAll(t *testing.T) {
 }
 
 func TestSyncSince(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		code     string
@@ -105,6 +109,7 @@ func TestSyncSince(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			thread := &starlark.Thread{Name: "test"}
 			syncModule := starlarkstruct.FromStringDict(starlark.String("sync"), SyncModule())
 			globals := starlark.StringDict{"sync": syncModule}
@@ -127,6 +132,7 @@ func TestSyncSince(t *testing.T) {
 }
 
 func TestSyncRange(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name        string
 		code        string
@@ -161,6 +167,7 @@ func TestSyncRange(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			thread := &starlark.Thread{Name: "test"}
 			syncModule := starlarkstruct.FromStringDict(starlark.String("sync"), SyncModule())
 			globals := starlark.StringDict{"sync": syncModule}
@@ -184,7 +191,9 @@ func TestSyncRange(t *testing.T) {
 }
 
 func TestSyncTransformations(t *testing.T) {
+	t.Parallel()
 	t.Run("rewrite_source_urls", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		syncModule := starlarkstruct.FromStringDict(starlark.String("sync"), SyncModule())
 		globals := starlark.StringDict{"sync": syncModule}
@@ -201,6 +210,7 @@ func TestSyncTransformations(t *testing.T) {
 	})
 
 	t.Run("rewrite_source_urls missing args", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		syncModule := starlarkstruct.FromStringDict(starlark.String("sync"), SyncModule())
 		globals := starlark.StringDict{"sync": syncModule}
@@ -211,6 +221,7 @@ func TestSyncTransformations(t *testing.T) {
 	})
 
 	t.Run("skip_yanked", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		syncModule := starlarkstruct.FromStringDict(starlark.String("sync"), SyncModule())
 		globals := starlark.StringDict{"sync": syncModule}
@@ -224,6 +235,7 @@ func TestSyncTransformations(t *testing.T) {
 	})
 
 	t.Run("include_patches default", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		syncModule := starlarkstruct.FromStringDict(starlark.String("sync"), SyncModule())
 		globals := starlark.StringDict{"sync": syncModule}
@@ -238,6 +250,7 @@ func TestSyncTransformations(t *testing.T) {
 	})
 
 	t.Run("include_patches disabled", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		syncModule := starlarkstruct.FromStringDict(starlark.String("sync"), SyncModule())
 		globals := starlark.StringDict{"sync": syncModule}
@@ -253,7 +266,9 @@ func TestSyncTransformations(t *testing.T) {
 }
 
 func TestSyncWorkflow(t *testing.T) {
+	t.Parallel()
 	t.Run("basic workflow", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		SetWorkflowRegistry(thread)
 
@@ -297,6 +312,7 @@ sync.workflow(
 	})
 
 	t.Run("workflow with all options", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		SetWorkflowRegistry(thread)
 
@@ -342,6 +358,7 @@ sync.workflow(
 	})
 
 	t.Run("multiple workflows", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		SetWorkflowRegistry(thread)
 
@@ -380,6 +397,7 @@ sync.workflow(
 	})
 
 	t.Run("workflow without registry initialized", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		// NOT calling SetWorkflowRegistry
 
@@ -406,6 +424,7 @@ sync.workflow(
 	})
 
 	t.Run("workflow with invalid origin", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		SetWorkflowRegistry(thread)
 
@@ -432,7 +451,9 @@ sync.workflow(
 }
 
 func TestWorkflowRegistry(t *testing.T) {
+	t.Parallel()
 	t.Run("set and get workflows", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		SetWorkflowRegistry(thread)
 
@@ -442,6 +463,7 @@ func TestWorkflowRegistry(t *testing.T) {
 	})
 
 	t.Run("get workflows when not set", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		workflows := GetWorkflows(thread)
 		assert.Nil(t, workflows)
@@ -449,6 +471,7 @@ func TestWorkflowRegistry(t *testing.T) {
 }
 
 func TestVersionSelectorString(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		selector *VersionSelector
@@ -490,12 +513,14 @@ func TestVersionSelectorString(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.expected, tt.selector.String())
 		})
 	}
 }
 
 func TestTransformValueString(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		transform *TransformValue
@@ -537,12 +562,14 @@ func TestTransformValueString(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.expected, tt.transform.String())
 		})
 	}
 }
 
 func TestWorkflowValueString(t *testing.T) {
+	t.Parallel()
 	w := &WorkflowValue{
 		Name: "test-workflow",
 	}
@@ -550,6 +577,7 @@ func TestWorkflowValueString(t *testing.T) {
 }
 
 func TestSyncModule(t *testing.T) {
+	t.Parallel()
 	module := SyncModule()
 
 	assert.Contains(t, module, "workflow")

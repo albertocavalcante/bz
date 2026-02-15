@@ -37,12 +37,22 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+          cache-dependency-path: |
+            go.sum
+            tools.go.sum
 
       - name: Build
         run: go build -v ./...
 
       - name: Test
-        run: go test -race -v ./...
+        run: go test -race -v -coverprofile=coverage.out ./...
+
+      - name: Upload coverage
+        if: matrix.name == 'linux-amd64'
+        uses: codecov/codecov-action@18283e04ce6e62d37312384ff67231eb8fd56d24 # v5.4.3
+        with:
+          files: coverage.out
+          fail_ci_if_error: false
 
   lint:
     runs-on: ubuntu-24.04
@@ -69,8 +79,33 @@ jobs:
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@1e7e51e28fd01011a2e17f9e60b3e0412063ca8a # v9.2.0
         with:
-          version: latest
+          version: v2.1.6
           args: --config=tools/lint/golangci.toml
+
+  govulncheck:
+    runs-on: ubuntu-24.04
+    name: Vulnerability Check
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@40f1582302633cf483dc284489ae94db1c9cc1ce # v6.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - name: Run govulncheck
+        run: govulncheck ./...
 
   actionlint:
     runs-on: ubuntu-24.04

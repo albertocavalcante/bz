@@ -12,8 +12,12 @@ import (
 )
 
 func TestLoaderLoad(t *testing.T) {
+	t.Parallel()
 	t.Run("complete config file", func(t *testing.T) {
+		t.Parallel(
 		// Create a temporary config file
+		)
+
 		tmpDir := t.TempDir()
 		configPath := filepath.Join(tmpDir, "bz.star")
 
@@ -58,6 +62,7 @@ config.defaults(
 	})
 
 	t.Run("workflow with all options", func(t *testing.T) {
+		t.Parallel()
 		tmpDir := t.TempDir()
 		configPath := filepath.Join(tmpDir, "bz.star")
 
@@ -111,6 +116,7 @@ sync.workflow(
 	})
 
 	t.Run("multiple workflows", func(t *testing.T) {
+		t.Parallel()
 		tmpDir := t.TempDir()
 		configPath := filepath.Join(tmpDir, "bz.star")
 
@@ -144,6 +150,7 @@ sync.workflow(
 	})
 
 	t.Run("config with all registry types", func(t *testing.T) {
+		t.Parallel()
 		tmpDir := t.TempDir()
 		configPath := filepath.Join(tmpDir, "bz.star")
 
@@ -186,6 +193,7 @@ config.defaults(
 	})
 
 	t.Run("git registry with ref", func(t *testing.T) {
+		t.Parallel()
 		tmpDir := t.TempDir()
 		configPath := filepath.Join(tmpDir, "bz.star")
 
@@ -215,6 +223,7 @@ sync.workflow(
 	})
 
 	t.Run("http_put with auth", func(t *testing.T) {
+		t.Parallel()
 		tmpDir := t.TempDir()
 		configPath := filepath.Join(tmpDir, "bz.star")
 
@@ -249,6 +258,7 @@ sync.workflow(
 	})
 
 	t.Run("file not found", func(t *testing.T) {
+		t.Parallel()
 		loader := NewLoader()
 		_, err := loader.Load("/nonexistent/path/bz.star")
 		require.Error(t, err)
@@ -256,6 +266,7 @@ sync.workflow(
 	})
 
 	t.Run("invalid starlark syntax", func(t *testing.T) {
+		t.Parallel()
 		tmpDir := t.TempDir()
 		configPath := filepath.Join(tmpDir, "bz.star")
 
@@ -272,6 +283,7 @@ this is not valid starlark
 	})
 
 	t.Run("version selectors", func(t *testing.T) {
+		t.Parallel()
 		tests := []struct {
 			name         string
 			versionCode  string
@@ -305,6 +317,7 @@ this is not valid starlark
 
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
 				tmpDir := t.TempDir()
 				configPath := filepath.Join(tmpDir, "bz.star")
 
@@ -336,7 +349,9 @@ sync.workflow(
 }
 
 func TestLoaderLoadDefault(t *testing.T) {
+	t.Parallel()
 	t.Run("loads bz.star from working dir", func(t *testing.T) {
+		t.Parallel()
 		tmpDir := t.TempDir()
 		configPath := filepath.Join(tmpDir, "bz.star")
 
@@ -362,6 +377,7 @@ sync.workflow(
 	})
 
 	t.Run("loads .bz/config.star", func(t *testing.T) {
+		t.Parallel()
 		tmpDir := t.TempDir()
 		bzDir := filepath.Join(tmpDir, ".bz")
 		err := os.MkdirAll(bzDir, 0o755)
@@ -390,6 +406,7 @@ sync.workflow(
 	})
 
 	t.Run("bz.star takes priority over .bz/config.star", func(t *testing.T) {
+		t.Parallel()
 		tmpDir := t.TempDir()
 
 		// Create bz.star
@@ -436,6 +453,7 @@ sync.workflow(
 	})
 
 	t.Run("no config found", func(t *testing.T) {
+		t.Parallel()
 		tmpDir := t.TempDir()
 		loader := NewLoader().WithWorkingDir(tmpDir)
 		_, err := loader.LoadDefault()
@@ -445,31 +463,39 @@ sync.workflow(
 }
 
 func TestConvertFunctions(t *testing.T) {
+	t.Parallel()
 	t.Run("RegistryFromValue nil", func(t *testing.T) {
+		t.Parallel()
 		assert.Nil(t, RegistryFromValue(nil))
 	})
 
 	t.Run("AuthFromValue nil", func(t *testing.T) {
+		t.Parallel()
 		assert.Nil(t, AuthFromValue(nil))
 	})
 
 	t.Run("WorkflowFromValue nil", func(t *testing.T) {
+		t.Parallel()
 		assert.Nil(t, WorkflowFromValue(nil))
 	})
 
 	t.Run("VersionSelectorFromValue nil", func(t *testing.T) {
+		t.Parallel()
 		assert.Nil(t, VersionSelectorFromValue(nil))
 	})
 
 	t.Run("TransformFromValue nil", func(t *testing.T) {
+		t.Parallel()
 		assert.Nil(t, TransformFromValue(nil))
 	})
 
 	t.Run("DefaultsFromValue nil", func(t *testing.T) {
+		t.Parallel()
 		assert.Nil(t, DefaultsFromValue(nil))
 	})
 
 	t.Run("AuthFromValue basic", func(t *testing.T) {
+		t.Parallel()
 		av := &modules.AuthValue{
 			Kind:     "basic",
 			Username: "user",
@@ -482,6 +508,7 @@ func TestConvertFunctions(t *testing.T) {
 	})
 
 	t.Run("AuthFromValue bearer_token", func(t *testing.T) {
+		t.Parallel()
 		av := &modules.AuthValue{
 			Kind:   "bearer_token",
 			EnvVar: "TOKEN",
@@ -492,6 +519,7 @@ func TestConvertFunctions(t *testing.T) {
 	})
 
 	t.Run("AuthFromValue header", func(t *testing.T) {
+		t.Parallel()
 		av := &modules.AuthValue{
 			Kind:        "header",
 			HeaderName:  "X-Custom",
@@ -505,12 +533,15 @@ func TestConvertFunctions(t *testing.T) {
 }
 
 func TestLoaderWithWorkingDir(t *testing.T) {
+	t.Parallel()
 	t.Run("sets working directory", func(t *testing.T) {
+		t.Parallel()
 		loader := NewLoader().WithWorkingDir("/custom/path")
 		assert.Equal(t, "/custom/path", loader.workingDir)
 	})
 
 	t.Run("resolves relative paths from working dir", func(t *testing.T) {
+		t.Parallel()
 		tmpDir := t.TempDir()
 		configPath := filepath.Join(tmpDir, "bz.star")
 

@@ -1,7 +1,6 @@
 package mod
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -63,10 +62,7 @@ func runOutdated(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	ctx := cmd.Context()
-	if ctx == nil {
-		ctx = context.Background()
-	}
+	ctx := cmdContext(cmd)
 
 	// Create network-aware registry
 	reg, err := createNetworkAwareRegistry()

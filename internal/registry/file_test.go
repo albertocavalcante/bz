@@ -9,6 +9,7 @@ import (
 )
 
 func TestFileRegistry_Type(t *testing.T) {
+	t.Parallel()
 	reg := NewFileRegistry("/some/path")
 	if got := reg.Type(); got != TypeFile {
 		t.Errorf("Type() = %q, want %q", got, TypeFile)
@@ -16,6 +17,7 @@ func TestFileRegistry_Type(t *testing.T) {
 }
 
 func TestFileRegistry_String(t *testing.T) {
+	t.Parallel()
 	reg := NewFileRegistry("/some/path")
 	got := reg.String()
 	if got != "file:///some/path" {
@@ -24,6 +26,7 @@ func TestFileRegistry_String(t *testing.T) {
 }
 
 func TestFileRegistry_ListModules(t *testing.T) {
+	t.Parallel()
 	root := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{
 		"rules_go": {
 			Versions:       []string{"0.49.0", "0.50.0", "0.51.0-rc1"},
@@ -58,6 +61,7 @@ func TestFileRegistry_ListModules(t *testing.T) {
 }
 
 func TestFileRegistry_ListModules_NoModulesDir(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir() // empty directory
 	reg := NewFileRegistry(root)
 	ctx := context.Background()
@@ -72,6 +76,7 @@ func TestFileRegistry_ListModules_NoModulesDir(t *testing.T) {
 }
 
 func TestFileRegistry_GetMetadata(t *testing.T) {
+	t.Parallel()
 	root := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{
 		"rules_go": {
 			Versions:       []string{"0.49.0", "0.50.0", "0.51.0-rc1"},
@@ -98,6 +103,7 @@ func TestFileRegistry_GetMetadata(t *testing.T) {
 }
 
 func TestFileRegistry_GetMetadata_NotFound(t *testing.T) {
+	t.Parallel()
 	root := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{
 		"rules_go": {Versions: []string{"0.50.0"}},
 	})
@@ -114,6 +120,7 @@ func TestFileRegistry_GetMetadata_NotFound(t *testing.T) {
 }
 
 func TestFileRegistry_GetModuleBazel(t *testing.T) {
+	t.Parallel()
 	root := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{
 		"rules_go": {
 			Versions: []string{"0.50.0"},
@@ -139,6 +146,7 @@ func TestFileRegistry_GetModuleBazel(t *testing.T) {
 }
 
 func TestFileRegistry_GetModuleBazel_ModuleNotFound(t *testing.T) {
+	t.Parallel()
 	root := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{
 		"rules_go": {Versions: []string{"0.50.0"}},
 	})
@@ -152,6 +160,7 @@ func TestFileRegistry_GetModuleBazel_ModuleNotFound(t *testing.T) {
 }
 
 func TestFileRegistry_GetModuleBazel_VersionNotFound(t *testing.T) {
+	t.Parallel()
 	root := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{
 		"rules_go": {Versions: []string{"0.50.0"}},
 	})

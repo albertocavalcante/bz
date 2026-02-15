@@ -2,11 +2,22 @@
 package cache
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
 )
+
+// cmdContext returns the command's context, defaulting to context.Background()
+// if none has been set. This is needed because cobra only sets a context when
+// running through Execute(); tests that call RunE directly may have a nil context.
+func cmdContext(cmd *cobra.Command) context.Context {
+	if ctx := cmd.Context(); ctx != nil {
+		return ctx
+	}
+	return context.Background()
+}
 
 // Cmd is the root command for cache operations
 var Cmd = &cobra.Command{

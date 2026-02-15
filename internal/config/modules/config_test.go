@@ -10,7 +10,9 @@ import (
 )
 
 func TestConfigDefaults(t *testing.T) {
+	t.Parallel()
 	t.Run("basic defaults with registry", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		SetConfigDefaults(thread)
 
@@ -36,6 +38,7 @@ config.defaults(registry = bcr)
 	})
 
 	t.Run("defaults with cache_dir", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		SetConfigDefaults(thread)
 
@@ -52,6 +55,7 @@ config.defaults(registry = bcr)
 	})
 
 	t.Run("defaults with fallback_registries", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		SetConfigDefaults(thread)
 
@@ -86,6 +90,7 @@ config.defaults(
 	})
 
 	t.Run("defaults with all options", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		SetConfigDefaults(thread)
 
@@ -117,6 +122,7 @@ config.defaults(
 	})
 
 	t.Run("empty defaults", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		SetConfigDefaults(thread)
 
@@ -135,6 +141,7 @@ config.defaults(
 	})
 
 	t.Run("invalid registry type", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		SetConfigDefaults(thread)
 
@@ -148,6 +155,7 @@ config.defaults(
 	})
 
 	t.Run("invalid fallback_registries type", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		SetConfigDefaults(thread)
 
@@ -161,6 +169,7 @@ config.defaults(
 	})
 
 	t.Run("invalid fallback_registries element", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		SetConfigDefaults(thread)
 
@@ -175,13 +184,16 @@ config.defaults(
 }
 
 func TestConfigDefaultsStorage(t *testing.T) {
+	t.Parallel()
 	t.Run("get defaults when not initialized", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		defaults := GetConfigDefaults(thread)
 		assert.Nil(t, defaults)
 	})
 
 	t.Run("get defaults when initialized but not set", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		SetConfigDefaults(thread)
 		defaults := GetConfigDefaults(thread)
@@ -189,6 +201,7 @@ func TestConfigDefaultsStorage(t *testing.T) {
 	})
 
 	t.Run("defaults value updated by subsequent calls", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		SetConfigDefaults(thread)
 
@@ -218,7 +231,9 @@ func TestConfigDefaultsStorage(t *testing.T) {
 }
 
 func TestDefaultsValueString(t *testing.T) {
+	t.Parallel()
 	t.Run("with registry", func(t *testing.T) {
+		t.Parallel()
 		d := &DefaultsValue{
 			Registry: &RegistryValue{
 				Kind: RegistryTypeHTTP,
@@ -229,12 +244,14 @@ func TestDefaultsValueString(t *testing.T) {
 	})
 
 	t.Run("without registry", func(t *testing.T) {
+		t.Parallel()
 		d := &DefaultsValue{}
 		assert.Equal(t, "config.defaults()", d.String())
 	})
 }
 
 func TestDefaultsValueAttrs(t *testing.T) {
+	t.Parallel()
 	thread := &starlark.Thread{Name: "test"}
 	SetConfigDefaults(thread)
 
@@ -278,6 +295,7 @@ d = config.defaults(
 }
 
 func TestConfigModule(t *testing.T) {
+	t.Parallel()
 	module := ConfigModule()
 	assert.Contains(t, module, "defaults")
 }

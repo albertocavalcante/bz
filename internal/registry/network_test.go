@@ -12,6 +12,7 @@ import (
 )
 
 func TestNetworkError_Error(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		err      *NetworkError
@@ -39,6 +40,7 @@ func TestNetworkError_Error(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			msg := tt.err.Error()
 			assert.Contains(t, msg, tt.contains)
 		})
@@ -46,6 +48,7 @@ func TestNetworkError_Error(t *testing.T) {
 }
 
 func TestNetworkError_UserFriendlyError(t *testing.T) {
+	t.Parallel()
 	err := &NetworkError{
 		Operation: "fetch metadata",
 		URL:       "https://bcr.bazel.build",
@@ -66,6 +69,7 @@ func TestNetworkError_UserFriendlyError(t *testing.T) {
 }
 
 func TestNetworkError_Unwrap(t *testing.T) {
+	t.Parallel()
 	underlying := errors.New("connection refused")
 	err := &NetworkError{
 		Operation: "fetch",
@@ -163,7 +167,10 @@ func (f *FailingRegistry) String() string {
 }
 
 func TestNetworkAwareRegistry_OfflineMode_CacheHit(t *testing.T) {
+	t.Parallel(
 	// Setup: cache has the module
+	)
+
 	cache := NewMockCacheRegistry()
 	cache.SetMetadata("rules_go", &Metadata{
 		Versions: []string{"0.49.0", "0.50.0"},
@@ -184,7 +191,10 @@ func TestNetworkAwareRegistry_OfflineMode_CacheHit(t *testing.T) {
 }
 
 func TestNetworkAwareRegistry_OfflineMode_CacheMiss(t *testing.T) {
+	t.Parallel(
 	// Setup: cache is empty
+	)
+
 	cache := NewMockCacheRegistry()
 	inner := NewFailingRegistry(errors.New("network error"))
 	opts := &cli.Options{
@@ -211,7 +221,10 @@ func TestNetworkAwareRegistry_OfflineMode_CacheMiss(t *testing.T) {
 }
 
 func TestNetworkAwareRegistry_PreferOffline_CacheHit(t *testing.T) {
+	t.Parallel(
 	// Setup: cache has the module
+	)
+
 	cache := NewMockCacheRegistry()
 	cache.SetMetadata("rules_go", &Metadata{
 		Versions: []string{"0.49.0", "0.50.0"},
@@ -246,7 +259,10 @@ func TestNetworkAwareRegistry_PreferOffline_CacheHit(t *testing.T) {
 }
 
 func TestNetworkAwareRegistry_PreferOffline_CacheMiss_FallsBackToNetwork(t *testing.T) {
+	t.Parallel(
 	// Setup: cache is empty
+	)
+
 	cache := NewMockCacheRegistry()
 
 	// Inner registry has the module
@@ -268,7 +284,10 @@ func TestNetworkAwareRegistry_PreferOffline_CacheMiss_FallsBackToNetwork(t *test
 }
 
 func TestNetworkAwareRegistry_OnlineMode_UsesNetwork(t *testing.T) {
+	t.Parallel(
 	// Setup: cache has old version
+	)
+
 	cache := NewMockCacheRegistry()
 	cache.SetMetadata("rules_go", &Metadata{
 		Versions: []string{"0.49.0"},
@@ -294,6 +313,7 @@ func TestNetworkAwareRegistry_OnlineMode_UsesNetwork(t *testing.T) {
 }
 
 func TestNetworkAwareRegistry_GetModuleBazel_OfflineMode_CacheHit(t *testing.T) {
+	t.Parallel()
 	cache := NewMockCacheRegistry()
 	cache.SetMetadata("rules_go", &Metadata{Versions: []string{"0.50.0"}})
 	cache.SetModuleBazel("rules_go", "0.50.0", []byte(`module(name = "rules_go", version = "0.50.0")`))
@@ -312,6 +332,7 @@ func TestNetworkAwareRegistry_GetModuleBazel_OfflineMode_CacheHit(t *testing.T) 
 }
 
 func TestNetworkAwareRegistry_GetModuleBazel_OfflineMode_CacheMiss(t *testing.T) {
+	t.Parallel()
 	cache := NewMockCacheRegistry()
 	inner := NewFailingRegistry(errors.New("network error"))
 	opts := &cli.Options{
@@ -330,6 +351,7 @@ func TestNetworkAwareRegistry_GetModuleBazel_OfflineMode_CacheMiss(t *testing.T)
 }
 
 func TestNetworkAwareRegistry_ListModules_OfflineMode(t *testing.T) {
+	t.Parallel()
 	cache := NewMockCacheRegistry()
 	cache.SetMetadata("rules_go", &Metadata{Versions: []string{"0.50.0"}})
 	cache.SetMetadata("rules_python", &Metadata{Versions: []string{"0.31.0"}})
@@ -349,6 +371,7 @@ func TestNetworkAwareRegistry_ListModules_OfflineMode(t *testing.T) {
 }
 
 func TestNetworkAwareRegistry_Type(t *testing.T) {
+	t.Parallel()
 	cache := NewMockCacheRegistry()
 	inner := NewMockRegistry(nil)
 	inner.TypeName = "https"
@@ -359,6 +382,7 @@ func TestNetworkAwareRegistry_Type(t *testing.T) {
 }
 
 func TestNetworkAwareRegistry_String(t *testing.T) {
+	t.Parallel()
 	cache := NewMockCacheRegistry()
 	inner := NewMockRegistry(nil)
 	opts := &cli.Options{}
@@ -368,6 +392,7 @@ func TestNetworkAwareRegistry_String(t *testing.T) {
 }
 
 func TestNetworkError_SuggestionsForOfflineMode(t *testing.T) {
+	t.Parallel()
 	err := NewOfflineCacheMissError("rules_go", "https://bcr.bazel.build")
 
 	msg := err.UserFriendlyError()
@@ -380,7 +405,10 @@ func TestNetworkError_SuggestionsForOfflineMode(t *testing.T) {
 }
 
 func TestNetworkAwareRegistry_NilCache(t *testing.T) {
+	t.Parallel(
 	// When cache is nil, should fallthrough to inner registry
+	)
+
 	inner := NewMockRegistry(map[string]*Metadata{
 		"rules_go": {Versions: []string{"0.50.0"}},
 	})
@@ -398,6 +426,7 @@ func TestNetworkAwareRegistry_NilCache(t *testing.T) {
 }
 
 func TestNetworkAwareRegistry_NilOptions(t *testing.T) {
+	t.Parallel()
 	cache := NewMockCacheRegistry()
 	inner := NewMockRegistry(map[string]*Metadata{
 		"rules_go": {Versions: []string{"0.50.0"}},
@@ -444,6 +473,7 @@ func (t *trackingRegistry) String() string {
 var _ Registry = (*trackingRegistry)(nil)
 
 func TestNetworkError_ErrorWithoutErr(t *testing.T) {
+	t.Parallel()
 	err := &NetworkError{
 		Operation: "fetch metadata",
 		URL:       "https://bcr.bazel.build",
@@ -458,6 +488,7 @@ func TestNetworkError_ErrorWithoutErr(t *testing.T) {
 }
 
 func TestNetworkError_UserFriendlyError_NoSuggestions(t *testing.T) {
+	t.Parallel()
 	err := &NetworkError{
 		Operation: "fetch metadata",
 		URL:       "https://bcr.bazel.build",
@@ -471,6 +502,7 @@ func TestNetworkError_UserFriendlyError_NoSuggestions(t *testing.T) {
 }
 
 func TestNetworkError_UserFriendlyError_NoURL(t *testing.T) {
+	t.Parallel()
 	err := &NetworkError{
 		Operation: "fetch metadata",
 		Err:       errors.New("timeout"),
@@ -483,6 +515,7 @@ func TestNetworkError_UserFriendlyError_NoURL(t *testing.T) {
 }
 
 func TestNetworkError_UserFriendlyError_NoOperation(t *testing.T) {
+	t.Parallel()
 	err := &NetworkError{
 		URL: "https://bcr.bazel.build",
 		Err: errors.New("timeout"),
@@ -497,6 +530,7 @@ func TestNetworkError_UserFriendlyError_NoOperation(t *testing.T) {
 }
 
 func TestNetworkAwareRegistry_GetModuleBazel_PreferOffline_CacheHit(t *testing.T) {
+	t.Parallel()
 	cache := NewMockCacheRegistry()
 	cache.SetModuleBazel("rules_go", "0.50.0", []byte(`module(name = "rules_go")`))
 
@@ -526,6 +560,7 @@ func TestNetworkAwareRegistry_GetModuleBazel_PreferOffline_CacheHit(t *testing.T
 }
 
 func TestNetworkAwareRegistry_GetModuleBazel_PreferOffline_CacheMiss(t *testing.T) {
+	t.Parallel()
 	cache := NewMockCacheRegistry()
 	// Cache is empty
 
@@ -547,6 +582,7 @@ func TestNetworkAwareRegistry_GetModuleBazel_PreferOffline_CacheMiss(t *testing.
 }
 
 func TestNetworkAwareRegistry_GetModuleBazel_OnlineMode(t *testing.T) {
+	t.Parallel()
 	cache := NewMockCacheRegistry()
 	cache.SetModuleBazel("rules_go", "0.50.0", []byte(`cached content`))
 
@@ -570,6 +606,7 @@ func TestNetworkAwareRegistry_GetModuleBazel_OnlineMode(t *testing.T) {
 }
 
 func TestNetworkAwareRegistry_GetModuleBazel_OfflineMode_NilCache(t *testing.T) {
+	t.Parallel()
 	inner := NewMockRegistry(map[string]*Metadata{
 		"rules_go": {Versions: []string{"0.50.0"}},
 	})
@@ -590,6 +627,7 @@ func TestNetworkAwareRegistry_GetModuleBazel_OfflineMode_NilCache(t *testing.T) 
 }
 
 func TestNetworkAwareRegistry_ListModules_PreferOffline_CacheHit(t *testing.T) {
+	t.Parallel()
 	cache := NewMockCacheRegistry()
 	cache.SetMetadata("rules_go", &Metadata{Versions: []string{"0.50.0"}})
 
@@ -620,6 +658,7 @@ func TestNetworkAwareRegistry_ListModules_PreferOffline_CacheHit(t *testing.T) {
 }
 
 func TestNetworkAwareRegistry_ListModules_PreferOffline_CacheMiss(t *testing.T) {
+	t.Parallel()
 	cache := NewMockCacheRegistry()
 	// Cache is empty
 
@@ -641,6 +680,7 @@ func TestNetworkAwareRegistry_ListModules_PreferOffline_CacheMiss(t *testing.T) 
 }
 
 func TestNetworkAwareRegistry_ListModules_OnlineMode(t *testing.T) {
+	t.Parallel()
 	cache := NewMockCacheRegistry()
 	cache.SetMetadata("cached_module", &Metadata{Versions: []string{"1.0.0"}})
 
@@ -664,6 +704,7 @@ func TestNetworkAwareRegistry_ListModules_OnlineMode(t *testing.T) {
 }
 
 func TestNetworkAwareRegistry_ListModules_OfflineMode_NilCache(t *testing.T) {
+	t.Parallel()
 	inner := NewMockRegistry(map[string]*Metadata{
 		"rules_go": {Versions: []string{"0.50.0"}},
 	})
@@ -684,6 +725,7 @@ func TestNetworkAwareRegistry_ListModules_OfflineMode_NilCache(t *testing.T) {
 }
 
 func TestNewOfflineVersionMissError(t *testing.T) {
+	t.Parallel()
 	err := NewOfflineVersionMissError("rules_go", "0.50.0", "https://bcr.bazel.build")
 
 	assert.Contains(t, err.Operation, "rules_go@0.50.0")
@@ -694,6 +736,7 @@ func TestNewOfflineVersionMissError(t *testing.T) {
 }
 
 func TestNetworkAwareRegistry_GetModuleBazel_PreferOffline_NilCache(t *testing.T) {
+	t.Parallel()
 	inner := NewMockRegistry(map[string]*Metadata{
 		"rules_go": {Versions: []string{"0.50.0"}},
 	})
@@ -712,6 +755,7 @@ func TestNetworkAwareRegistry_GetModuleBazel_PreferOffline_NilCache(t *testing.T
 }
 
 func TestNetworkAwareRegistry_ListModules_PreferOffline_NilCache(t *testing.T) {
+	t.Parallel()
 	inner := NewMockRegistry(map[string]*Metadata{
 		"rules_go": {Versions: []string{"0.50.0"}},
 	})

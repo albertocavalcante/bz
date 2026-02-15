@@ -10,7 +10,9 @@ import (
 )
 
 func TestLoadFromTOML(t *testing.T) {
+	t.Parallel()
 	t.Run("loads complete config from TOML file", func(t *testing.T) {
+		t.Parallel()
 		tmpDir := t.TempDir()
 		configPath := filepath.Join(tmpDir, ".bzconfig.toml")
 
@@ -45,6 +47,7 @@ disabled = ["audit", "search"]
 	})
 
 	t.Run("loads partial config with defaults", func(t *testing.T) {
+		t.Parallel()
 		tmpDir := t.TempDir()
 		configPath := filepath.Join(tmpDir, "config.toml")
 
@@ -66,6 +69,7 @@ mode = "offline"
 	})
 
 	t.Run("returns error for invalid TOML", func(t *testing.T) {
+		t.Parallel()
 		tmpDir := t.TempDir()
 		configPath := filepath.Join(tmpDir, "config.toml")
 
@@ -78,6 +82,7 @@ mode = "offline"
 	})
 
 	t.Run("returns error for nonexistent file", func(t *testing.T) {
+		t.Parallel()
 		_, err := LoadFromFile("/nonexistent/path/config.toml")
 		require.Error(t, err)
 	})
@@ -85,6 +90,7 @@ mode = "offline"
 
 func TestLoadWithPrecedence(t *testing.T) {
 	t.Run("CLI overrides take highest precedence", func(t *testing.T) {
+		t.Parallel()
 		tmpDir := t.TempDir()
 		configPath := filepath.Join(tmpDir, ".bzconfig.toml")
 
@@ -136,6 +142,7 @@ registry = "https://file-registry.example.com"
 	})
 
 	t.Run("project config overrides user config", func(t *testing.T) {
+		t.Parallel()
 		tmpDir := t.TempDir()
 
 		userConfig := filepath.Join(tmpDir, "user-config.toml")
@@ -171,6 +178,7 @@ registry = "https://project-registry.example.com"
 	})
 
 	t.Run("defaults when no config exists", func(t *testing.T) {
+		t.Parallel()
 		cfg, err := Load(nil)
 		require.NoError(t, err)
 
@@ -241,65 +249,80 @@ func TestEnvironmentVariables(t *testing.T) {
 }
 
 func TestIsOffline(t *testing.T) {
+	t.Parallel()
 	t.Run("returns true for offline mode", func(t *testing.T) {
+		t.Parallel()
 		cfg := &Config{Network: NetworkConfig{Mode: NetworkModeOffline}}
 		assert.True(t, cfg.IsOffline())
 	})
 
 	t.Run("returns false for online mode", func(t *testing.T) {
+		t.Parallel()
 		cfg := &Config{Network: NetworkConfig{Mode: NetworkModeOnline}}
 		assert.False(t, cfg.IsOffline())
 	})
 
 	t.Run("returns false for prefer-offline mode", func(t *testing.T) {
+		t.Parallel()
 		cfg := &Config{Network: NetworkConfig{Mode: NetworkModePreferOffline}}
 		assert.False(t, cfg.IsOffline())
 	})
 }
 
 func TestIsPreferOffline(t *testing.T) {
+	t.Parallel()
 	t.Run("returns true for prefer-offline mode", func(t *testing.T) {
+		t.Parallel()
 		cfg := &Config{Network: NetworkConfig{Mode: NetworkModePreferOffline}}
 		assert.True(t, cfg.IsPreferOffline())
 	})
 
 	t.Run("returns false for online mode", func(t *testing.T) {
+		t.Parallel()
 		cfg := &Config{Network: NetworkConfig{Mode: NetworkModeOnline}}
 		assert.False(t, cfg.IsPreferOffline())
 	})
 
 	t.Run("returns false for offline mode", func(t *testing.T) {
+		t.Parallel()
 		cfg := &Config{Network: NetworkConfig{Mode: NetworkModeOffline}}
 		assert.False(t, cfg.IsPreferOffline())
 	})
 }
 
 func TestIsCommandDisabled(t *testing.T) {
+	t.Parallel()
 	t.Run("returns true for disabled command", func(t *testing.T) {
+		t.Parallel()
 		cfg := &Config{Commands: CommandsConfig{Disabled: []string{"audit", "search"}}}
 		assert.True(t, cfg.IsCommandDisabled("audit"))
 		assert.True(t, cfg.IsCommandDisabled("search"))
 	})
 
 	t.Run("returns false for enabled command", func(t *testing.T) {
+		t.Parallel()
 		cfg := &Config{Commands: CommandsConfig{Disabled: []string{"audit"}}}
 		assert.False(t, cfg.IsCommandDisabled("sync"))
 		assert.False(t, cfg.IsCommandDisabled("version"))
 	})
 
 	t.Run("returns false when no commands disabled", func(t *testing.T) {
+		t.Parallel()
 		cfg := &Config{Commands: CommandsConfig{}}
 		assert.False(t, cfg.IsCommandDisabled("audit"))
 	})
 }
 
 func TestGetRegistry(t *testing.T) {
+	t.Parallel()
 	t.Run("returns configured registry", func(t *testing.T) {
+		t.Parallel()
 		cfg := &Config{Network: NetworkConfig{Registry: "https://custom.example.com"}}
 		assert.Equal(t, "https://custom.example.com", cfg.GetRegistry())
 	})
 
 	t.Run("returns default registry when empty", func(t *testing.T) {
+		t.Parallel()
 		cfg := &Config{}
 		cfg.applyDefaults()
 		assert.Equal(t, "https://bcr.bazel.build", cfg.GetRegistry())
@@ -307,13 +330,16 @@ func TestGetRegistry(t *testing.T) {
 }
 
 func TestNetworkModeConstants(t *testing.T) {
+	t.Parallel()
 	assert.Equal(t, NetworkMode("online"), NetworkModeOnline)
 	assert.Equal(t, NetworkMode("prefer-offline"), NetworkModePreferOffline)
 	assert.Equal(t, NetworkMode("offline"), NetworkModeOffline)
 }
 
 func TestLoadWithSystemConfig(t *testing.T) {
+	t.Parallel()
 	t.Run("system config is lowest priority file config", func(t *testing.T) {
+		t.Parallel()
 		tmpDir := t.TempDir()
 
 		systemConfig := filepath.Join(tmpDir, "system-config.toml")
@@ -353,7 +379,9 @@ mode = "online"
 }
 
 func TestDefaultCacheDir(t *testing.T) {
+	t.Parallel()
 	t.Run("default cache dir uses home directory", func(t *testing.T) {
+		t.Parallel()
 		cfg, err := Load(nil)
 		require.NoError(t, err)
 

@@ -7,7 +7,9 @@ import (
 )
 
 func TestToStarlark(t *testing.T) {
+	t.Parallel()
 	t.Run("converts nil to None", func(t *testing.T) {
+		t.Parallel()
 		v, err := ToStarlark(nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -18,6 +20,7 @@ func TestToStarlark(t *testing.T) {
 	})
 
 	t.Run("converts string", func(t *testing.T) {
+		t.Parallel()
 		v, err := ToStarlark("hello")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -32,6 +35,7 @@ func TestToStarlark(t *testing.T) {
 	})
 
 	t.Run("converts bool", func(t *testing.T) {
+		t.Parallel()
 		v, err := ToStarlark(true)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -42,6 +46,7 @@ func TestToStarlark(t *testing.T) {
 	})
 
 	t.Run("converts int", func(t *testing.T) {
+		t.Parallel()
 		v, err := ToStarlark(42)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -57,6 +62,7 @@ func TestToStarlark(t *testing.T) {
 	})
 
 	t.Run("converts int64", func(t *testing.T) {
+		t.Parallel()
 		v, err := ToStarlark(int64(9999999999))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -72,6 +78,7 @@ func TestToStarlark(t *testing.T) {
 	})
 
 	t.Run("converts float64", func(t *testing.T) {
+		t.Parallel()
 		v, err := ToStarlark(3.14)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -86,6 +93,7 @@ func TestToStarlark(t *testing.T) {
 	})
 
 	t.Run("converts string slice", func(t *testing.T) {
+		t.Parallel()
 		v, err := ToStarlark([]string{"a", "b", "c"})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -100,6 +108,7 @@ func TestToStarlark(t *testing.T) {
 	})
 
 	t.Run("converts int slice", func(t *testing.T) {
+		t.Parallel()
 		v, err := ToStarlark([]int{1, 2, 3})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -114,6 +123,7 @@ func TestToStarlark(t *testing.T) {
 	})
 
 	t.Run("converts string map", func(t *testing.T) {
+		t.Parallel()
 		v, err := ToStarlark(map[string]string{"key": "value"})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -128,6 +138,7 @@ func TestToStarlark(t *testing.T) {
 	})
 
 	t.Run("converts nested structure", func(t *testing.T) {
+		t.Parallel()
 		v, err := ToStarlark(map[string]any{
 			"strings": []string{"a", "b"},
 			"number":  42,
@@ -145,6 +156,7 @@ func TestToStarlark(t *testing.T) {
 	})
 
 	t.Run("passes through starlark values", func(t *testing.T) {
+		t.Parallel()
 		original := starlark.String("already starlark")
 		v, err := ToStarlark(original)
 		if err != nil {
@@ -156,6 +168,7 @@ func TestToStarlark(t *testing.T) {
 	})
 
 	t.Run("converts nil pointer to None", func(t *testing.T) {
+		t.Parallel()
 		var ptr *string
 		v, err := ToStarlark(ptr)
 		if err != nil {
@@ -167,6 +180,7 @@ func TestToStarlark(t *testing.T) {
 	})
 
 	t.Run("errors on unsupported type", func(t *testing.T) {
+		t.Parallel()
 		_, err := ToStarlark(make(chan int))
 		if err == nil {
 			t.Error("expected error for unsupported type")
@@ -175,7 +189,9 @@ func TestToStarlark(t *testing.T) {
 }
 
 func TestFromStarlark(t *testing.T) {
+	t.Parallel()
 	t.Run("converts to string", func(t *testing.T) {
+		t.Parallel()
 		var s string
 		err := FromStarlark(starlark.String("hello"), &s)
 		if err != nil {
@@ -187,6 +203,7 @@ func TestFromStarlark(t *testing.T) {
 	})
 
 	t.Run("converts to bool", func(t *testing.T) {
+		t.Parallel()
 		var b bool
 		err := FromStarlark(starlark.True, &b)
 		if err != nil {
@@ -198,6 +215,7 @@ func TestFromStarlark(t *testing.T) {
 	})
 
 	t.Run("converts to int", func(t *testing.T) {
+		t.Parallel()
 		var i int
 		err := FromStarlark(starlark.MakeInt(42), &i)
 		if err != nil {
@@ -209,6 +227,7 @@ func TestFromStarlark(t *testing.T) {
 	})
 
 	t.Run("converts to int64", func(t *testing.T) {
+		t.Parallel()
 		var i int64
 		err := FromStarlark(starlark.MakeInt64(9999999999), &i)
 		if err != nil {
@@ -220,6 +239,7 @@ func TestFromStarlark(t *testing.T) {
 	})
 
 	t.Run("converts to float64 from Float", func(t *testing.T) {
+		t.Parallel()
 		var f float64
 		err := FromStarlark(starlark.Float(3.14), &f)
 		if err != nil {
@@ -231,6 +251,7 @@ func TestFromStarlark(t *testing.T) {
 	})
 
 	t.Run("converts to float64 from Int", func(t *testing.T) {
+		t.Parallel()
 		var f float64
 		err := FromStarlark(starlark.MakeInt(42), &f)
 		if err != nil {
@@ -242,6 +263,7 @@ func TestFromStarlark(t *testing.T) {
 	})
 
 	t.Run("converts to string slice", func(t *testing.T) {
+		t.Parallel()
 		list := starlark.NewList([]starlark.Value{
 			starlark.String("a"),
 			starlark.String("b"),
@@ -257,6 +279,7 @@ func TestFromStarlark(t *testing.T) {
 	})
 
 	t.Run("converts to interface slice", func(t *testing.T) {
+		t.Parallel()
 		list := starlark.NewList([]starlark.Value{
 			starlark.String("a"),
 			starlark.MakeInt(42),
@@ -278,6 +301,7 @@ func TestFromStarlark(t *testing.T) {
 	})
 
 	t.Run("converts to string map", func(t *testing.T) {
+		t.Parallel()
 		dict := starlark.NewDict(1)
 		_ = dict.SetKey(starlark.String("key"), starlark.String("value"))
 
@@ -292,6 +316,7 @@ func TestFromStarlark(t *testing.T) {
 	})
 
 	t.Run("converts to interface map", func(t *testing.T) {
+		t.Parallel()
 		dict := starlark.NewDict(2)
 		_ = dict.SetKey(starlark.String("str"), starlark.String("value"))
 		_ = dict.SetKey(starlark.String("num"), starlark.MakeInt(42))
@@ -310,6 +335,7 @@ func TestFromStarlark(t *testing.T) {
 	})
 
 	t.Run("converts to starlark.Value", func(t *testing.T) {
+		t.Parallel()
 		original := starlark.String("test")
 		var v starlark.Value
 		err := FromStarlark(original, &v)
@@ -322,6 +348,7 @@ func TestFromStarlark(t *testing.T) {
 	})
 
 	t.Run("errors on type mismatch", func(t *testing.T) {
+		t.Parallel()
 		var s string
 		err := FromStarlark(starlark.MakeInt(42), &s)
 		if err == nil {
@@ -330,6 +357,7 @@ func TestFromStarlark(t *testing.T) {
 	})
 
 	t.Run("errors on nil destination", func(t *testing.T) {
+		t.Parallel()
 		err := FromStarlark(starlark.String("test"), nil)
 		if err == nil {
 			t.Error("expected error for nil destination")
@@ -337,6 +365,7 @@ func TestFromStarlark(t *testing.T) {
 	})
 
 	t.Run("errors on non-pointer destination", func(t *testing.T) {
+		t.Parallel()
 		var s string
 		err := FromStarlark(starlark.String("test"), s)
 		if err == nil {
@@ -346,7 +375,9 @@ func TestFromStarlark(t *testing.T) {
 }
 
 func TestMustString(t *testing.T) {
+	t.Parallel()
 	t.Run("extracts string", func(t *testing.T) {
+		t.Parallel()
 		s, err := MustString(starlark.String("hello"))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -357,6 +388,7 @@ func TestMustString(t *testing.T) {
 	})
 
 	t.Run("errors on non-string", func(t *testing.T) {
+		t.Parallel()
 		_, err := MustString(starlark.MakeInt(42))
 		if err == nil {
 			t.Error("expected error for non-string")
@@ -365,7 +397,9 @@ func TestMustString(t *testing.T) {
 }
 
 func TestMustStringList(t *testing.T) {
+	t.Parallel()
 	t.Run("extracts string list", func(t *testing.T) {
+		t.Parallel()
 		list := starlark.NewList([]starlark.Value{
 			starlark.String("a"),
 			starlark.String("b"),
@@ -380,6 +414,7 @@ func TestMustStringList(t *testing.T) {
 	})
 
 	t.Run("errors on non-list", func(t *testing.T) {
+		t.Parallel()
 		_, err := MustStringList(starlark.String("not a list"))
 		if err == nil {
 			t.Error("expected error for non-list")
@@ -387,6 +422,7 @@ func TestMustStringList(t *testing.T) {
 	})
 
 	t.Run("errors on non-string element", func(t *testing.T) {
+		t.Parallel()
 		list := starlark.NewList([]starlark.Value{
 			starlark.String("a"),
 			starlark.MakeInt(42),
@@ -399,7 +435,9 @@ func TestMustStringList(t *testing.T) {
 }
 
 func TestMustStringDict(t *testing.T) {
+	t.Parallel()
 	t.Run("extracts string dict", func(t *testing.T) {
+		t.Parallel()
 		dict := starlark.NewDict(1)
 		_ = dict.SetKey(starlark.String("key"), starlark.String("value"))
 
@@ -413,6 +451,7 @@ func TestMustStringDict(t *testing.T) {
 	})
 
 	t.Run("errors on non-dict", func(t *testing.T) {
+		t.Parallel()
 		_, err := MustStringDict(starlark.String("not a dict"))
 		if err == nil {
 			t.Error("expected error for non-dict")
@@ -420,6 +459,7 @@ func TestMustStringDict(t *testing.T) {
 	})
 
 	t.Run("errors on non-string key", func(t *testing.T) {
+		t.Parallel()
 		dict := starlark.NewDict(1)
 		_ = dict.SetKey(starlark.MakeInt(42), starlark.String("value"))
 
@@ -430,6 +470,7 @@ func TestMustStringDict(t *testing.T) {
 	})
 
 	t.Run("errors on non-string value", func(t *testing.T) {
+		t.Parallel()
 		dict := starlark.NewDict(1)
 		_ = dict.SetKey(starlark.String("key"), starlark.MakeInt(42))
 
@@ -441,7 +482,9 @@ func TestMustStringDict(t *testing.T) {
 }
 
 func TestMustBool(t *testing.T) {
+	t.Parallel()
 	t.Run("extracts true", func(t *testing.T) {
+		t.Parallel()
 		b, err := MustBool(starlark.True)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -452,6 +495,7 @@ func TestMustBool(t *testing.T) {
 	})
 
 	t.Run("extracts false", func(t *testing.T) {
+		t.Parallel()
 		b, err := MustBool(starlark.False)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -462,6 +506,7 @@ func TestMustBool(t *testing.T) {
 	})
 
 	t.Run("errors on non-bool", func(t *testing.T) {
+		t.Parallel()
 		_, err := MustBool(starlark.String("true"))
 		if err == nil {
 			t.Error("expected error for non-bool")
@@ -470,7 +515,9 @@ func TestMustBool(t *testing.T) {
 }
 
 func TestMustInt(t *testing.T) {
+	t.Parallel()
 	t.Run("extracts int", func(t *testing.T) {
+		t.Parallel()
 		i, err := MustInt(starlark.MakeInt(42))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -481,6 +528,7 @@ func TestMustInt(t *testing.T) {
 	})
 
 	t.Run("errors on non-int", func(t *testing.T) {
+		t.Parallel()
 		_, err := MustInt(starlark.String("42"))
 		if err == nil {
 			t.Error("expected error for non-int")
@@ -489,7 +537,9 @@ func TestMustInt(t *testing.T) {
 }
 
 func TestMustFloat(t *testing.T) {
+	t.Parallel()
 	t.Run("extracts float", func(t *testing.T) {
+		t.Parallel()
 		f, err := MustFloat(starlark.Float(3.14))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -500,6 +550,7 @@ func TestMustFloat(t *testing.T) {
 	})
 
 	t.Run("extracts float from int", func(t *testing.T) {
+		t.Parallel()
 		f, err := MustFloat(starlark.MakeInt(42))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -510,6 +561,7 @@ func TestMustFloat(t *testing.T) {
 	})
 
 	t.Run("errors on non-numeric", func(t *testing.T) {
+		t.Parallel()
 		_, err := MustFloat(starlark.String("3.14"))
 		if err == nil {
 			t.Error("expected error for non-numeric")
@@ -518,7 +570,9 @@ func TestMustFloat(t *testing.T) {
 }
 
 func TestNewStruct(t *testing.T) {
+	t.Parallel()
 	t.Run("creates struct with attributes", func(t *testing.T) {
+		t.Parallel()
 		s := NewStruct(map[string]starlark.Value{
 			"name":  starlark.String("test"),
 			"count": starlark.MakeInt(42),
@@ -535,7 +589,9 @@ func TestNewStruct(t *testing.T) {
 }
 
 func TestNewNamedStruct(t *testing.T) {
+	t.Parallel()
 	t.Run("creates named struct", func(t *testing.T) {
+		t.Parallel()
 		s := NewNamedStruct("my_type", map[string]starlark.Value{
 			"data": starlark.String("value"),
 		})

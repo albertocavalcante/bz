@@ -7,7 +7,9 @@ import (
 )
 
 func TestUnpacker_Required(t *testing.T) {
+	t.Parallel()
 	t.Run("unpacks required positional string", func(t *testing.T) {
+		t.Parallel()
 		args := starlark.Tuple{starlark.String("hello")}
 		u := NewUnpacker("test_fn", args, nil)
 
@@ -21,6 +23,7 @@ func TestUnpacker_Required(t *testing.T) {
 	})
 
 	t.Run("unpacks required kwarg string", func(t *testing.T) {
+		t.Parallel()
 		kwargs := []starlark.Tuple{
 			{starlark.String("name"), starlark.String("world")},
 		}
@@ -36,6 +39,7 @@ func TestUnpacker_Required(t *testing.T) {
 	})
 
 	t.Run("returns error for missing required arg", func(t *testing.T) {
+		t.Parallel()
 		u := NewUnpacker("test_fn", nil, nil)
 
 		var s string
@@ -49,6 +53,7 @@ func TestUnpacker_Required(t *testing.T) {
 	})
 
 	t.Run("returns error for wrong type", func(t *testing.T) {
+		t.Parallel()
 		args := starlark.Tuple{starlark.MakeInt(42)}
 		u := NewUnpacker("test_fn", args, nil)
 
@@ -60,6 +65,7 @@ func TestUnpacker_Required(t *testing.T) {
 	})
 
 	t.Run("unpacks required int", func(t *testing.T) {
+		t.Parallel()
 		args := starlark.Tuple{starlark.MakeInt(123)}
 		u := NewUnpacker("test_fn", args, nil)
 
@@ -73,6 +79,7 @@ func TestUnpacker_Required(t *testing.T) {
 	})
 
 	t.Run("unpacks required bool", func(t *testing.T) {
+		t.Parallel()
 		args := starlark.Tuple{starlark.True}
 		u := NewUnpacker("test_fn", args, nil)
 
@@ -86,6 +93,7 @@ func TestUnpacker_Required(t *testing.T) {
 	})
 
 	t.Run("unpacks required string list", func(t *testing.T) {
+		t.Parallel()
 		list := starlark.NewList([]starlark.Value{
 			starlark.String("a"),
 			starlark.String("b"),
@@ -104,6 +112,7 @@ func TestUnpacker_Required(t *testing.T) {
 	})
 
 	t.Run("unpacks required string dict", func(t *testing.T) {
+		t.Parallel()
 		dict := starlark.NewDict(2)
 		_ = dict.SetKey(starlark.String("key1"), starlark.String("value1"))
 		_ = dict.SetKey(starlark.String("key2"), starlark.String("value2"))
@@ -120,6 +129,7 @@ func TestUnpacker_Required(t *testing.T) {
 	})
 
 	t.Run("unpacks starlark.Value", func(t *testing.T) {
+		t.Parallel()
 		args := starlark.Tuple{starlark.String("anything")}
 		u := NewUnpacker("test_fn", args, nil)
 
@@ -134,7 +144,9 @@ func TestUnpacker_Required(t *testing.T) {
 }
 
 func TestUnpacker_Optional(t *testing.T) {
+	t.Parallel()
 	t.Run("unpacks optional positional arg", func(t *testing.T) {
+		t.Parallel()
 		args := starlark.Tuple{starlark.String("provided")}
 		u := NewUnpacker("test_fn", args, nil)
 
@@ -148,6 +160,7 @@ func TestUnpacker_Optional(t *testing.T) {
 	})
 
 	t.Run("uses default when arg missing", func(t *testing.T) {
+		t.Parallel()
 		u := NewUnpacker("test_fn", nil, nil)
 
 		var s string
@@ -160,6 +173,7 @@ func TestUnpacker_Optional(t *testing.T) {
 	})
 
 	t.Run("uses nil default for string", func(t *testing.T) {
+		t.Parallel()
 		u := NewUnpacker("test_fn", nil, nil)
 
 		var s string
@@ -172,6 +186,7 @@ func TestUnpacker_Optional(t *testing.T) {
 	})
 
 	t.Run("uses default int", func(t *testing.T) {
+		t.Parallel()
 		u := NewUnpacker("test_fn", nil, nil)
 
 		var i int
@@ -184,6 +199,7 @@ func TestUnpacker_Optional(t *testing.T) {
 	})
 
 	t.Run("uses default bool", func(t *testing.T) {
+		t.Parallel()
 		u := NewUnpacker("test_fn", nil, nil)
 
 		var b bool
@@ -196,6 +212,7 @@ func TestUnpacker_Optional(t *testing.T) {
 	})
 
 	t.Run("unpacks optional kwarg", func(t *testing.T) {
+		t.Parallel()
 		kwargs := []starlark.Tuple{
 			{starlark.String("timeout"), starlark.MakeInt(30)},
 		}
@@ -212,7 +229,9 @@ func TestUnpacker_Optional(t *testing.T) {
 }
 
 func TestUnpacker_Validate(t *testing.T) {
+	t.Parallel()
 	t.Run("passes validation with no extra args", func(t *testing.T) {
+		t.Parallel()
 		args := starlark.Tuple{starlark.String("a"), starlark.String("b")}
 		u := NewUnpacker("test_fn", args, nil)
 
@@ -226,6 +245,7 @@ func TestUnpacker_Validate(t *testing.T) {
 	})
 
 	t.Run("fails with unused positional args", func(t *testing.T) {
+		t.Parallel()
 		args := starlark.Tuple{starlark.String("a"), starlark.String("extra")}
 		u := NewUnpacker("test_fn", args, nil)
 
@@ -239,6 +259,7 @@ func TestUnpacker_Validate(t *testing.T) {
 	})
 
 	t.Run("fails with unknown kwargs", func(t *testing.T) {
+		t.Parallel()
 		kwargs := []starlark.Tuple{
 			{starlark.String("known"), starlark.String("value")},
 			{starlark.String("unknown"), starlark.String("value")},
@@ -259,7 +280,9 @@ func TestUnpacker_Validate(t *testing.T) {
 }
 
 func TestUnpacker_RemainingArgs(t *testing.T) {
+	t.Parallel()
 	t.Run("returns remaining positional args", func(t *testing.T) {
+		t.Parallel()
 		args := starlark.Tuple{
 			starlark.String("first"),
 			starlark.String("second"),
@@ -277,6 +300,7 @@ func TestUnpacker_RemainingArgs(t *testing.T) {
 	})
 
 	t.Run("returns nil when no remaining args", func(t *testing.T) {
+		t.Parallel()
 		args := starlark.Tuple{starlark.String("only")}
 		u := NewUnpacker("test_fn", args, nil)
 
@@ -291,7 +315,9 @@ func TestUnpacker_RemainingArgs(t *testing.T) {
 }
 
 func TestUnpacker_MixedArgs(t *testing.T) {
+	t.Parallel()
 	t.Run("handles positional and keyword args together", func(t *testing.T) {
+		t.Parallel()
 		args := starlark.Tuple{starlark.String("positional")}
 		kwargs := []starlark.Tuple{
 			{starlark.String("kwarg"), starlark.MakeInt(42)},

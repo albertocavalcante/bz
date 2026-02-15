@@ -12,6 +12,7 @@ import (
 )
 
 func TestSeverity_Order(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		severity Severity
 		order    int
@@ -25,12 +26,14 @@ func TestSeverity_Order(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(string(tt.severity), func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.order, tt.severity.Order())
 		})
 	}
 }
 
 func TestParseSeverity(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		input    string
 		expected Severity
@@ -51,12 +54,14 @@ func TestParseSeverity(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.expected, ParseSeverity(tt.input))
 		})
 	}
 }
 
 func TestScoreToSeverity(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		score    float64
 		expected Severity
@@ -74,12 +79,14 @@ func TestScoreToSeverity(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run("", func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.expected, scoreToSeverity(tt.score))
 		})
 	}
 }
 
 func TestHTTPClient_Query(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name        string
 		response    QueryResponse
@@ -155,6 +162,7 @@ func TestHTTPClient_Query(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				// Verify request
 				assert.Equal(t, http.MethodPost, r.Method)
@@ -194,6 +202,7 @@ func TestHTTPClient_Query(t *testing.T) {
 }
 
 func TestHTTPClient_Query_ParsesVulnerabilityDetails(t *testing.T) {
+	t.Parallel()
 	response := QueryResponse{
 		Vulns: []osvVuln{
 			{
@@ -247,6 +256,7 @@ func TestHTTPClient_Query_ParsesVulnerabilityDetails(t *testing.T) {
 }
 
 func TestHTTPClient_Query_SeverityParsing(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name        string
 		severities  []osvSeverity
@@ -296,6 +306,7 @@ func TestHTTPClient_Query_SeverityParsing(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			response := QueryResponse{
 				Vulns: []osvVuln{
 					{
@@ -321,6 +332,7 @@ func TestHTTPClient_Query_SeverityParsing(t *testing.T) {
 }
 
 func TestMockClient_Query(t *testing.T) {
+	t.Parallel()
 	mockVulns := []Vulnerability{
 		{
 			ID:       "GHSA-mock-1234",
@@ -349,6 +361,7 @@ func TestMockClient_Query(t *testing.T) {
 }
 
 func TestMockClient_Query_WithError(t *testing.T) {
+	t.Parallel()
 	client := &MockClient{
 		Error: assert.AnError,
 	}
@@ -359,6 +372,7 @@ func TestMockClient_Query_WithError(t *testing.T) {
 }
 
 func TestMockClient_Query_ByNameOnly(t *testing.T) {
+	t.Parallel()
 	mockVulns := []Vulnerability{
 		{ID: "GHSA-all-versions"},
 	}
@@ -376,6 +390,7 @@ func TestMockClient_Query_ByNameOnly(t *testing.T) {
 }
 
 func TestNewClient_Options(t *testing.T) {
+	t.Parallel()
 	customHTTP := &http.Client{}
 	customURL := "https://custom.osv.dev/api"
 
@@ -389,6 +404,7 @@ func TestNewClient_Options(t *testing.T) {
 }
 
 func TestNewClient_Defaults(t *testing.T) {
+	t.Parallel()
 	client := NewClient()
 
 	assert.Equal(t, DefaultAPIURL, client.apiURL)
@@ -396,6 +412,7 @@ func TestNewClient_Defaults(t *testing.T) {
 }
 
 func TestMapModuleToEcosystem(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		module    string
 		ecosystem string
@@ -432,6 +449,7 @@ func TestMapModuleToEcosystem(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.module, func(t *testing.T) {
+			t.Parallel()
 			eco, known := MapModuleToEcosystem(tt.module)
 			assert.Equal(t, tt.ecosystem, eco, "ecosystem mismatch for %s", tt.module)
 			assert.Equal(t, tt.known, known, "known mismatch for %s", tt.module)
@@ -440,7 +458,10 @@ func TestMapModuleToEcosystem(t *testing.T) {
 }
 
 func TestErrNoEcosystem(t *testing.T) {
+	t.Parallel(
 	// Unknown module
+	)
+
 	err := &ErrNoEcosystem{Module: "unknown_module"}
 	assert.Contains(t, err.Error(), "unknown module")
 	assert.Contains(t, err.Error(), "unknown_module")
@@ -453,7 +474,10 @@ func TestErrNoEcosystem(t *testing.T) {
 }
 
 func TestHTTPClient_Query_EcosystemMapping(t *testing.T) {
+	t.Parallel(
 	// Test that the client correctly maps modules to ecosystems
+	)
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req QueryRequest
 		json.NewDecoder(r.Body).Decode(&req)
@@ -473,6 +497,7 @@ func TestHTTPClient_Query_EcosystemMapping(t *testing.T) {
 }
 
 func TestHTTPClient_Query_UnknownModule(t *testing.T) {
+	t.Parallel()
 	client := NewClient()
 
 	// Unknown module should return ErrNoEcosystem
@@ -486,6 +511,7 @@ func TestHTTPClient_Query_UnknownModule(t *testing.T) {
 }
 
 func TestHTTPClient_Query_KnownModuleNoOSV(t *testing.T) {
+	t.Parallel()
 	client := NewClient()
 
 	// rules_cc is known but has no OSV equivalent
@@ -499,7 +525,10 @@ func TestHTTPClient_Query_KnownModuleNoOSV(t *testing.T) {
 }
 
 func TestHTTPClient_Query_ExplicitEcosystem(t *testing.T) {
+	t.Parallel(
 	// Test that explicit ecosystem overrides mapping
+	)
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req QueryRequest
 		json.NewDecoder(r.Body).Decode(&req)

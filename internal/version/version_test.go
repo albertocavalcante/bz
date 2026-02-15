@@ -5,6 +5,7 @@ import (
 )
 
 func TestParse(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		input string
 		want  *SemVer
@@ -26,6 +27,7 @@ func TestParse(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
+			t.Parallel()
 			got := Parse(tt.input)
 			if tt.want == nil {
 				if got != nil {
@@ -50,6 +52,7 @@ func TestParse(t *testing.T) {
 }
 
 func TestCompare(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		a, b string
 		want int
@@ -79,6 +82,7 @@ func TestCompare(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.a+"_vs_"+tt.b, func(t *testing.T) {
+			t.Parallel()
 			semA := Parse(tt.a)
 			semB := Parse(tt.b)
 			if semA == nil || semB == nil {
@@ -93,6 +97,7 @@ func TestCompare(t *testing.T) {
 }
 
 func TestCompareStrings(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		a, b string
 		want int
@@ -114,6 +119,7 @@ func TestCompareStrings(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.a+"_vs_"+tt.b, func(t *testing.T) {
+			t.Parallel()
 			got := CompareStrings(tt.a, tt.b)
 			if got != tt.want {
 				t.Errorf("CompareStrings(%q, %q) = %d, want %d", tt.a, tt.b, got, tt.want)
@@ -123,6 +129,7 @@ func TestCompareStrings(t *testing.T) {
 }
 
 func TestClassifyUpdate(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		current, latest string
 		want            UpdateType
@@ -160,6 +167,7 @@ func TestClassifyUpdate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.current+"_to_"+tt.latest, func(t *testing.T) {
+			t.Parallel()
 			got := ClassifyUpdate(tt.current, tt.latest)
 			if got != tt.want {
 				t.Errorf("ClassifyUpdate(%q, %q) = %v, want %v", tt.current, tt.latest, got, tt.want)
@@ -169,6 +177,7 @@ func TestClassifyUpdate(t *testing.T) {
 }
 
 func TestUpdateTypeString(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		ut   UpdateType
 		want string
@@ -182,6 +191,7 @@ func TestUpdateTypeString(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.want, func(t *testing.T) {
+			t.Parallel()
 			if got := tt.ut.String(); got != tt.want {
 				t.Errorf("UpdateType.String() = %q, want %q", got, tt.want)
 			}

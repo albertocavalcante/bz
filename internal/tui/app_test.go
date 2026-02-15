@@ -33,8 +33,10 @@ func testModuleFile(name, version string, deps ...struct{ name, ver string }) *m
 }
 
 func TestApp_WindowSizeMsg_BeforeListInitialized(t *testing.T) {
+	t.Parallel(
 	// This test ensures we don't panic when WindowSizeMsg arrives
 	// before the list model is initialized (during StateLoading)
+	)
 
 	app := NewApp()
 
@@ -67,6 +69,7 @@ func TestApp_WindowSizeMsg_BeforeListInitialized(t *testing.T) {
 }
 
 func TestApp_WindowSizeMsg_AfterListInitialized(t *testing.T) {
+	t.Parallel()
 	app := NewApp()
 
 	// Simulate DepsListedMsg to initialize the list
@@ -97,6 +100,7 @@ func TestApp_WindowSizeMsg_AfterListInitialized(t *testing.T) {
 }
 
 func TestApp_DepsListedMsg_AppliesStoredDimensions(t *testing.T) {
+	t.Parallel()
 	app := NewApp()
 
 	// First, send WindowSizeMsg to store dimensions
@@ -126,6 +130,7 @@ func TestApp_DepsListedMsg_AppliesStoredDimensions(t *testing.T) {
 }
 
 func TestApp_ErrMsg_TransitionsToErrorState(t *testing.T) {
+	t.Parallel()
 	app := NewApp()
 
 	errMsg := ErrMsg{Err: errTest}

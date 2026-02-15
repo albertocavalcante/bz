@@ -8,6 +8,7 @@ import (
 )
 
 func TestSearch(t *testing.T) {
+	t.Parallel()
 	root := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{
 		"rules_go": {
 			Versions:       []string{"0.49.0", "0.50.0", "0.51.0-rc1"},
@@ -57,6 +58,7 @@ func TestSearch(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			results, err := Search(ctx, reg, tt.query)
 			if err != nil {
 				t.Fatalf("Search() error = %v", err)
@@ -81,6 +83,7 @@ func TestSearch(t *testing.T) {
 }
 
 func TestSearch_Relevance(t *testing.T) {
+	t.Parallel()
 	root := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{
 		"grpc_rules":  {Versions: []string{"1.0.0"}},
 		"rules_grpc":  {Versions: []string{"1.0.0"}},

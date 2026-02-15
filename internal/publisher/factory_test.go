@@ -8,6 +8,7 @@ import (
 )
 
 func TestNew_FileRegistry(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 
 	reg := &modules.RegistryValue{
@@ -27,6 +28,7 @@ func TestNew_FileRegistry(t *testing.T) {
 }
 
 func TestNew_HTTPPutRegistry(t *testing.T) {
+	t.Parallel()
 	reg := &modules.RegistryValue{
 		Kind: modules.RegistryTypeHTTPPut,
 		URL:  "https://example.com/registry",
@@ -44,6 +46,7 @@ func TestNew_HTTPPutRegistry(t *testing.T) {
 }
 
 func TestNew_HTTPPutRegistryWithAuth(t *testing.T) {
+	t.Parallel()
 	auth := &modules.AuthValue{
 		Kind:     modules.AuthTypeBasic,
 		Username: "user",
@@ -68,7 +71,10 @@ func TestNew_HTTPPutRegistryWithAuth(t *testing.T) {
 }
 
 func TestNew_GitRegistry(t *testing.T) {
+	t.Parallel(
 	// Skip if git is not available
+	)
+
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not available, skipping test")
 	}
@@ -94,7 +100,10 @@ func TestNew_GitRegistry(t *testing.T) {
 }
 
 func TestNew_GitRegistryDefaultBranch(t *testing.T) {
+	t.Parallel(
 	// Skip if git is not available
+	)
+
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not available, skipping test")
 	}
@@ -120,6 +129,7 @@ func TestNew_GitRegistryDefaultBranch(t *testing.T) {
 }
 
 func TestNew_HTTPRegistryNotSupported(t *testing.T) {
+	t.Parallel()
 	reg := &modules.RegistryValue{
 		Kind: modules.RegistryTypeHTTP,
 		URL:  "https://bcr.bazel.build",
@@ -132,6 +142,7 @@ func TestNew_HTTPRegistryNotSupported(t *testing.T) {
 }
 
 func TestNew_NilRegistry(t *testing.T) {
+	t.Parallel()
 	_, err := New(nil)
 	if err == nil {
 		t.Error("New() expected error for nil registry")
@@ -139,6 +150,7 @@ func TestNew_NilRegistry(t *testing.T) {
 }
 
 func TestNew_UnknownType(t *testing.T) {
+	t.Parallel()
 	reg := &modules.RegistryValue{
 		Kind: "unknown",
 		URL:  "https://example.com",

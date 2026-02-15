@@ -5,6 +5,7 @@ import (
 )
 
 func TestNew(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name         string
 		url          string
@@ -82,6 +83,7 @@ func TestNew(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			reg, err := New(tt.url)
 
 			if tt.wantErr {
@@ -103,6 +105,7 @@ func TestNew(t *testing.T) {
 }
 
 func TestDefaultRegistry(t *testing.T) {
+	t.Parallel()
 	reg := Default()
 	if reg.Type() != TypeHTTPS {
 		t.Errorf("Default().Type() = %q, want %q", reg.Type(), TypeHTTPS)
@@ -113,7 +116,9 @@ func TestDefaultRegistry(t *testing.T) {
 }
 
 func TestNewWithOptions(t *testing.T) {
+	t.Parallel()
 	t.Run("https with cache", func(t *testing.T) {
+		t.Parallel()
 		cacheDir := t.TempDir()
 		reg, err := NewWithOptions("https://bcr.bazel.build", WithCacheDir(cacheDir))
 		if err != nil {
@@ -125,6 +130,7 @@ func TestNewWithOptions(t *testing.T) {
 	})
 
 	t.Run("file registry", func(t *testing.T) {
+		t.Parallel()
 		reg, err := NewWithOptions("file:///path/to/registry")
 		if err != nil {
 			t.Fatalf("NewWithOptions() error = %v", err)
@@ -135,6 +141,7 @@ func TestNewWithOptions(t *testing.T) {
 	})
 
 	t.Run("windows path", func(t *testing.T) {
+		t.Parallel()
 		reg, err := NewWithOptions(`C:\path\to\registry`)
 		if err != nil {
 			t.Fatalf("NewWithOptions() error = %v", err)
@@ -145,6 +152,7 @@ func TestNewWithOptions(t *testing.T) {
 	})
 
 	t.Run("invalid url", func(t *testing.T) {
+		t.Parallel()
 		_, err := NewWithOptions("invalid://url")
 		if err == nil {
 			t.Error("expected error for invalid URL")
@@ -153,6 +161,7 @@ func TestNewWithOptions(t *testing.T) {
 }
 
 func TestIsWindowsAbsolutePath(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		path string
 		want bool
@@ -187,6 +196,7 @@ func TestIsWindowsAbsolutePath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.path, func(t *testing.T) {
+			t.Parallel()
 			got := isWindowsAbsolutePath(tt.path)
 			if got != tt.want {
 				t.Errorf("isWindowsAbsolutePath(%q) = %v, want %v", tt.path, got, tt.want)

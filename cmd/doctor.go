@@ -92,10 +92,7 @@ func init() {
 }
 
 func runDoctor(cmd *cobra.Command, args []string) error {
-	ctx := cmd.Context()
-	if ctx == nil {
-		ctx = context.Background()
-	}
+	ctx := cmdContext(cmd)
 
 	out := cmd.OutOrStdout()
 

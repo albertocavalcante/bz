@@ -11,6 +11,7 @@ import (
 )
 
 func TestAll(t *testing.T) {
+	t.Parallel()
 	all := All()
 
 	assert.Contains(t, all, "glob")
@@ -20,6 +21,7 @@ func TestAll(t *testing.T) {
 }
 
 func TestGlob(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		candidates []string
@@ -85,6 +87,7 @@ func TestGlob(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			thread := &starlark.Thread{Name: "test"}
 
 			// Set up matcher if candidates are provided
@@ -119,13 +122,16 @@ func TestGlob(t *testing.T) {
 }
 
 func TestGlobMatcher(t *testing.T) {
+	t.Parallel()
 	t.Run("static matcher", func(t *testing.T) {
+		t.Parallel()
 		items := []string{"a", "b", "c"}
 		matcher := NewStaticMatcher(items)
 		assert.Equal(t, items, matcher.Candidates())
 	})
 
 	t.Run("set and get matcher", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		matcher := NewStaticMatcher([]string{"x"})
 
@@ -136,6 +142,7 @@ func TestGlobMatcher(t *testing.T) {
 	})
 
 	t.Run("get matcher when not set", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		assert.Nil(t, GetGlobMatcher(thread))
 	})
@@ -220,7 +227,9 @@ func TestEnv(t *testing.T) {
 }
 
 func TestEnvAllowedPrefixes(t *testing.T) {
+	t.Parallel()
 	t.Run("set and get prefixes", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		prefixes := []string{"BZ_", "BAZEL_"}
 
@@ -231,12 +240,14 @@ func TestEnvAllowedPrefixes(t *testing.T) {
 	})
 
 	t.Run("get prefixes when not set", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		assert.Nil(t, GetEnvAllowedPrefixes(thread))
 	})
 }
 
 func TestPrint(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		code     string
@@ -266,6 +277,7 @@ func TestPrint(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			thread := &starlark.Thread{Name: "test"}
 
 			var captured string
@@ -326,6 +338,7 @@ func TestPrintFunc(t *testing.T) {
 }
 
 func TestFail(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		code     string
@@ -355,6 +368,7 @@ func TestFail(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			thread := &starlark.Thread{Name: "test"}
 			globals := starlark.StringDict{"fail": Fail}
 
@@ -371,19 +385,24 @@ func TestFail(t *testing.T) {
 }
 
 func TestIsFailError(t *testing.T) {
+	t.Parallel()
 	t.Run("is fail error", func(t *testing.T) {
+		t.Parallel()
 		err := &FailError{Message: "test"}
 		assert.True(t, IsFailError(err))
 	})
 
 	t.Run("is not fail error", func(t *testing.T) {
+		t.Parallel()
 		err := errors.New("regular error")
 		assert.False(t, IsFailError(err))
 	})
 }
 
 func TestStruct(t *testing.T) {
+	t.Parallel()
 	t.Run("NewStruct", func(t *testing.T) {
+		t.Parallel()
 		s := NewStruct("module", map[string]starlark.Value{
 			"name":    starlark.String("rules_go"),
 			"version": starlark.String("0.50.0"),
@@ -399,6 +418,7 @@ func TestStruct(t *testing.T) {
 	})
 
 	t.Run("StructBuilder", func(t *testing.T) {
+		t.Parallel()
 		s := NewStructBuilder("config").
 			Set("name", "test").
 			Set("count", 42).
@@ -422,6 +442,7 @@ func TestStruct(t *testing.T) {
 	})
 
 	t.Run("StructBuilder SetValue", func(t *testing.T) {
+		t.Parallel()
 		nested := NewStruct("inner", map[string]starlark.Value{
 			"x": starlark.MakeInt(1),
 		})
@@ -436,6 +457,7 @@ func TestStruct(t *testing.T) {
 }
 
 func TestToStarlarkValue(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		input    any
@@ -452,12 +474,14 @@ func TestToStarlarkValue(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result := ToStarlarkValue(tt.input)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
 
 	t.Run("string slice", func(t *testing.T) {
+		t.Parallel()
 		result := ToStarlarkValue([]string{"a", "b"})
 		list := result.(*starlark.List)
 		assert.Equal(t, 2, list.Len())
@@ -466,12 +490,14 @@ func TestToStarlarkValue(t *testing.T) {
 	})
 
 	t.Run("interface slice", func(t *testing.T) {
+		t.Parallel()
 		result := ToStarlarkValue([]any{"a", 1, true})
 		list := result.(*starlark.List)
 		assert.Equal(t, 3, list.Len())
 	})
 
 	t.Run("map", func(t *testing.T) {
+		t.Parallel()
 		result := ToStarlarkValue(map[string]any{
 			"key": "value",
 		})
@@ -482,6 +508,7 @@ func TestToStarlarkValue(t *testing.T) {
 	})
 
 	t.Run("starlark value passthrough", func(t *testing.T) {
+		t.Parallel()
 		original := starlark.String("test")
 		result := ToStarlarkValue(original)
 		assert.Equal(t, original, result)
@@ -489,6 +516,7 @@ func TestToStarlarkValue(t *testing.T) {
 }
 
 func TestFromStarlarkValue(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		input    starlark.Value
@@ -504,12 +532,14 @@ func TestFromStarlarkValue(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result := FromStarlarkValue(tt.input)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
 
 	t.Run("list", func(t *testing.T) {
+		t.Parallel()
 		list := starlark.NewList([]starlark.Value{
 			starlark.String("a"),
 			starlark.MakeInt(1),
@@ -521,6 +551,7 @@ func TestFromStarlarkValue(t *testing.T) {
 	})
 
 	t.Run("dict", func(t *testing.T) {
+		t.Parallel()
 		dict := starlark.NewDict(1)
 		_ = dict.SetKey(starlark.String("key"), starlark.String("value"))
 
@@ -528,4 +559,412 @@ func TestFromStarlarkValue(t *testing.T) {
 		m := result.(map[string]any)
 		assert.Equal(t, "value", m["key"])
 	})
+}
+
+// --- Additional edge case tests ---
+
+func TestGlob_MissingIncludeArg(t *testing.T) {
+	t.Parallel()
+
+	thread := &starlark.Thread{Name: "test"}
+	SetGlobMatcher(thread, NewStaticMatcher([]string{"a", "b"}))
+
+	globals := starlark.StringDict{"glob": Glob}
+
+	// Calling glob() without include argument should fail
+	_, err := starlark.Eval(thread, "test.star", `glob()`, globals)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "include")
+}
+
+func TestGlob_WrongTypeForInclude(t *testing.T) {
+	t.Parallel()
+
+	thread := &starlark.Thread{Name: "test"}
+	SetGlobMatcher(thread, NewStaticMatcher([]string{"a"}))
+
+	globals := starlark.StringDict{"glob": Glob}
+
+	// Passing a string instead of list for include should fail
+	_, err := starlark.Eval(thread, "test.star", `glob("*.go")`, globals)
+	require.Error(t, err)
+}
+
+func TestGlob_NonStringInIncludeList(t *testing.T) {
+	t.Parallel()
+
+	thread := &starlark.Thread{Name: "test"}
+	SetGlobMatcher(thread, NewStaticMatcher([]string{"a"}))
+
+	globals := starlark.StringDict{"glob": Glob}
+
+	_, err := starlark.Eval(thread, "test.star", `glob([42])`, globals)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "include")
+}
+
+func TestGlob_NonStringInExcludeList(t *testing.T) {
+	t.Parallel()
+
+	thread := &starlark.Thread{Name: "test"}
+	SetGlobMatcher(thread, NewStaticMatcher([]string{"a"}))
+
+	globals := starlark.StringDict{"glob": Glob}
+
+	_, err := starlark.Eval(thread, "test.star", `glob(["*"], exclude=[42])`, globals)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "exclude")
+}
+
+func TestGlob_EmptyCandidates(t *testing.T) {
+	t.Parallel()
+
+	thread := &starlark.Thread{Name: "test"}
+	SetGlobMatcher(thread, NewStaticMatcher([]string{}))
+
+	globals := starlark.StringDict{"glob": Glob}
+
+	result, err := starlark.Eval(thread, "test.star", `glob(["*"])`, globals)
+	require.NoError(t, err)
+
+	list, ok := result.(*starlark.List)
+	require.True(t, ok)
+	assert.Equal(t, 0, list.Len())
+}
+
+func TestGlob_EmptyPatterns(t *testing.T) {
+	t.Parallel()
+
+	thread := &starlark.Thread{Name: "test"}
+	SetGlobMatcher(thread, NewStaticMatcher([]string{"a", "b", "c"}))
+
+	globals := starlark.StringDict{"glob": Glob}
+
+	result, err := starlark.Eval(thread, "test.star", `glob([])`, globals)
+	require.NoError(t, err)
+
+	list, ok := result.(*starlark.List)
+	require.True(t, ok)
+	assert.Equal(t, 0, list.Len())
+}
+
+func TestGlob_ExcludeAll(t *testing.T) {
+	t.Parallel()
+
+	thread := &starlark.Thread{Name: "test"}
+	SetGlobMatcher(thread, NewStaticMatcher([]string{"a.go", "b.go"}))
+
+	globals := starlark.StringDict{"glob": Glob}
+
+	result, err := starlark.Eval(thread, "test.star", `glob(["*.go"], exclude=["*.go"])`, globals)
+	require.NoError(t, err)
+
+	list, ok := result.(*starlark.List)
+	require.True(t, ok)
+	assert.Equal(t, 0, list.Len())
+}
+
+func TestEnv_MissingNameArg(t *testing.T) {
+	t.Parallel()
+
+	thread := &starlark.Thread{Name: "test"}
+	globals := starlark.StringDict{"env": Env}
+
+	_, err := starlark.Eval(thread, "test.star", `env()`, globals)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "name")
+}
+
+func TestEnv_WrongNameType(t *testing.T) {
+	t.Parallel()
+
+	thread := &starlark.Thread{Name: "test"}
+	globals := starlark.StringDict{"env": Env}
+
+	_, err := starlark.Eval(thread, "test.star", `env(42)`, globals)
+	require.Error(t, err)
+}
+
+func TestEnv_NonStringDefault(t *testing.T) {
+	// env() should accept non-string defaults because the default kwarg is
+	// typed as starlark.Value
+	t.Parallel()
+
+	thread := &starlark.Thread{Name: "test"}
+	globals := starlark.StringDict{"env": Env}
+
+	result, err := starlark.Eval(thread, "test.star", `env("BZ_VERY_UNLIKELY_SET_VAR_XYZ123", default=42)`, globals)
+	require.NoError(t, err)
+	i, ok := result.(starlark.Int)
+	require.True(t, ok)
+	v, _ := i.Int64()
+	assert.Equal(t, int64(42), v)
+}
+
+func TestEnv_MultiplePrefixesAllowed(t *testing.T) {
+	t.Setenv("BAZEL_TEST_KEY", "bazel_val")
+
+	thread := &starlark.Thread{Name: "test"}
+	SetEnvAllowedPrefixes(thread, []string{"BZ_", "BAZEL_"})
+
+	globals := starlark.StringDict{"env": Env}
+
+	result, err := starlark.Eval(thread, "test.star", `env("BAZEL_TEST_KEY")`, globals)
+	require.NoError(t, err)
+
+	s, ok := starlark.AsString(result)
+	require.True(t, ok)
+	assert.Equal(t, "bazel_val", s)
+}
+
+func TestEnv_NoPrefixes_AllowsAll(t *testing.T) {
+	t.Setenv("ARBITRARY_VAR_FOR_TEST", "allowed")
+
+	thread := &starlark.Thread{Name: "test"}
+	// No prefix restrictions
+	globals := starlark.StringDict{"env": Env}
+
+	result, err := starlark.Eval(thread, "test.star", `env("ARBITRARY_VAR_FOR_TEST")`, globals)
+	require.NoError(t, err)
+
+	s, ok := starlark.AsString(result)
+	require.True(t, ok)
+	assert.Equal(t, "allowed", s)
+}
+
+func TestFail_WithKwargsError(t *testing.T) {
+	t.Parallel()
+
+	thread := &starlark.Thread{Name: "test"}
+	globals := starlark.StringDict{"fail": Fail}
+
+	_, err := starlark.Eval(thread, "test.star", `fail(msg="error")`, globals)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unexpected keyword")
+}
+
+func TestFail_WithListArg(t *testing.T) {
+	t.Parallel()
+
+	thread := &starlark.Thread{Name: "test"}
+	globals := starlark.StringDict{"fail": Fail}
+
+	_, err := starlark.Eval(thread, "test.star", `fail("items:", [1, 2, 3])`, globals)
+	require.Error(t, err)
+
+	var failErr *FailError
+	require.True(t, errors.As(err, &failErr))
+	assert.Contains(t, failErr.Message, "items:")
+	assert.Contains(t, failErr.Message, "[1, 2, 3]")
+}
+
+func TestFail_WithNone(t *testing.T) {
+	t.Parallel()
+
+	thread := &starlark.Thread{Name: "test"}
+	globals := starlark.StringDict{"fail": Fail}
+
+	_, err := starlark.Eval(thread, "test.star", `fail(None)`, globals)
+	require.Error(t, err)
+
+	var failErr *FailError
+	require.True(t, errors.As(err, &failErr))
+	assert.Equal(t, "None", failErr.Message)
+}
+
+func TestFailError_ErrorMethod(t *testing.T) {
+	t.Parallel()
+
+	e := &FailError{Message: "test failure"}
+	assert.Equal(t, "test failure", e.Error())
+}
+
+func TestFailError_EmptyMessage(t *testing.T) {
+	t.Parallel()
+
+	e := &FailError{Message: ""}
+	assert.Equal(t, "", e.Error())
+}
+
+func TestPrint_WithKwargs(t *testing.T) {
+	t.Parallel()
+
+	thread := &starlark.Thread{Name: "test"}
+
+	var captured string
+	SetPrintFunc(thread, func(_ *starlark.Thread, msg string) {
+		captured = msg
+	})
+
+	globals := starlark.StringDict{"print": Print}
+
+	_, err := starlark.Eval(thread, "test.star", `print("hello", name="world")`, globals)
+	require.NoError(t, err)
+	assert.Contains(t, captured, "hello")
+	assert.Contains(t, captured, "name=world")
+}
+
+func TestPrint_WithList(t *testing.T) {
+	t.Parallel()
+
+	thread := &starlark.Thread{Name: "test"}
+
+	var captured string
+	SetPrintFunc(thread, func(_ *starlark.Thread, msg string) {
+		captured = msg
+	})
+
+	globals := starlark.StringDict{"print": Print}
+
+	_, err := starlark.Eval(thread, "test.star", `print([1, 2, 3])`, globals)
+	require.NoError(t, err)
+	assert.Equal(t, "[1, 2, 3]", captured)
+}
+
+func TestPrint_ReturnsNone(t *testing.T) {
+	t.Parallel()
+
+	thread := &starlark.Thread{Name: "test"}
+	SetPrintFunc(thread, func(_ *starlark.Thread, _ string) {})
+
+	globals := starlark.StringDict{"print": Print}
+
+	result, err := starlark.Eval(thread, "test.star", `print("hello")`, globals)
+	require.NoError(t, err)
+	assert.Equal(t, starlark.None, result)
+}
+
+func TestStruct_EmptyFields(t *testing.T) {
+	t.Parallel()
+
+	s := NewStruct("empty", map[string]starlark.Value{})
+	assert.NotNil(t, s)
+	names := s.AttrNames()
+	assert.Empty(t, names)
+}
+
+func TestStructBuilder_ChainedSets(t *testing.T) {
+	t.Parallel()
+
+	s := NewStructBuilder("person").
+		Set("name", "Alice").
+		Set("age", 30).
+		Set("active", true).
+		Build()
+
+	name, err := s.Attr("name")
+	require.NoError(t, err)
+	assert.Equal(t, starlark.String("Alice"), name)
+
+	age, err := s.Attr("age")
+	require.NoError(t, err)
+	ageInt, _ := age.(starlark.Int).Int64()
+	assert.Equal(t, int64(30), ageInt)
+
+	active, err := s.Attr("active")
+	require.NoError(t, err)
+	assert.Equal(t, starlark.Bool(true), active)
+}
+
+func TestStructBuilder_SetNil(t *testing.T) {
+	t.Parallel()
+
+	s := NewStructBuilder("test").
+		Set("null_field", nil).
+		Build()
+
+	val, err := s.Attr("null_field")
+	require.NoError(t, err)
+	assert.Equal(t, starlark.None, val)
+}
+
+func TestStructBuilder_OverwriteField(t *testing.T) {
+	t.Parallel()
+
+	s := NewStructBuilder("test").
+		Set("x", 1).
+		Set("x", 2). // overwrite
+		Build()
+
+	val, err := s.Attr("x")
+	require.NoError(t, err)
+	i, _ := val.(starlark.Int).Int64()
+	assert.Equal(t, int64(2), i)
+}
+
+func TestToStarlarkValue_FallbackToString(t *testing.T) {
+	t.Parallel()
+
+	// Unsupported type falls back to string representation
+	type custom struct{ X int }
+	result := ToStarlarkValue(custom{X: 42})
+	s, ok := result.(starlark.String)
+	require.True(t, ok)
+	assert.Contains(t, string(s), "42")
+}
+
+func TestFromStarlarkValue_UnknownType(t *testing.T) {
+	t.Parallel()
+
+	// A custom starlark value type should be returned as-is
+	type customValue struct{ starlark.Value }
+	cv := &customValue{Value: starlark.String("inner")}
+	result := FromStarlarkValue(cv)
+	assert.Equal(t, cv, result)
+}
+
+func TestFromStarlarkValue_DictWithNonStringKey(t *testing.T) {
+	t.Parallel()
+
+	dict := starlark.NewDict(1)
+	_ = dict.SetKey(starlark.MakeInt(1), starlark.String("value"))
+
+	result := FromStarlarkValue(dict)
+	// Non-string keys are silently skipped in FromStarlarkValue
+	m, ok := result.(map[string]any)
+	require.True(t, ok)
+	assert.Empty(t, m)
+}
+
+func TestAll_NoNilValues(t *testing.T) {
+	t.Parallel()
+
+	all := All()
+	for name, val := range all {
+		assert.NotNil(t, val, "builtin %q should not be nil", name)
+	}
+}
+
+func TestGlob_StaticMatcher_EmptyList(t *testing.T) {
+	t.Parallel()
+
+	matcher := NewStaticMatcher(nil)
+	assert.Nil(t, matcher.Candidates())
+}
+
+func TestIsAllowedEnvVar(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		varName  string
+		prefixes []string
+		expected bool
+	}{
+		{"empty prefixes allows all", "HOME", nil, true},
+		{"matching prefix", "BZ_TOKEN", []string{"BZ_"}, true},
+		{"no matching prefix", "HOME", []string{"BZ_"}, false},
+		{"multiple prefixes match first", "BZ_X", []string{"BZ_", "BAZEL_"}, true},
+		{"multiple prefixes match second", "BAZEL_X", []string{"BZ_", "BAZEL_"}, true},
+		{"empty var name", "", []string{"BZ_"}, false},
+		{"exact prefix match", "BZ_", []string{"BZ_"}, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result := isAllowedEnvVar(tt.varName, tt.prefixes)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
 }

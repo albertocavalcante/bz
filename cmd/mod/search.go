@@ -1,7 +1,6 @@
 package mod
 
 import (
-	"context"
 	"errors"
 	"fmt"
 
@@ -52,10 +51,7 @@ func runSearch(cmd *cobra.Command, args []string) error {
 	}
 
 	query := args[0]
-	ctx := cmd.Context()
-	if ctx == nil {
-		ctx = context.Background()
-	}
+	ctx := cmdContext(cmd)
 
 	// Create network-aware registry
 	reg, err := createNetworkAwareRegistry()

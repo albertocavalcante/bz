@@ -8,6 +8,7 @@ import (
 )
 
 func TestRewriteSourceURLs(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name        string
 		content     string
@@ -60,6 +61,7 @@ func TestRewriteSourceURLs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result, err := rewriteSourceURLs([]byte(tt.content), tt.pattern, tt.replacement)
 
 			if tt.wantErr {
@@ -87,6 +89,7 @@ func TestRewriteSourceURLs(t *testing.T) {
 }
 
 func TestRewriteSourceURLs_URLsArray(t *testing.T) {
+	t.Parallel()
 	content := `{
 		"urls": [
 			"https://github.com/bazelbuild/rules_go/archive/v0.50.0.tar.gz",
@@ -121,6 +124,7 @@ func TestRewriteSourceURLs_URLsArray(t *testing.T) {
 }
 
 func TestApplyTransforms(t *testing.T) {
+	t.Parallel()
 	content := `{
 		"url": "https://github.com/example/test.tar.gz",
 		"integrity": "sha256-abc123"
@@ -150,7 +154,10 @@ func TestApplyTransforms(t *testing.T) {
 }
 
 func TestApplyTransforms_SkipYanked(t *testing.T) {
+	t.Parallel(
 	// skip_yanked transform should not modify the source.json
+	)
+
 	content := `{"url": "https://example.com/test.tar.gz"}`
 
 	transforms := []*config.Transform{
@@ -177,6 +184,7 @@ func TestApplyTransforms_SkipYanked(t *testing.T) {
 }
 
 func TestApplyTransforms_MultipleTransforms(t *testing.T) {
+	t.Parallel()
 	content := `{
 		"url": "https://github.com/example/test.tar.gz",
 		"integrity": "sha256-abc"

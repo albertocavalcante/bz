@@ -8,6 +8,7 @@ import (
 )
 
 func TestFilePublisher_Type(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	pub, err := NewFilePublisher(dir)
 	if err != nil {
@@ -20,6 +21,7 @@ func TestFilePublisher_Type(t *testing.T) {
 }
 
 func TestFilePublisher_Put(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	pub, err := NewFilePublisher(dir)
 	if err != nil {
@@ -48,6 +50,7 @@ func TestFilePublisher_Put(t *testing.T) {
 }
 
 func TestFilePublisher_Exists(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	pub, err := NewFilePublisher(dir)
 	if err != nil {
@@ -82,6 +85,7 @@ func TestFilePublisher_Exists(t *testing.T) {
 }
 
 func TestFilePublisher_Finalize(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	pub, err := NewFilePublisher(dir)
 	if err != nil {
@@ -98,6 +102,7 @@ func TestFilePublisher_Finalize(t *testing.T) {
 }
 
 func TestFilePublisher_Close(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	pub, err := NewFilePublisher(dir)
 	if err != nil {
@@ -112,7 +117,10 @@ func TestFilePublisher_Close(t *testing.T) {
 }
 
 func TestFilePublisher_CreatesBaseDir(t *testing.T) {
+	t.Parallel(
 	// Create a path that doesn't exist yet
+	)
+
 	baseDir := filepath.Join(t.TempDir(), "nested", "registry")
 
 	pub, err := NewFilePublisher(baseDir)
@@ -134,6 +142,7 @@ func TestFilePublisher_CreatesBaseDir(t *testing.T) {
 }
 
 func TestFilePublisher_PutOverwrite(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	pub, err := NewFilePublisher(dir)
 	if err != nil {

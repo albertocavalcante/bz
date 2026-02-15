@@ -8,7 +8,9 @@ import (
 )
 
 func TestRegistryHTTP(t *testing.T) {
+	t.Parallel()
 	t.Run("creates HTTP registry with URL", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		fn := RegistryModule()["http"].(*starlark.Builtin)
 
@@ -33,6 +35,7 @@ func TestRegistryHTTP(t *testing.T) {
 	})
 
 	t.Run("creates HTTP registry with kwarg", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		fn := RegistryModule()["http"].(*starlark.Builtin)
 
@@ -50,6 +53,7 @@ func TestRegistryHTTP(t *testing.T) {
 	})
 
 	t.Run("exposes type attribute", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		fn := RegistryModule()["http"].(*starlark.Builtin)
 
@@ -68,6 +72,7 @@ func TestRegistryHTTP(t *testing.T) {
 	})
 
 	t.Run("exposes url attribute", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		fn := RegistryModule()["http"].(*starlark.Builtin)
 
@@ -86,6 +91,7 @@ func TestRegistryHTTP(t *testing.T) {
 	})
 
 	t.Run("errors on missing URL", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		fn := RegistryModule()["http"].(*starlark.Builtin)
 
@@ -99,6 +105,7 @@ func TestRegistryHTTP(t *testing.T) {
 	})
 
 	t.Run("String representation", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		fn := RegistryModule()["http"].(*starlark.Builtin)
 
@@ -118,7 +125,9 @@ func TestRegistryHTTP(t *testing.T) {
 }
 
 func TestRegistryFile(t *testing.T) {
+	t.Parallel()
 	t.Run("creates file registry with path", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		fn := RegistryModule()["file"].(*starlark.Builtin)
 
@@ -143,6 +152,7 @@ func TestRegistryFile(t *testing.T) {
 	})
 
 	t.Run("creates file registry with kwarg", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		fn := RegistryModule()["file"].(*starlark.Builtin)
 
@@ -160,6 +170,7 @@ func TestRegistryFile(t *testing.T) {
 	})
 
 	t.Run("errors on missing path", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		fn := RegistryModule()["file"].(*starlark.Builtin)
 
@@ -173,6 +184,7 @@ func TestRegistryFile(t *testing.T) {
 	})
 
 	t.Run("String representation", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		fn := RegistryModule()["file"].(*starlark.Builtin)
 
@@ -192,7 +204,9 @@ func TestRegistryFile(t *testing.T) {
 }
 
 func TestRegistryGit(t *testing.T) {
+	t.Parallel()
 	t.Run("creates git registry with URL only", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		fn := RegistryModule()["git"].(*starlark.Builtin)
 
@@ -223,6 +237,7 @@ func TestRegistryGit(t *testing.T) {
 	})
 
 	t.Run("creates git registry with branch", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		fn := RegistryModule()["git"].(*starlark.Builtin)
 
@@ -241,6 +256,7 @@ func TestRegistryGit(t *testing.T) {
 	})
 
 	t.Run("creates git registry with ref", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		fn := RegistryModule()["git"].(*starlark.Builtin)
 
@@ -259,6 +275,7 @@ func TestRegistryGit(t *testing.T) {
 	})
 
 	t.Run("exposes branch attribute", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		fn := RegistryModule()["git"].(*starlark.Builtin)
 
@@ -278,6 +295,7 @@ func TestRegistryGit(t *testing.T) {
 	})
 
 	t.Run("exposes ref attribute", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		fn := RegistryModule()["git"].(*starlark.Builtin)
 
@@ -297,6 +315,7 @@ func TestRegistryGit(t *testing.T) {
 	})
 
 	t.Run("errors when both branch and ref provided", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		fn := RegistryModule()["git"].(*starlark.Builtin)
 
@@ -314,6 +333,7 @@ func TestRegistryGit(t *testing.T) {
 	})
 
 	t.Run("errors on missing URL", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		fn := RegistryModule()["git"].(*starlark.Builtin)
 
@@ -326,6 +346,7 @@ func TestRegistryGit(t *testing.T) {
 	})
 
 	t.Run("String representation with branch", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		fn := RegistryModule()["git"].(*starlark.Builtin)
 
@@ -345,6 +366,7 @@ func TestRegistryGit(t *testing.T) {
 	})
 
 	t.Run("String representation with ref", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		fn := RegistryModule()["git"].(*starlark.Builtin)
 
@@ -362,7 +384,9 @@ func TestRegistryGit(t *testing.T) {
 }
 
 func TestRegistryHTTPPut(t *testing.T) {
+	t.Parallel()
 	t.Run("creates http_put registry with URL only", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		fn := RegistryModule()["http_put"].(*starlark.Builtin)
 
@@ -390,6 +414,7 @@ func TestRegistryHTTPPut(t *testing.T) {
 	})
 
 	t.Run("creates http_put registry with auth", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 
 		// First create an auth value
@@ -421,6 +446,7 @@ func TestRegistryHTTPPut(t *testing.T) {
 	})
 
 	t.Run("exposes auth attribute", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 
 		authFn := AuthModule()["bearer_token"].(*starlark.Builtin)
@@ -445,6 +471,7 @@ func TestRegistryHTTPPut(t *testing.T) {
 	})
 
 	t.Run("errors on invalid auth type", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		fn := RegistryModule()["http_put"].(*starlark.Builtin)
 
@@ -461,6 +488,7 @@ func TestRegistryHTTPPut(t *testing.T) {
 	})
 
 	t.Run("errors on missing URL", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		fn := RegistryModule()["http_put"].(*starlark.Builtin)
 
@@ -471,6 +499,7 @@ func TestRegistryHTTPPut(t *testing.T) {
 	})
 
 	t.Run("String representation with auth", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 
 		authFn := AuthModule()["bearer_token"].(*starlark.Builtin)
@@ -496,7 +525,9 @@ func TestRegistryHTTPPut(t *testing.T) {
 }
 
 func TestRegistryModule(t *testing.T) {
+	t.Parallel()
 	t.Run("contains all registry functions", func(t *testing.T) {
+		t.Parallel()
 		module := RegistryModule()
 
 		expectedFuncs := []string{"http", "file", "git", "http_put"}
@@ -509,15 +540,19 @@ func TestRegistryModule(t *testing.T) {
 }
 
 func TestRegistryValueInterfaces(t *testing.T) {
+	t.Parallel()
 	t.Run("implements starlark.Value", func(t *testing.T) {
+		t.Parallel()
 		var _ starlark.Value = (*RegistryValue)(nil)
 	})
 
 	t.Run("implements starlark.HasAttrs", func(t *testing.T) {
+		t.Parallel()
 		var _ starlark.HasAttrs = (*RegistryValue)(nil)
 	})
 
 	t.Run("AttrNames returns available attributes", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		fn := RegistryModule()["http"].(*starlark.Builtin)
 
@@ -548,6 +583,7 @@ func TestRegistryValueInterfaces(t *testing.T) {
 	})
 
 	t.Run("Truth returns true", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		fn := RegistryModule()["http"].(*starlark.Builtin)
 
@@ -562,6 +598,7 @@ func TestRegistryValueInterfaces(t *testing.T) {
 	})
 
 	t.Run("Attr error for unknown attribute", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		fn := RegistryModule()["http"].(*starlark.Builtin)
 

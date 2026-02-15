@@ -2,6 +2,7 @@
 package mod
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -10,6 +11,16 @@ import (
 	"github.com/albertocavalcante/bz/internal/cli"
 	"github.com/albertocavalcante/bz/internal/registry"
 )
+
+// cmdContext returns the command's context, defaulting to context.Background()
+// if none has been set. This is needed because cobra only sets a context when
+// running through Execute(); tests that call RunE directly may have a nil context.
+func cmdContext(cmd *cobra.Command) context.Context {
+	if ctx := cmd.Context(); ctx != nil {
+		return ctx
+	}
+	return context.Background()
+}
 
 // registryFlag is the registry URL (set via --registry flag)
 var registryFlag = registry.DefaultBCR

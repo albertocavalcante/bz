@@ -3,7 +3,7 @@ package modsync
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"path"
 
 	"github.com/albertocavalcante/bz/internal/config"
@@ -103,7 +103,7 @@ func (r *runner) syncModule(ctx context.Context, moduleName string, result *Resu
 	versions := r.filterVersions(meta)
 	if len(versions) == 0 {
 		if r.opts.Verbose {
-			log.Printf("  %s: no versions match selector", moduleName)
+			slog.Info("no versions match selector", "module", moduleName)
 		}
 		return nil
 	}
@@ -117,7 +117,7 @@ func (r *runner) syncModule(ctx context.Context, moduleName string, result *Resu
 		if skipYanked {
 			if _, yanked := meta.YankedVersions[version]; yanked {
 				if r.opts.Verbose {
-					log.Printf("  %s@%s: skipped (yanked)", moduleName, version)
+					slog.Info("skipped yanked version", "module", moduleName, "version", version)
 				}
 				continue
 			}
@@ -150,17 +150,17 @@ func (r *runner) syncVersion(ctx context.Context, moduleName, version string) (w
 
 	if exists {
 		if r.opts.Verbose {
-			log.Printf("  %s@%s: skipped (exists)", moduleName, version)
+			slog.Info("skipped existing version", "module", moduleName, "version", version)
 		}
 		return false, nil
 	}
 
 	if r.opts.Verbose {
-		log.Printf("  %s@%s: syncing", moduleName, version)
+		slog.Info("syncing version", "module", moduleName, "version", version)
 	}
 
 	if r.opts.DryRun {
-		log.Printf("  [dry-run] would sync %s@%s", moduleName, version)
+		slog.Info("would sync version (dry-run)", "module", moduleName, "version", version)
 		return true, nil
 	}
 

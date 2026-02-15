@@ -9,6 +9,7 @@ import (
 )
 
 func TestHTTPRegistry_Type(t *testing.T) {
+	t.Parallel()
 	reg := NewHTTPRegistry("https://bcr.bazel.build")
 	if got := reg.Type(); got != TypeHTTPS {
 		t.Errorf("Type() = %q, want %q", got, TypeHTTPS)
@@ -21,6 +22,7 @@ func TestHTTPRegistry_Type(t *testing.T) {
 }
 
 func TestHTTPRegistry_String(t *testing.T) {
+	t.Parallel()
 	reg := NewHTTPRegistry("https://bcr.bazel.build")
 	if got := reg.String(); got != "https://bcr.bazel.build" {
 		t.Errorf("String() = %q, want %q", got, "https://bcr.bazel.build")
@@ -28,6 +30,7 @@ func TestHTTPRegistry_String(t *testing.T) {
 }
 
 func TestHTTPRegistry_GetMetadata(t *testing.T) {
+	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/modules/rules_go/metadata.json" {
 			w.Header().Set("Content-Type", "application/json")
@@ -60,6 +63,7 @@ func TestHTTPRegistry_GetMetadata(t *testing.T) {
 }
 
 func TestHTTPRegistry_GetMetadata_NotFound(t *testing.T) {
+	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 	}))
@@ -75,6 +79,7 @@ func TestHTTPRegistry_GetMetadata_NotFound(t *testing.T) {
 }
 
 func TestHTTPRegistry_GetModuleBazel(t *testing.T) {
+	t.Parallel()
 	expectedContent := `module(name = "rules_go", version = "0.50.0")`
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -104,6 +109,7 @@ func TestHTTPRegistry_GetModuleBazel(t *testing.T) {
 }
 
 func TestHTTPRegistry_GetModuleBazel_VersionNotFound(t *testing.T) {
+	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/modules/rules_go/metadata.json":
@@ -124,6 +130,7 @@ func TestHTTPRegistry_GetModuleBazel_VersionNotFound(t *testing.T) {
 }
 
 func TestHTTPRegistry_ListModules_WithIndexJSON(t *testing.T) {
+	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/modules/index.json" {
 			w.Header().Set("Content-Type", "application/json")
@@ -156,6 +163,7 @@ func TestHTTPRegistry_ListModules_WithIndexJSON(t *testing.T) {
 }
 
 func TestHTTPRegistry_ListModules_WithHTMLListing(t *testing.T) {
+	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/modules/index.json":
@@ -193,6 +201,7 @@ func TestHTTPRegistry_ListModules_WithHTMLListing(t *testing.T) {
 }
 
 func TestHTTPRegistry_ListModules_NotSupported(t *testing.T) {
+	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// No index.json, no directory listing
 		http.NotFound(w, r)
@@ -209,6 +218,7 @@ func TestHTTPRegistry_ListModules_NotSupported(t *testing.T) {
 }
 
 func TestHTTPRegistry_ListModules_NginxAutoindex(t *testing.T) {
+	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/modules/index.json":

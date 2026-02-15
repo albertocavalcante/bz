@@ -11,6 +11,7 @@ import (
 )
 
 func TestNewService(t *testing.T) {
+	t.Parallel()
 	cfg := &config.Config{
 		Workflows: []*config.Workflow{
 			{Name: "test-workflow"},
@@ -28,6 +29,7 @@ func TestNewService(t *testing.T) {
 }
 
 func TestService_ListWorkflows(t *testing.T) {
+	t.Parallel()
 	cfg := &config.Config{
 		Workflows: []*config.Workflow{
 			{Name: "workflow-a"},
@@ -52,6 +54,7 @@ func TestService_ListWorkflows(t *testing.T) {
 }
 
 func TestService_ListWorkflows_Empty(t *testing.T) {
+	t.Parallel()
 	cfg := &config.Config{}
 	svc := NewService(cfg)
 	names := svc.ListWorkflows()
@@ -62,6 +65,7 @@ func TestService_ListWorkflows_Empty(t *testing.T) {
 }
 
 func TestService_GetWorkflow(t *testing.T) {
+	t.Parallel()
 	cfg := &config.Config{
 		Workflows: []*config.Workflow{
 			{Name: "workflow-a", Description: "First workflow"},
@@ -88,6 +92,7 @@ func TestService_GetWorkflow(t *testing.T) {
 }
 
 func TestService_Run_WorkflowNotFound(t *testing.T) {
+	t.Parallel()
 	cfg := &config.Config{
 		Workflows: []*config.Workflow{
 			{Name: "existing"},
@@ -104,6 +109,7 @@ func TestService_Run_WorkflowNotFound(t *testing.T) {
 
 // TestRunner tests the runner with a file-based setup
 func TestRunner_FilterVersions(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		versions *config.VersionSelector
@@ -188,6 +194,7 @@ func TestRunner_FilterVersions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			r := &runner{
 				workflow: &config.Workflow{
 					Versions: tt.versions,
@@ -212,6 +219,7 @@ func TestRunner_FilterVersions(t *testing.T) {
 }
 
 func TestRunner_HasTransform(t *testing.T) {
+	t.Parallel()
 	r := &runner{
 		workflow: &config.Workflow{
 			Transformations: []*config.Transform{
@@ -235,6 +243,7 @@ func TestRunner_HasTransform(t *testing.T) {
 }
 
 func TestLatestN(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		versions []string
@@ -269,6 +278,7 @@ func TestLatestN(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := latestN(tt.versions, tt.n)
 
 			if len(got) != len(tt.want) {
@@ -286,6 +296,7 @@ func TestLatestN(t *testing.T) {
 }
 
 func TestFilterRange(t *testing.T) {
+	t.Parallel()
 	versions := []string{"1.0.0", "1.1.0", "1.2.0", "2.0.0"}
 
 	tests := []struct {
@@ -316,6 +327,7 @@ func TestFilterRange(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := filterRange(versions, tt.min, tt.max)
 			if len(got) != len(tt.expect) {
 				t.Errorf("filterRange() = %v, want %v", got, tt.expect)
@@ -326,7 +338,10 @@ func TestFilterRange(t *testing.T) {
 
 // Integration test with file-based registry and publisher
 func TestService_Run_Integration(t *testing.T) {
+	t.Parallel(
 	// Set up test registry using the shared testutil
+	)
+
 	regDir := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{
 		"rules_go": {Versions: []string{"0.49.0", "0.50.0"}},
 	})
@@ -387,6 +402,7 @@ func TestService_Run_Integration(t *testing.T) {
 }
 
 func TestService_Run_DryRun(t *testing.T) {
+	t.Parallel()
 	regDir := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{
 		"rules_go": {Versions: []string{"0.49.0", "0.50.0"}},
 	})
@@ -437,6 +453,7 @@ func TestService_Run_DryRun(t *testing.T) {
 }
 
 func TestService_Run_SkipExisting(t *testing.T) {
+	t.Parallel()
 	regDir := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{
 		"rules_go": {Versions: []string{"0.49.0", "0.50.0"}},
 	})
@@ -484,6 +501,7 @@ func TestService_Run_SkipExisting(t *testing.T) {
 }
 
 func TestService_Run_ModulesOverride(t *testing.T) {
+	t.Parallel()
 	regDir := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{
 		"rules_go": {Versions: []string{"0.49.0", "0.50.0"}},
 		"protobuf": {Versions: []string{"21.7"}},

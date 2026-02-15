@@ -8,7 +8,9 @@ import (
 )
 
 func TestAuthBasic(t *testing.T) {
+	t.Parallel()
 	t.Run("creates basic auth with username and password", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		fn := AuthModule()["basic"].(*starlark.Builtin)
 
@@ -37,6 +39,7 @@ func TestAuthBasic(t *testing.T) {
 	})
 
 	t.Run("exposes type attribute", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		fn := AuthModule()["basic"].(*starlark.Builtin)
 
@@ -59,6 +62,7 @@ func TestAuthBasic(t *testing.T) {
 	})
 
 	t.Run("exposes username attribute", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		fn := AuthModule()["basic"].(*starlark.Builtin)
 
@@ -81,6 +85,7 @@ func TestAuthBasic(t *testing.T) {
 	})
 
 	t.Run("errors on missing username", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		fn := AuthModule()["basic"].(*starlark.Builtin)
 
@@ -96,6 +101,7 @@ func TestAuthBasic(t *testing.T) {
 	})
 
 	t.Run("errors on missing password", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		fn := AuthModule()["basic"].(*starlark.Builtin)
 
@@ -111,6 +117,7 @@ func TestAuthBasic(t *testing.T) {
 	})
 
 	t.Run("String representation", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		fn := AuthModule()["basic"].(*starlark.Builtin)
 
@@ -134,7 +141,9 @@ func TestAuthBasic(t *testing.T) {
 }
 
 func TestAuthBearerToken(t *testing.T) {
+	t.Parallel()
 	t.Run("creates bearer token with env var", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		fn := AuthModule()["bearer_token"].(*starlark.Builtin)
 
@@ -162,6 +171,7 @@ func TestAuthBearerToken(t *testing.T) {
 	})
 
 	t.Run("creates bearer token with static value", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		fn := AuthModule()["bearer_token"].(*starlark.Builtin)
 
@@ -182,6 +192,7 @@ func TestAuthBearerToken(t *testing.T) {
 	})
 
 	t.Run("exposes env attribute", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		fn := AuthModule()["bearer_token"].(*starlark.Builtin)
 
@@ -203,6 +214,7 @@ func TestAuthBearerToken(t *testing.T) {
 	})
 
 	t.Run("errors when neither env nor value provided", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		fn := AuthModule()["bearer_token"].(*starlark.Builtin)
 
@@ -216,6 +228,7 @@ func TestAuthBearerToken(t *testing.T) {
 	})
 
 	t.Run("errors when both env and value provided", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		fn := AuthModule()["bearer_token"].(*starlark.Builtin)
 
@@ -232,6 +245,7 @@ func TestAuthBearerToken(t *testing.T) {
 	})
 
 	t.Run("String representation with env", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		fn := AuthModule()["bearer_token"].(*starlark.Builtin)
 
@@ -253,6 +267,7 @@ func TestAuthBearerToken(t *testing.T) {
 	})
 
 	t.Run("String representation with value hides token", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		fn := AuthModule()["bearer_token"].(*starlark.Builtin)
 
@@ -275,7 +290,9 @@ func TestAuthBearerToken(t *testing.T) {
 }
 
 func TestAuthHeader(t *testing.T) {
+	t.Parallel()
 	t.Run("creates header auth", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		fn := AuthModule()["header"].(*starlark.Builtin)
 
@@ -304,6 +321,7 @@ func TestAuthHeader(t *testing.T) {
 	})
 
 	t.Run("exposes name attribute", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		fn := AuthModule()["header"].(*starlark.Builtin)
 
@@ -326,6 +344,7 @@ func TestAuthHeader(t *testing.T) {
 	})
 
 	t.Run("errors on missing name", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		fn := AuthModule()["header"].(*starlark.Builtin)
 
@@ -338,6 +357,7 @@ func TestAuthHeader(t *testing.T) {
 	})
 
 	t.Run("errors on missing value", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		fn := AuthModule()["header"].(*starlark.Builtin)
 
@@ -350,6 +370,7 @@ func TestAuthHeader(t *testing.T) {
 	})
 
 	t.Run("String representation", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		fn := AuthModule()["header"].(*starlark.Builtin)
 
@@ -373,7 +394,9 @@ func TestAuthHeader(t *testing.T) {
 }
 
 func TestAuthModule(t *testing.T) {
+	t.Parallel()
 	t.Run("contains all auth functions", func(t *testing.T) {
+		t.Parallel()
 		module := AuthModule()
 
 		expectedFuncs := []string{"basic", "bearer_token", "header"}
@@ -386,15 +409,19 @@ func TestAuthModule(t *testing.T) {
 }
 
 func TestAuthValueInterfaces(t *testing.T) {
+	t.Parallel()
 	t.Run("implements starlark.Value", func(t *testing.T) {
+		t.Parallel()
 		var _ starlark.Value = (*AuthValue)(nil)
 	})
 
 	t.Run("implements starlark.HasAttrs", func(t *testing.T) {
+		t.Parallel()
 		var _ starlark.HasAttrs = (*AuthValue)(nil)
 	})
 
 	t.Run("AttrNames returns available attributes", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		fn := AuthModule()["basic"].(*starlark.Builtin)
 
@@ -426,6 +453,7 @@ func TestAuthValueInterfaces(t *testing.T) {
 	})
 
 	t.Run("Truth returns true", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		fn := AuthModule()["basic"].(*starlark.Builtin)
 
@@ -441,6 +469,7 @@ func TestAuthValueInterfaces(t *testing.T) {
 	})
 
 	t.Run("Type returns auth", func(t *testing.T) {
+		t.Parallel()
 		thread := &starlark.Thread{Name: "test"}
 		fn := AuthModule()["basic"].(*starlark.Builtin)
 

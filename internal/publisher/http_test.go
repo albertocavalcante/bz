@@ -9,6 +9,7 @@ import (
 )
 
 func TestHTTPPublisher_Type(t *testing.T) {
+	t.Parallel()
 	pub, err := NewHTTPPublisher("https://example.com/registry", nil)
 	if err != nil {
 		t.Fatalf("NewHTTPPublisher() error = %v", err)
@@ -20,6 +21,7 @@ func TestHTTPPublisher_Type(t *testing.T) {
 }
 
 func TestHTTPPublisher_Put(t *testing.T) {
+	t.Parallel()
 	var receivedBody []byte
 	var receivedPath string
 	var receivedContentType string
@@ -69,6 +71,7 @@ func TestHTTPPublisher_Put(t *testing.T) {
 }
 
 func TestHTTPPublisher_Put_JSONContentType(t *testing.T) {
+	t.Parallel()
 	var receivedContentType string
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -104,6 +107,7 @@ func TestHTTPPublisher_Put_JSONContentType(t *testing.T) {
 }
 
 func TestHTTPPublisher_Put_Error(t *testing.T) {
+	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPut {
 			w.WriteHeader(http.StatusForbidden)
@@ -128,6 +132,7 @@ func TestHTTPPublisher_Put_Error(t *testing.T) {
 }
 
 func TestHTTPPublisher_Exists(t *testing.T) {
+	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodHead {
 			http.NotFound(w, r)
@@ -172,6 +177,7 @@ func TestHTTPPublisher_Exists(t *testing.T) {
 }
 
 func TestHTTPPublisher_BasicAuth(t *testing.T) {
+	t.Parallel()
 	var receivedAuth string
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -205,6 +211,7 @@ func TestHTTPPublisher_BasicAuth(t *testing.T) {
 }
 
 func TestHTTPPublisher_BearerAuth(t *testing.T) {
+	t.Parallel()
 	var receivedAuth string
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -270,6 +277,7 @@ func TestHTTPPublisher_BearerAuthFromEnv(t *testing.T) {
 }
 
 func TestHTTPPublisher_CustomHeaderAuth(t *testing.T) {
+	t.Parallel()
 	var receivedHeader string
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -301,6 +309,7 @@ func TestHTTPPublisher_CustomHeaderAuth(t *testing.T) {
 }
 
 func TestHTTPPublisher_Finalize(t *testing.T) {
+	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -321,6 +330,7 @@ func TestHTTPPublisher_Finalize(t *testing.T) {
 }
 
 func TestHTTPPublisher_Close(t *testing.T) {
+	t.Parallel()
 	pub, err := NewHTTPPublisher("https://example.com", nil)
 	if err != nil {
 		t.Fatalf("NewHTTPPublisher() error = %v", err)
@@ -334,6 +344,7 @@ func TestHTTPPublisher_Close(t *testing.T) {
 }
 
 func TestHTTPPublisher_EmptyURL(t *testing.T) {
+	t.Parallel()
 	_, err := NewHTTPPublisher("", nil)
 	if err == nil {
 		t.Error("NewHTTPPublisher() expected error for empty URL")
@@ -341,6 +352,7 @@ func TestHTTPPublisher_EmptyURL(t *testing.T) {
 }
 
 func TestHTTPPublisher_URLNormalization(t *testing.T) {
+	t.Parallel()
 	var receivedPath string
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
