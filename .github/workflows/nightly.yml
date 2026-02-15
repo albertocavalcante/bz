@@ -13,6 +13,7 @@ on:
 
 permissions:
   contents: write
+  checks: write
 
 jobs:
   check-changes:
@@ -57,6 +58,43 @@ jobs:
             echo "should_build=true" >> "$GITHUB_OUTPUT"
             echo "No previous nightly"
           fi
+
+  test:
+    needs: check-changes
+    if: needs.check-changes.outputs.should_build == 'true'
+    runs-on: ubuntu-24.04
+    name: Test
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      checks: write
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: |
+            go.sum
+            tools.go.sum
+
+      - name: Test
+        run: go tool -modfile=tools.go.mod gotestsum --format pkgname-and-test-fails --junitfile test-results.xml -- -race ./...
+
+      - name: Test report
+        if: always()
+        uses: dorny/test-reporter@d3cb5605561a46347256b466ef836b85076ad522 # v2.5.0
+        with:
+          name: Test Results
+          path: test-results.xml
+          reporter: java-junit
+          fail-on-error: false
 
   build:
     needs: check-changes

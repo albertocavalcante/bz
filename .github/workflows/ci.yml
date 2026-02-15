@@ -45,7 +45,7 @@ jobs:
         run: go build -v ./...
 
       - name: Test
-        run: go test -race -v -coverprofile=coverage.out ./...
+        run: go tool -modfile=tools.go.mod gotestsum --format pkgname-and-test-fails -- -race -coverprofile=coverage.out ./...
 
       - name: Upload coverage
         if: matrix.name == 'linux-amd64'
@@ -72,6 +72,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+
+      - name: Sync tool dependencies
+        run: go mod tidy -modfile=tools.go.mod
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 # v9.2.0
