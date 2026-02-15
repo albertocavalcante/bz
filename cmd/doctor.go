@@ -19,6 +19,13 @@ import (
 	"github.com/albertocavalcante/bz/internal/registry"
 )
 
+// Status constants for DoctorCheck.
+const (
+	statusPass    = "pass"
+	statusFail    = "fail"
+	statusSkipped = "skipped"
+)
+
 var (
 	doctorJSON bool
 )
@@ -92,7 +99,7 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 
 	out := cmd.OutOrStdout()
 
-	var checks []DoctorCheck
+	checks := make([]DoctorCheck, 0, 5)
 	var bazelVersion string
 
 	// Print header (non-JSON only)
@@ -103,25 +110,20 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 
 	// 1. Check Bazel installation
 	check, version := checkBazelInstalled(ctx, out)
-	checks = append(checks, check)
 	bazelVersion = version
 
-	// 2. Check MODULE.bazel exists
-	checks = append(checks, checkModuleBazel(out))
-
-	// 3. Check .bazelversion exists
-	checks = append(checks, checkBazelVersion(out))
-
-	// 4. Check bzlmod enabled
-	checks = append(checks, checkBzlmodEnabled(out, bazelVersion))
-
-	// 5. Check registry connectivity
-	checks = append(checks, checkRegistryConnectivity(ctx, out))
+	// 2-5. Run remaining checks and combine into one append
+	checks = append(checks, check,
+		checkModuleBazel(out),
+		checkBazelVersion(out),
+		checkBzlmodEnabled(out, bazelVersion),
+		checkRegistryConnectivity(ctx, out),
+	)
 
 	// Count issues
 	issueCount := 0
 	for i := range checks {
-		if checks[i].Status == "fail" {
+		if checks[i].Status == statusFail {
 			issueCount++
 		}
 	}
@@ -145,7 +147,7 @@ func checkBazelInstalled(ctx context.Context, out io.Writer) (DoctorCheck, strin
 
 	output, err := commandRunner.Run(ctx, "bazel", "--version")
 	if err != nil {
-		check.Status = "fail"
+		check.Status = statusFail
 		check.Message = "Bazel not found in PATH"
 		check.Suggestion = "Install Bazel from https://bazel.build/install"
 		if !doctorJSON {
@@ -156,7 +158,7 @@ func checkBazelInstalled(ctx context.Context, out io.Writer) (DoctorCheck, strin
 
 	version, err := parseBazelVersion(output)
 	if err != nil {
-		check.Status = "fail"
+		check.Status = statusFail
 		check.Message = "Could not parse Bazel version"
 		check.Suggestion = "Run 'bazel --version' manually to check"
 		if !doctorJSON {
@@ -165,7 +167,7 @@ func checkBazelInstalled(ctx context.Context, out io.Writer) (DoctorCheck, strin
 		return check, ""
 	}
 
-	check.Status = "pass"
+	check.Status = statusPass
 	check.Message = fmt.Sprintf("Bazel installed (%s)", version)
 	if !doctorJSON {
 		printCheckPass(out, check.Message)
@@ -179,7 +181,7 @@ func checkModuleBazel(out io.Writer) DoctorCheck {
 	}
 
 	if _, err := os.Stat("MODULE.bazel"); os.IsNotExist(err) {
-		check.Status = "fail"
+		check.Status = statusFail
 		check.Message = "MODULE.bazel not found"
 		check.Suggestion = "Run 'bz init' to create one"
 		if !doctorJSON {
@@ -188,7 +190,7 @@ func checkModuleBazel(out io.Writer) DoctorCheck {
 		return check
 	}
 
-	check.Status = "pass"
+	check.Status = statusPass
 	check.Message = "MODULE.bazel found"
 	if !doctorJSON {
 		printCheckPass(out, check.Message)
@@ -203,7 +205,7 @@ func checkBazelVersion(out io.Writer) DoctorCheck {
 
 	content, err := os.ReadFile(".bazelversion")
 	if os.IsNotExist(err) {
-		check.Status = "fail"
+		check.Status = statusFail
 		check.Message = ".bazelversion not found"
 		check.Suggestion = "Create .bazelversion with your Bazel version"
 		if !doctorJSON {
@@ -213,7 +215,7 @@ func checkBazelVersion(out io.Writer) DoctorCheck {
 	}
 
 	if err != nil {
-		check.Status = "fail"
+		check.Status = statusFail
 		check.Message = "Could not read .bazelversion"
 		check.Suggestion = "Check file permissions"
 		if !doctorJSON {
@@ -223,7 +225,7 @@ func checkBazelVersion(out io.Writer) DoctorCheck {
 	}
 
 	version := strings.TrimSpace(string(content))
-	check.Status = "pass"
+	check.Status = statusPass
 	check.Message = fmt.Sprintf(".bazelversion found (%s)", version)
 	if !doctorJSON {
 		printCheckPass(out, check.Message)
@@ -241,7 +243,7 @@ func checkBzlmodEnabled(out io.Writer, bazelVersion string) DoctorCheck {
 	if err == nil {
 		// Check for --enable_bzlmod in .bazelrc
 		if strings.Contains(string(bazelrcContent), "--enable_bzlmod") {
-			check.Status = "pass"
+			check.Status = statusPass
 			check.Message = "Bzlmod enabled in .bazelrc"
 			if !doctorJSON {
 				printCheckPass(out, check.Message)
@@ -251,7 +253,7 @@ func checkBzlmodEnabled(out io.Writer, bazelVersion string) DoctorCheck {
 
 		// Check for --noenable_bzlmod (explicitly disabled)
 		if strings.Contains(string(bazelrcContent), "--noenable_bzlmod") {
-			check.Status = "fail"
+			check.Status = statusFail
 			check.Message = "Bzlmod explicitly disabled in .bazelrc"
 			check.Suggestion = "Remove --noenable_bzlmod from .bazelrc or change to --enable_bzlmod"
 			if !doctorJSON {
@@ -263,7 +265,7 @@ func checkBzlmodEnabled(out io.Writer, bazelVersion string) DoctorCheck {
 
 	// Bazel 7+ has bzlmod enabled by default
 	if isBazel7OrNewer(bazelVersion) {
-		check.Status = "pass"
+		check.Status = statusPass
 		check.Message = "Bzlmod enabled (default in Bazel 7+)"
 		if !doctorJSON {
 			printCheckPass(out, check.Message)
@@ -273,7 +275,7 @@ func checkBzlmodEnabled(out io.Writer, bazelVersion string) DoctorCheck {
 
 	// Bazel 6.x needs explicit --enable_bzlmod
 	if bazelVersion != "" {
-		check.Status = "fail"
+		check.Status = statusFail
 		check.Message = "Bzlmod not explicitly enabled (Bazel < 7)"
 		check.Suggestion = "Add 'common --enable_bzlmod' to .bazelrc"
 		if !doctorJSON {
@@ -283,7 +285,7 @@ func checkBzlmodEnabled(out io.Writer, bazelVersion string) DoctorCheck {
 	}
 
 	// Unknown version, can't determine
-	check.Status = "pass"
+	check.Status = statusPass
 	check.Message = "Bzlmod enabled (assumed)"
 	if !doctorJSON {
 		printCheckPass(out, check.Message)
@@ -298,7 +300,7 @@ func checkRegistryConnectivity(ctx context.Context, out io.Writer) DoctorCheck {
 
 	// Check if offline mode is enabled
 	if cli.IsEffectivelyOffline() {
-		check.Status = "skipped"
+		check.Status = statusSkipped
 		check.Message = "Registry connectivity (skipped - offline mode)"
 		if !doctorJSON {
 			printCheckSkipped(out, check.Message)
@@ -315,7 +317,7 @@ func checkRegistryConnectivity(ctx context.Context, out io.Writer) DoctorCheck {
 	url := defaultDoctorRegistryURL + "/bazel_registry.json"
 	req, err := http.NewRequestWithContext(ctx, http.MethodHead, url, nil)
 	if err != nil {
-		check.Status = "fail"
+		check.Status = statusFail
 		check.Message = "Registry unreachable"
 		check.Suggestion = "Check your internet connection"
 		if !doctorJSON {
@@ -326,7 +328,7 @@ func checkRegistryConnectivity(ctx context.Context, out io.Writer) DoctorCheck {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		check.Status = "fail"
+		check.Status = statusFail
 		check.Message = "Registry unreachable"
 		check.Suggestion = "Check your internet connection"
 		if !doctorJSON {
@@ -343,7 +345,7 @@ func checkRegistryConnectivity(ctx context.Context, out io.Writer) DoctorCheck {
 		registryHost = strings.TrimPrefix(registryHost, "http://")
 		registryHost = strings.Split(registryHost, "/")[0]
 
-		check.Status = "pass"
+		check.Status = statusPass
 		check.Message = fmt.Sprintf("Registry reachable (%s)", registryHost)
 		if !doctorJSON {
 			printCheckPass(out, check.Message)
@@ -351,7 +353,7 @@ func checkRegistryConnectivity(ctx context.Context, out io.Writer) DoctorCheck {
 		return check
 	}
 
-	check.Status = "fail"
+	check.Status = statusFail
 	check.Message = fmt.Sprintf("Registry returned HTTP %d", resp.StatusCode)
 	check.Suggestion = "The registry may be temporarily unavailable"
 	if !doctorJSON {

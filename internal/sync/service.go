@@ -1,4 +1,4 @@
-package sync
+package sync //nolint:revive,nolintlint // package name conflicts with stdlib; intentional
 
 import (
 	"context"
@@ -54,7 +54,7 @@ func (s *Service) Run(ctx context.Context, workflowName string, opts Options) (*
 	}
 	defer r.close()
 
-	return r.run(ctx)
+	return r.run(ctx), nil
 }
 
 // ListWorkflows returns the names of all defined workflows.

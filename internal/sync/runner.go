@@ -1,4 +1,4 @@
-package sync
+package sync //nolint:revive,nolintlint // package name conflicts with stdlib; intentional
 
 import (
 	"context"
@@ -44,12 +44,12 @@ func newRunner(workflow *config.Workflow, opts Options) (*runner, error) {
 // close releases resources.
 func (r *runner) close() {
 	if r.dest != nil {
-		r.dest.Close()
+		_ = r.dest.Close()
 	}
 }
 
 // run executes the workflow.
-func (r *runner) run(ctx context.Context) (*Result, error) {
+func (r *runner) run(ctx context.Context) *Result {
 	result := &Result{}
 
 	// Get list of modules to sync (from override or workflow)
@@ -59,7 +59,7 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 	}
 
 	if len(modules) == 0 {
-		return result, nil
+		return result
 	}
 
 	// Process each module
@@ -67,7 +67,7 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 		select {
 		case <-ctx.Done():
 			result.Errors = append(result.Errors, ctx.Err())
-			return result, nil
+			return result
 		default:
 		}
 
@@ -86,7 +86,7 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 		}
 	}
 
-	return result, nil
+	return result
 }
 
 // syncModule syncs a single module.

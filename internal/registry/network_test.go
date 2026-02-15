@@ -223,7 +223,7 @@ func TestNetworkAwareRegistry_PreferOffline_CacheHit(t *testing.T) {
 		Modules: map[string]*Metadata{
 			"rules_go": {Versions: []string{"0.49.0", "0.50.0", "0.51.0"}},
 		},
-		Type_: "http",
+		TypeName: "http",
 	}
 	// Wrap to track calls
 	trackingInner := &trackingRegistry{
@@ -351,7 +351,7 @@ func TestNetworkAwareRegistry_ListModules_OfflineMode(t *testing.T) {
 func TestNetworkAwareRegistry_Type(t *testing.T) {
 	cache := NewMockCacheRegistry()
 	inner := NewMockRegistry(nil)
-	inner.Type_ = "https"
+	inner.TypeName = "https"
 	opts := &cli.Options{}
 
 	reg := NewNetworkAware(inner, cache, opts)
@@ -505,7 +505,7 @@ func TestNetworkAwareRegistry_GetModuleBazel_PreferOffline_CacheHit(t *testing.T
 		Modules: map[string]*Metadata{
 			"rules_go": {Versions: []string{"0.50.0"}},
 		},
-		Type_: "http",
+		TypeName: "http",
 	}
 	trackingInner := &trackingRegistry{
 		inner:     inner,
@@ -599,7 +599,7 @@ func TestNetworkAwareRegistry_ListModules_PreferOffline_CacheHit(t *testing.T) {
 			"rules_go": {Versions: []string{"0.50.0"}},
 			"gazelle":  {Versions: []string{"0.35.0"}},
 		},
-		Type_: "http",
+		TypeName: "http",
 	}
 	trackingInner := &trackingRegistry{
 		inner:     inner,

@@ -66,10 +66,6 @@ func init() {
 	rootCmd.AddCommand(completionCmd)
 }
 
-// completionVars is a workaround for the circular import issue.
-// We store completion-related state here.
-var completionVars struct{}
-
 // GetRootCmd returns the root command for completion generation.
 // This is exported for use by subpackages that need to set up completions.
 func GetRootCmd() *cobra.Command {

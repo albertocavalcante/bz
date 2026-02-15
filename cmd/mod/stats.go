@@ -77,9 +77,8 @@ func runStats(cmd *cobra.Command, args []string) error {
 
 	var stats *Stats
 	err = cli.WithSpinner("Calculating statistics...", func() error {
-		var calcErr error
-		stats, calcErr = calculateStats(ctx, reg, f)
-		return calcErr
+		stats = calculateStats(ctx, reg, f)
+		return nil
 	})
 	if err != nil {
 		return err
@@ -94,7 +93,7 @@ func runStats(cmd *cobra.Command, args []string) error {
 	return printStatsTable(out, stats)
 }
 
-func calculateStats(ctx context.Context, reg registry.Registry, f *module.File) (*Stats, error) {
+func calculateStats(ctx context.Context, reg registry.Registry, f *module.File) *Stats {
 	stats := &Stats{}
 
 	// Count direct dependencies
@@ -109,7 +108,7 @@ func calculateStats(ctx context.Context, reg registry.Registry, f *module.File) 
 
 	// If no dependencies, return early
 	if stats.DirectDeps == 0 {
-		return stats, nil
+		return stats
 	}
 
 	// Track all modules we've seen (to avoid counting duplicates)
@@ -139,7 +138,7 @@ func calculateStats(ctx context.Context, reg registry.Registry, f *module.File) 
 	// Transitive deps = total - direct
 	stats.TransitiveDeps = stats.TotalModules - stats.DirectDeps
 
-	return stats, nil
+	return stats
 }
 
 // resolveTransitiveDeps recursively resolves dependencies and returns the max depth.

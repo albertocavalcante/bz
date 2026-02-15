@@ -36,7 +36,7 @@ func (e *OfflineModeError) Error() string {
 	}
 	msg += ".\n\nIn offline mode, this operation is not available.\n\nOptions:\n"
 	msg += "  1. Run with network access (remove --offline flag or BZ_OFFLINE env var)\n"
-	msg += fmt.Sprintf("  2. Disable this command in .bzconfig.toml:\n     [commands]\n     disabled = [\"%s\"]\n", e.Command)
+	msg += fmt.Sprintf("  2. Disable this command in .bzconfig.toml:\n     [commands]\n     disabled = [%q]\n", e.Command)
 	return msg
 }
 
@@ -51,8 +51,7 @@ func (e *OfflineModeError) Is(target error) bool {
 func CheckCommandAllowed(cmdName string) error {
 	cfg, err := bzconfig.Load(nil, bzconfig.WithProjectConfig(".bzconfig.toml"))
 	if err != nil {
-		// If config loading fails, allow the command to run
-		return nil
+		return nil //nolint:nilerr // config loading failure is non-fatal; allow command to proceed
 	}
 
 	if cfg.IsCommandDisabled(cmdName) {
@@ -79,8 +78,7 @@ func CheckOfflineAllowed(cmdName string) error {
 	// Also check config file
 	cfg, err := bzconfig.Load(nil, bzconfig.WithProjectConfig(".bzconfig.toml"))
 	if err != nil {
-		// If config loading fails, allow the command
-		return nil
+		return nil //nolint:nilerr // config loading failure is non-fatal; allow command to proceed
 	}
 
 	if cfg.IsOffline() {

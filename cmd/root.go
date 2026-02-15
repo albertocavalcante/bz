@@ -46,7 +46,7 @@ Environment Variables:
 			versionCmd.Run(cmd, args)
 			return
 		}
-		cmd.Help()
+		_ = cmd.Help()
 	},
 }
 

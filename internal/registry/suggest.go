@@ -147,17 +147,6 @@ func FormatSuggestion(suggestions []string) string {
 	return "Did you mean one of: " + strings.Join(suggestions, ", ") + "?"
 }
 
-// min returns the minimum of the given integers.
-func min(nums ...int) int {
-	m := nums[0]
-	for _, n := range nums[1:] {
-		if n < m {
-			m = n
-		}
-	}
-	return m
-}
-
 // ModuleNotFoundError wraps ErrModuleNotFound with the module name and optional suggestions.
 type ModuleNotFoundError struct {
 	Module      string

@@ -54,6 +54,7 @@ type updateInfo struct {
 	err        error
 }
 
+//nolint:gocyclo // CLI command handler with sequential steps
 func runUpdate(cmd *cobra.Command, args []string) error {
 	// Check if command is disabled
 	if err := cli.CheckCommandAllowed("update"); err != nil {

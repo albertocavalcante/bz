@@ -160,7 +160,7 @@ func (s *SimpleSpinner) Start() {
 			case <-ticker.C:
 				if f, ok := s.writer.(*os.File); ok && isTerminal(f) {
 					// Clear line and write spinner
-					io.WriteString(s.writer, "\r"+s.message+frames[i%len(frames)]+"   \r")
+					_, _ = io.WriteString(s.writer, "\r"+s.message+frames[i%len(frames)]+"   \r")
 				}
 				i++
 			}
@@ -177,6 +177,6 @@ func (s *SimpleSpinner) Stop() {
 	s.running = false
 	// Clear the spinner line
 	if f, ok := s.writer.(*os.File); ok && isTerminal(f) {
-		io.WriteString(s.writer, "\r                                                  \r")
+		_, _ = io.WriteString(s.writer, "\r                                                  \r")
 	}
 }

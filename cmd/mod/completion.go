@@ -53,7 +53,7 @@ func completeModulesFromRegistry(prefix string) ([]string, cobra.ShellCompDirect
 }
 
 // completeVersions returns version completions for a module.
-func completeVersions(cmd *cobra.Command, moduleName, versionPrefix string) ([]string, cobra.ShellCompDirective) {
+func completeVersions(_ *cobra.Command, moduleName, versionPrefix string) ([]string, cobra.ShellCompDirective) {
 	ctx, cancel := context.WithTimeout(context.Background(), completionTimeout)
 	defer cancel()
 

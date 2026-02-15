@@ -125,7 +125,7 @@ func runClear(cmd *cobra.Command, args []string) error {
 		reader := bufio.NewReader(in)
 		response, err := reader.ReadString('\n')
 		if err != nil {
-			return nil // Abort on read error
+			return nil //nolint:nilerr // abort on read error (e.g. stdin closed); treat as user declining
 		}
 		response = strings.TrimSpace(strings.ToLower(response))
 		if response != "y" && response != "yes" {
@@ -169,9 +169,9 @@ func runClear(cmd *cobra.Command, args []string) error {
 // calculateDirSize calculates the total size of a directory.
 func calculateDirSize(dir string) int64 {
 	var size int64
-	filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+	_ = filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return nil
+			return nil //nolint:nilerr // skip inaccessible entries during size calculation
 		}
 		if !d.IsDir() {
 			info, err := d.Info()

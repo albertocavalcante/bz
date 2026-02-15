@@ -175,7 +175,7 @@ func isWindowsAbsolutePath(path string) bool {
 
 	// Check for drive letter (A-Z or a-z)
 	letter := path[0]
-	if !((letter >= 'A' && letter <= 'Z') || (letter >= 'a' && letter <= 'z')) {
+	if (letter < 'A' || letter > 'Z') && (letter < 'a' || letter > 'z') {
 		return false
 	}
 

@@ -21,6 +21,12 @@ const (
 	pingTimeout = 10 * time.Second
 )
 
+// Ping status constants.
+const (
+	pingStatusOK    = "ok"
+	pingStatusError = "error"
+)
+
 var pingCmd = &cobra.Command{
 	Use:   "ping [registry-url]",
 	Short: "Check registry availability",
@@ -112,7 +118,7 @@ func ping(ctx context.Context, registryURL string) pingResult {
 	// Create request with context
 	req, err := http.NewRequestWithContext(ctx, http.MethodHead, checkURL, nil)
 	if err != nil {
-		result.Status = "error"
+		result.Status = pingStatusError
 		result.Error = fmt.Sprintf("failed to create request: %v", err)
 		return result
 	}
@@ -125,7 +131,7 @@ func ping(ctx context.Context, registryURL string) pingResult {
 	result.ResponseTimeMs = elapsed.Milliseconds()
 
 	if err != nil {
-		result.Status = "error"
+		result.Status = pingStatusError
 		result.Error = fmt.Sprintf("connection failed: %v", err)
 		return result
 	}
@@ -137,7 +143,7 @@ func ping(ctx context.Context, registryURL string) pingResult {
 	if resp.StatusCode == http.StatusOK ||
 		resp.StatusCode == http.StatusForbidden ||
 		resp.StatusCode == http.StatusMethodNotAllowed {
-		result.Status = "ok"
+		result.Status = pingStatusOK
 		return result
 	}
 
@@ -150,19 +156,19 @@ func ping(ctx context.Context, registryURL string) pingResult {
 		result.ResponseTimeMs = elapsed.Milliseconds()
 
 		if err != nil {
-			result.Status = "error"
+			result.Status = pingStatusError
 			result.Error = fmt.Sprintf("connection failed: %v", err)
 			return result
 		}
 		defer resp.Body.Close()
 
 		if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusForbidden {
-			result.Status = "ok"
+			result.Status = pingStatusOK
 			return result
 		}
 	}
 
-	result.Status = "error"
+	result.Status = pingStatusError
 	result.Error = fmt.Sprintf("HTTP %d", resp.StatusCode)
 	return result
 }
@@ -170,7 +176,7 @@ func ping(ctx context.Context, registryURL string) pingResult {
 func printPingText(w io.Writer, result pingResult) error {
 	fmt.Fprintf(w, "Registry: %s\n", result.Registry)
 
-	if result.Status == "ok" {
+	if result.Status == pingStatusOK {
 		fmt.Fprintf(w, "Status: OK\n")
 	} else {
 		fmt.Fprintf(w, "Status: ERROR\n")
@@ -182,7 +188,7 @@ func printPingText(w io.Writer, result pingResult) error {
 	fmt.Fprintf(w, "Response time: %dms\n", result.ResponseTimeMs)
 
 	// Return error for non-ok status to set exit code
-	if result.Status != "ok" {
+	if result.Status != pingStatusOK {
 		return fmt.Errorf("registry unavailable: %s", result.Error)
 	}
 	return nil
@@ -196,7 +202,7 @@ func printPingJSON(w io.Writer, result pingResult) error {
 	}
 
 	// Return error for non-ok status to set exit code
-	if result.Status != "ok" {
+	if result.Status != pingStatusOK {
 		return fmt.Errorf("registry unavailable: %s", result.Error)
 	}
 	return nil

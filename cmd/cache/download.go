@@ -125,10 +125,7 @@ func runDownload(cmd *cobra.Command, args []string) error {
 		}
 
 		// Resolve transitive dependencies
-		modulesToDownload, err = resolveTransitiveDeps(ctx, reg, modulesToDownload)
-		if err != nil {
-			return fmt.Errorf("failed to resolve dependencies: %w", err)
-		}
+		modulesToDownload = resolveTransitiveDeps(ctx, reg, modulesToDownload)
 	} else {
 		// No args - read from MODULE.bazel
 		f, err := module.FindAndLoad()
@@ -149,10 +146,7 @@ func runDownload(cmd *cobra.Command, args []string) error {
 		}
 
 		// Resolve transitive dependencies
-		modulesToDownload, err = resolveTransitiveDeps(ctx, reg, modulesToDownload)
-		if err != nil {
-			return fmt.Errorf("failed to resolve dependencies: %w", err)
-		}
+		modulesToDownload = resolveTransitiveDeps(ctx, reg, modulesToDownload)
 	}
 
 	// Download modules
@@ -196,7 +190,7 @@ type moduleVersion struct {
 }
 
 // resolveTransitiveDeps resolves all transitive dependencies for the given modules.
-func resolveTransitiveDeps(ctx context.Context, reg registry.Registry, initial []moduleVersion) ([]moduleVersion, error) {
+func resolveTransitiveDeps(ctx context.Context, reg registry.Registry, initial []moduleVersion) []moduleVersion {
 	seen := make(map[string]bool)
 	var result []moduleVersion
 	queue := initial
@@ -235,7 +229,7 @@ func resolveTransitiveDeps(ctx context.Context, reg registry.Registry, initial [
 		}
 	}
 
-	return result, nil
+	return result
 }
 
 // downloadModule downloads a single module to the cache.
@@ -273,9 +267,7 @@ func downloadModule(ctx context.Context, reg registry.Registry, cacheDir, name, 
 	if httpReg, ok := reg.(*registry.HTTPRegistry); ok {
 		sourceJSON, err := httpReg.GetSource(ctx, name, version)
 		if err == nil {
-			if err := os.WriteFile(filepath.Join(versionDir, "source.json"), sourceJSON, 0o644); err != nil {
-				// Non-fatal, just log
-			}
+			_ = os.WriteFile(filepath.Join(versionDir, "source.json"), sourceJSON, 0o644) // non-fatal: optional metadata
 		}
 	}
 

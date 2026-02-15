@@ -30,7 +30,7 @@ Commands for checking registry health, connectivity, and status.`,
 			return fmt.Errorf("unknown command %q for %q\n\nDid you mean this?\n\t%s",
 				args[0], cmd.CommandPath(), strings.Join(suggestions, "\n\t"))
 		}
-		return fmt.Errorf("unknown command %q for %q\nRun '%s --help' for usage.",
+		return fmt.Errorf("unknown command %q for %q, run '%s --help' for usage",
 			args[0], cmd.CommandPath(), cmd.CommandPath())
 	},
 }

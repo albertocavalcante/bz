@@ -6,15 +6,15 @@ import (
 
 // MockRegistry is a test implementation of Registry.
 type MockRegistry struct {
-	Modules map[string]*Metadata
-	Type_   string
+	Modules  map[string]*Metadata
+	TypeName string
 }
 
 // NewMockRegistry creates a new MockRegistry with the given modules.
 func NewMockRegistry(modules map[string]*Metadata) *MockRegistry {
 	return &MockRegistry{
-		Modules: modules,
-		Type_:   "mock",
+		Modules:  modules,
+		TypeName: "mock",
 	}
 }
 
@@ -45,7 +45,7 @@ func (m *MockRegistry) ListModules(_ context.Context) ([]string, error) {
 
 // Type returns the registry type.
 func (m *MockRegistry) Type() string {
-	return m.Type_
+	return m.TypeName
 }
 
 // String returns a string representation.

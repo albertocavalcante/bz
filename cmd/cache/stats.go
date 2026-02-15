@@ -91,7 +91,7 @@ func calculateCacheStats(cacheDir string) statsResult {
 	// Walk the modules directory
 	err := filepath.WalkDir(modulesDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return nil // Skip errors
+			return nil //nolint:nilerr // skip inaccessible entries during stats collection
 		}
 
 		// Count modules (directories directly under modules/)

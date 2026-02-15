@@ -82,6 +82,7 @@ type AuditVuln struct {
 	Aliases  []string `json:"aliases,omitempty"`
 }
 
+//nolint:gocyclo // CLI command handler with sequential steps
 func runAudit(cmd *cobra.Command, args []string) error {
 	// Check if command is disabled
 	if err := cli.CheckCommandAllowed("audit"); err != nil {

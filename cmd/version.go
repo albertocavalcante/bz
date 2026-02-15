@@ -32,7 +32,7 @@ var versionCmd = &cobra.Command{
 			}
 			enc := json.NewEncoder(out)
 			enc.SetIndent("", "  ")
-			enc.Encode(info)
+			_ = enc.Encode(info)
 			return
 		}
 		fmt.Fprintf(out, "bz %s (%s) built on %s\n", version, commit, date)

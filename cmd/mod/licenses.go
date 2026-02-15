@@ -99,10 +99,7 @@ func runLicenses(cmd *cobra.Command, args []string) error {
 	}
 
 	// Collect license information
-	licenses, err := collectLicenses(ctx, reg, f)
-	if err != nil {
-		return err
-	}
+	licenses := collectLicenses(ctx, reg, f)
 
 	out := cmd.OutOrStdout()
 
@@ -125,7 +122,7 @@ func runLicenses(cmd *cobra.Command, args []string) error {
 	return printLicensesTable(out, licenses)
 }
 
-func collectLicenses(ctx context.Context, reg registry.Registry, f *module.File) ([]ModuleLicense, error) {
+func collectLicenses(ctx context.Context, reg registry.Registry, f *module.File) []ModuleLicense {
 	licenses := make([]ModuleLicense, 0, len(f.Deps))
 
 	for _, dep := range f.Deps {
@@ -142,7 +139,7 @@ func collectLicenses(ctx context.Context, reg registry.Registry, f *module.File)
 		return licenses[i].Name < licenses[j].Name
 	})
 
-	return licenses, nil
+	return licenses
 }
 
 func getLicense(ctx context.Context, reg registry.Registry, moduleName, version string) string {

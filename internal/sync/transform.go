@@ -1,4 +1,4 @@
-package sync
+package sync //nolint:revive,nolintlint // package name conflicts with stdlib; intentional
 
 import (
 	"encoding/json"
