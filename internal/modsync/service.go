@@ -1,4 +1,4 @@
-package sync //nolint:revive,nolintlint // package name conflicts with stdlib; intentional
+package modsync
 
 import (
 	"context"

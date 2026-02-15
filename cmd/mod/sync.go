@@ -6,7 +6,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/albertocavalcante/bz/internal/config"
-	"github.com/albertocavalcante/bz/internal/sync"
+	"github.com/albertocavalcante/bz/internal/modsync"
 )
 
 var syncCmd = &cobra.Command{
@@ -67,7 +67,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create sync service
-	svc := sync.NewService(cfg)
+	svc := modsync.NewService(cfg)
 
 	// If --list, print workflows and exit
 	if syncList {
@@ -97,7 +97,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 	workflowName := args[0]
 
 	// Build options
-	opts := sync.Options{
+	opts := modsync.Options{
 		DryRun:  syncDryRun,
 		Verbose: syncVerbose,
 		Modules: syncModules,
