@@ -3,6 +3,7 @@
 package module
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,6 +12,9 @@ import (
 )
 
 const moduleFileName = "MODULE.bazel"
+
+// ErrModuleFileNotFound indicates MODULE.bazel was not found in current or parent directories.
+var ErrModuleFileNotFound = errors.New("MODULE.bazel not found")
 
 // File represents a parsed MODULE.bazel with all its contents.
 type File struct {
@@ -122,7 +126,7 @@ func findFrom(startDir string) (string, error) {
 		dir = parent
 	}
 
-	return "", fmt.Errorf("%s not found in %s or any parent directory", moduleFileName, startDir)
+	return "", fmt.Errorf("%w in %s or any parent directory", ErrModuleFileNotFound, startDir)
 }
 
 // FindAndLoad finds and loads the MODULE.bazel file.

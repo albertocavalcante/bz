@@ -2,6 +2,7 @@ package module
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -313,5 +314,8 @@ func TestFind_NotFound(t *testing.T) {
 
 	if !strings.Contains(err.Error(), "MODULE.bazel not found") {
 		t.Fatalf("findFrom() error = %q, want missing file message", err.Error())
+	}
+	if !errors.Is(err, ErrModuleFileNotFound) {
+		t.Fatalf("findFrom() error = %v, want errors.Is(..., ErrModuleFileNotFound)", err)
 	}
 }

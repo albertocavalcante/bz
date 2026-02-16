@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -17,12 +18,16 @@ import (
 const searchTimeout = 15 * time.Second
 
 var getSearchRegistry = defaultSearchRegistry
+var findAndLoadModule = module.FindAndLoad
 
 // ListLocalDeps reads and parses the local MODULE.bazel
 func ListLocalDeps() tea.Cmd {
 	return func() tea.Msg {
-		f, err := module.FindAndLoad()
+		f, err := findAndLoadModule()
 		if err != nil {
+			if errors.Is(err, module.ErrModuleFileNotFound) {
+				return DepsListedMsg{File: &module.File{}}
+			}
 			return ErrMsg{Err: err}
 		}
 		return DepsListedMsg{File: f}

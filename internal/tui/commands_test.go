@@ -3,8 +3,10 @@ package tui
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
+	"github.com/albertocavalcante/bz/internal/module"
 	"github.com/albertocavalcante/bz/internal/registry"
 )
 
@@ -82,6 +84,62 @@ func TestSearchModules(t *testing.T) {
 		}
 		if !errors.Is(err, wantErr) {
 			t.Fatalf("error = %v, want wrapped %v", err, wantErr)
+		}
+	})
+}
+
+func TestListLocalDeps(t *testing.T) {
+	t.Cleanup(func() {
+		findAndLoadModule = module.FindAndLoad
+	})
+
+	t.Run("missing module file returns empty deps", func(t *testing.T) {
+		findAndLoadModule = func() (*module.File, error) {
+			return nil, fmt.Errorf("wrapped: %w", module.ErrModuleFileNotFound)
+		}
+
+		msg := ListLocalDeps()()
+		depsMsg, ok := msg.(DepsListedMsg)
+		if !ok {
+			t.Fatalf("ListLocalDeps()() = %T, want DepsListedMsg", msg)
+		}
+		if depsMsg.File == nil {
+			t.Fatal("DepsListedMsg.File is nil")
+		}
+		if len(depsMsg.File.Deps) != 0 {
+			t.Fatalf("len(DepsListedMsg.File.Deps) = %d, want 0", len(depsMsg.File.Deps))
+		}
+	})
+
+	t.Run("non-not-found error returns ErrMsg", func(t *testing.T) {
+		wantErr := errors.New("load failed")
+		findAndLoadModule = func() (*module.File, error) {
+			return nil, wantErr
+		}
+
+		msg := ListLocalDeps()()
+		errMsg, ok := msg.(ErrMsg)
+		if !ok {
+			t.Fatalf("ListLocalDeps()() = %T, want ErrMsg", msg)
+		}
+		if !errors.Is(errMsg.Err, wantErr) {
+			t.Fatalf("ErrMsg.Err = %v, want wrapped %v", errMsg.Err, wantErr)
+		}
+	})
+
+	t.Run("success returns deps listed message", func(t *testing.T) {
+		wantFile := &module.File{}
+		findAndLoadModule = func() (*module.File, error) {
+			return wantFile, nil
+		}
+
+		msg := ListLocalDeps()()
+		depsMsg, ok := msg.(DepsListedMsg)
+		if !ok {
+			t.Fatalf("ListLocalDeps()() = %T, want DepsListedMsg", msg)
+		}
+		if depsMsg.File != wantFile {
+			t.Fatalf("DepsListedMsg.File = %p, want %p", depsMsg.File, wantFile)
 		}
 	})
 }
