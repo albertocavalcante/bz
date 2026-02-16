@@ -98,6 +98,28 @@ func TestListModel_Update_QuitFlow(t *testing.T) {
 	}
 }
 
+func TestListModel_Update_DoesNotQuitWhileSettingFilter(t *testing.T) {
+	t.Parallel()
+
+	model := NewListModel("Dependencies", []ModuleItem{
+		{name: "rules_go", version: "0.50.0"},
+	}, DefaultStyles())
+	model.list.SetFilterState(listpkg.Filtering)
+
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	if updated.quitting {
+		t.Fatal("expected quitting = false while setting filter")
+	}
+	if got := updated.list.FilterValue(); got != "q" {
+		t.Fatalf("FilterValue() = %q, want %q", got, "q")
+	}
+	if cmd != nil {
+		if _, ok := cmd().(tea.QuitMsg); ok {
+			t.Fatal("unexpected tea.QuitMsg while setting filter")
+		}
+	}
+}
+
 func TestListModel_WindowSizeAndSetSize(t *testing.T) {
 	t.Parallel()
 
@@ -119,6 +141,30 @@ func TestListModel_WindowSizeAndSetSize(t *testing.T) {
 	}
 	if got := updated.list.Height(); got != 26 {
 		t.Fatalf("Height() after SetSize = %d, want %d", got, 26)
+	}
+}
+
+func TestListModel_SizeIsClampedForSmallTerminal(t *testing.T) {
+	t.Parallel()
+
+	model := NewListModel("Dependencies", []ModuleItem{
+		{name: "rules_go", version: "0.50.0"},
+	}, DefaultStyles())
+
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 2, Height: 3})
+	if got := updated.list.Width(); got != 0 {
+		t.Fatalf("Width() after tiny WindowSizeMsg = %d, want %d", got, 0)
+	}
+	if got := updated.list.Height(); got != 0 {
+		t.Fatalf("Height() after tiny WindowSizeMsg = %d, want %d", got, 0)
+	}
+
+	updated.SetSize(1, 1)
+	if got := updated.list.Width(); got != 0 {
+		t.Fatalf("Width() after tiny SetSize = %d, want %d", got, 0)
+	}
+	if got := updated.list.Height(); got != 0 {
+		t.Fatalf("Height() after tiny SetSize = %d, want %d", got, 0)
 	}
 }
 

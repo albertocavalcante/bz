@@ -29,6 +29,8 @@ type ListModel struct {
 	quitting bool
 }
 
+const listViewportPadding = 4
+
 // ListKeyMap defines keybindings for the list
 type ListKeyMap struct {
 	Select key.Binding
@@ -87,6 +89,10 @@ func (m ListModel) Update(msg tea.Msg) (ListModel, tea.Cmd) {
 	case tea.KeyMsg:
 		switch {
 		case key.Matches(msg, listKeys.Quit):
+			// While editing filter input, q/esc should be handled by the list input.
+			if m.list.SettingFilter() {
+				break
+			}
 			m.quitting = true
 			return m, tea.Quit
 
@@ -98,7 +104,8 @@ func (m ListModel) Update(msg tea.Msg) (ListModel, tea.Cmd) {
 		}
 
 	case tea.WindowSizeMsg:
-		m.list.SetSize(msg.Width-4, msg.Height-4)
+		w, h := clampListSize(msg.Width, msg.Height)
+		m.list.SetSize(w, h)
 	}
 
 	var cmd tea.Cmd
@@ -130,7 +137,12 @@ func (m *ListModel) SetItems(items []ModuleItem) tea.Cmd {
 
 // SetSize sets the list dimensions
 func (m *ListModel) SetSize(width, height int) {
-	m.list.SetSize(width-4, height-4)
+	w, h := clampListSize(width, height)
+	m.list.SetSize(w, h)
+}
+
+func clampListSize(width, height int) (int, int) {
+	return max(0, width-listViewportPadding), max(0, height-listViewportPadding)
 }
 
 // RenderDepsTable renders dependencies as a simple table (for headless mode)

@@ -73,8 +73,13 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Keyboard input
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "ctrl+c", "q":
+		case "ctrl+c":
 			return a, tea.Quit
+		case "q":
+			// Let list model handle q when in list state (including filter input).
+			if a.state != StateList {
+				return a, tea.Quit
+			}
 		}
 
 	// Error handling

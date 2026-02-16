@@ -7,6 +7,7 @@ import (
 
 	"github.com/albertocavalcante/go-bzlmod/ast"
 	"github.com/albertocavalcante/go-bzlmod/label"
+	listpkg "github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/albertocavalcante/bz/internal/module"
@@ -166,6 +167,37 @@ func TestApp_KeyQuitAndCtrlC_ReturnQuitCmd(t *testing.T) {
 		}
 		if _, ok := cmd().(tea.QuitMsg); !ok {
 			t.Fatalf("expected tea.QuitMsg for key %q", keyMsg.String())
+		}
+	}
+}
+
+func TestApp_KeyQ_InListFilterInput_DoesNotQuit(t *testing.T) {
+	t.Parallel()
+	app := NewApp()
+
+	model, _ := app.Update(DepsListedMsg{
+		File: testModuleFile("demo", "1.0.0",
+			struct{ name, ver string }{"rules_go", "0.50.0"},
+		),
+	})
+	app = model.(App)
+	app.list.list.SetFilterState(listpkg.Filtering)
+
+	model, cmd := app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	updated := model.(App)
+
+	if updated.state != StateList {
+		t.Fatalf("expected state StateList, got %v", updated.state)
+	}
+	if updated.list.quitting {
+		t.Fatal("expected list not to quit while setting filter")
+	}
+	if got := updated.list.list.FilterValue(); got != "q" {
+		t.Fatalf("FilterValue() = %q, want %q", got, "q")
+	}
+	if cmd != nil {
+		if _, ok := cmd().(tea.QuitMsg); ok {
+			t.Fatal("unexpected tea.QuitMsg from q while setting filter")
 		}
 	}
 }
