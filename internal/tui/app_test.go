@@ -2,6 +2,7 @@ package tui
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/albertocavalcante/go-bzlmod/ast"
@@ -33,10 +34,9 @@ func testModuleFile(name, version string, deps ...struct{ name, ver string }) *m
 }
 
 func TestApp_WindowSizeMsg_BeforeListInitialized(t *testing.T) {
-	t.Parallel(
+	t.Parallel()
 	// This test ensures we don't panic when WindowSizeMsg arrives
-	// before the list model is initialized (during StateLoading)
-	)
+	// before the list model is initialized (during StateLoading).
 
 	app := NewApp()
 
@@ -142,6 +142,107 @@ func TestApp_ErrMsg_TransitionsToErrorState(t *testing.T) {
 	}
 	if !errors.Is(app.err, errTest) {
 		t.Errorf("expected error %v, got %v", errTest, app.err)
+	}
+}
+
+func TestApp_KeyQuitAndCtrlC_ReturnQuitCmd(t *testing.T) {
+	t.Parallel()
+	app := NewApp()
+
+	tests := []tea.KeyMsg{
+		{Type: tea.KeyRunes, Runes: []rune("q")},
+		{Type: tea.KeyCtrlC},
+	}
+
+	for _, keyMsg := range tests {
+		model, cmd := app.Update(keyMsg)
+		updated := model.(App)
+		if updated.state != StateLoading {
+			t.Fatalf("state changed unexpectedly for key %q: %v", keyMsg.String(), updated.state)
+		}
+
+		if cmd == nil {
+			t.Fatalf("expected quit cmd for key %q", keyMsg.String())
+		}
+		if _, ok := cmd().(tea.QuitMsg); !ok {
+			t.Fatalf("expected tea.QuitMsg for key %q", keyMsg.String())
+		}
+	}
+}
+
+func TestApp_DepsListedMsg_UsesFallbackTitleWithoutModuleName(t *testing.T) {
+	t.Parallel()
+	app := NewApp()
+
+	msg := DepsListedMsg{
+		File: testModuleFile("", "",
+			struct{ name, ver string }{"rules_go", "0.50.0"},
+		),
+	}
+	model, _ := app.Update(msg)
+	updated := model.(App)
+
+	if updated.state != StateList {
+		t.Fatalf("expected state StateList, got %v", updated.state)
+	}
+	if got := updated.list.list.Title; got != "Dependencies" {
+		t.Fatalf("list title = %q, want %q", got, "Dependencies")
+	}
+}
+
+func TestApp_ModuleInfoMsg_TransitionsToInfoState(t *testing.T) {
+	t.Parallel()
+	app := NewApp()
+
+	model, _ := app.Update(ModuleInfoMsg{
+		File: testModuleFile("rules_go", "0.50.0"),
+	})
+	updated := model.(App)
+
+	if updated.state != StateInfo {
+		t.Fatalf("expected state StateInfo, got %v", updated.state)
+	}
+	if got := updated.View(); got != "" {
+		t.Fatalf("expected empty view in info state, got %q", got)
+	}
+}
+
+func TestApp_View_RendersLoadingAndError(t *testing.T) {
+	t.Parallel()
+
+	loading := NewApp().View()
+	if !strings.Contains(loading, "Loading...") {
+		t.Fatalf("loading view missing marker: %q", loading)
+	}
+
+	app := NewApp()
+	model, _ := app.Update(ErrMsg{Err: errTest})
+	errView := model.(App).View()
+	if !strings.Contains(errView, "Error: test error") {
+		t.Fatalf("error view missing error text: %q", errView)
+	}
+	if !strings.Contains(errView, "Press q to quit") {
+		t.Fatalf("error view missing help text: %q", errView)
+	}
+}
+
+func TestApp_View_RendersListAfterDepsListed(t *testing.T) {
+	t.Parallel()
+	app := NewApp()
+
+	model, _ := app.Update(DepsListedMsg{
+		File: testModuleFile("demo", "1.0.0",
+			struct{ name, ver string }{"rules_go", "0.50.0"},
+			struct{ name, ver string }{"gazelle", "0.38.0"},
+		),
+	})
+	view := model.(App).View()
+
+	if !strings.Contains(view, "rules_go") {
+		t.Fatalf("list view missing dependency: %q", view)
+	}
+	if !strings.Contains(view, "gazelle") {
+		t.Fatalf("list view missing dependency: %q", view)
 	}
 }
 
