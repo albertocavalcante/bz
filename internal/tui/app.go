@@ -63,147 +63,169 @@ func (a App) Init() tea.Cmd {
 }
 
 // Update implements tea.Model - handles all messages.
-//
-//nolint:gocyclo // This is the central state-machine event handler for the TUI.
 func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
-	switch msg := msg.(type) {
-	// Window resize - only forward to list if initialized
+	switch typed := msg.(type) {
 	case tea.WindowSizeMsg:
-		a.width = msg.Width
-		a.height = msg.Height
-		if a.state == StateList {
-			a.list, _ = a.list.Update(msg)
-		}
-		return a, nil
-
-	// Keyboard input
+		return a.handleWindowSize(typed), nil
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "ctrl+c":
-			return a, tea.Quit
-		case "b", "esc":
-			if a.state == StateInfo {
-				a.state = a.prev
-				return a, nil
-			}
-			if a.state == StateSearch {
-				a.state = StateList
-				return a, nil
-			}
-		case "s", "/":
-			if a.state == StateList {
-				query := strings.TrimSpace(a.list.list.FilterValue())
-				if query == "" {
-					if item, ok := a.list.list.SelectedItem().(ModuleItem); ok {
-						query = item.name
-					}
-				}
-				if query != "" {
-					a.prev = a.state
-					a.state = StateSearch
-					a.list = NewListModel(fmt.Sprintf("Search: %s", query), nil, a.styles)
-					if a.width > 0 && a.height > 0 {
-						a.list.SetSize(a.width, a.height)
-					}
-					return a, SearchModules(query)
-				}
-			}
-		case "q":
-			// Let list model handle q when in list/search state (including filter input).
-			if a.state != StateList && a.state != StateSearch {
-				return a, tea.Quit
-			}
+		var (
+			cmd     tea.Cmd
+			handled bool
+		)
+		a, cmd, handled = a.handleKey(typed)
+		if handled {
+			return a, cmd
 		}
-
-	// Error handling
 	case ErrMsg:
-		a.state = StateError
-		a.err = msg.Err
-		return a, nil
-
-	// Dependencies listed
+		return a.handleErr(typed), nil
 	case DepsListedMsg:
-		items := make([]ModuleItem, len(msg.File.Deps))
-		for i, dep := range msg.File.Deps {
-			items[i] = ModuleItem{
-				name:    dep.Name.String(),
-				version: dep.Version.String(),
-				dev:     dep.DevDependency,
-			}
-		}
-
-		title := "Dependencies"
-		if msg.File.Name() != "" {
-			title = fmt.Sprintf("%s - Dependencies", msg.File.Name())
-		}
-
-		a.list = NewListModel(title, items, a.styles)
-		if a.width > 0 && a.height > 0 {
-			a.list.SetSize(a.width, a.height)
-		}
-		a.state = StateList
-		return a, nil
-
-	// Module info fetched
+		return a.handleDepsListed(typed), nil
 	case ModuleInfoMsg:
-		a.prev = a.state
-		a.state = StateInfo
-		a.info = msg.File
-		a.infoItem = nil
-		return a, nil
-
-	// Module selected in list
+		return a.handleModuleInfo(typed), nil
 	case ModuleSelectedMsg:
-		item := msg.Item
-		a.prev = a.state
-		a.state = StateInfo
-		a.info = nil
-		a.infoItem = &item
-		return a, nil
-
-	// Search completed
+		return a.handleModuleSelected(typed), nil
 	case SearchResultsMsg:
-		items := make([]ModuleItem, len(msg.Results))
-		for i, result := range msg.Results {
-			items[i] = ModuleItem{
-				name:    result.Name,
-				version: result.Version,
-			}
-		}
-
-		title := "Search Results"
-		if msg.Query != "" {
-			title = fmt.Sprintf("Search: %s", msg.Query)
-		}
-		if len(items) > 0 {
-			title = fmt.Sprintf("%s (%d)", title, len(items))
-		}
-
-		a.list = NewListModel(title, items, a.styles)
-		if a.width > 0 && a.height > 0 {
-			a.list.SetSize(a.width, a.height)
-		}
-		a.state = StateSearch
-		return a, nil
-
-	// Spinner tick
+		return a.handleSearchResults(typed), nil
 	case spinner.TickMsg:
 		var cmd tea.Cmd
-		a.spinner, cmd = a.spinner.Update(msg)
+		a.spinner, cmd = a.spinner.Update(typed)
 		cmds = append(cmds, cmd)
 	}
 
-	// Delegate to sub-models based on state
-	switch a.state {
-	case StateList, StateSearch:
+	if a.state == StateList || a.state == StateSearch {
 		var cmd tea.Cmd
 		a.list, cmd = a.list.Update(msg)
 		cmds = append(cmds, cmd)
 	}
 
 	return a, tea.Batch(cmds...)
+}
+
+func (a App) handleWindowSize(msg tea.WindowSizeMsg) App {
+	a.width = msg.Width
+	a.height = msg.Height
+	if a.state == StateList || a.state == StateSearch {
+		a.list, _ = a.list.Update(msg)
+	}
+	return a
+}
+
+func (a App) handleKey(msg tea.KeyMsg) (App, tea.Cmd, bool) {
+	switch msg.String() {
+	case "ctrl+c":
+		return a, tea.Quit, true
+	case "b", "esc":
+		if a.state == StateInfo {
+			a.state = a.prev
+			return a, nil, true
+		}
+		if a.state == StateSearch {
+			a.state = StateList
+			return a, nil, true
+		}
+	case "s", "/":
+		if a.state != StateList {
+			return a, nil, false
+		}
+
+		query := strings.TrimSpace(a.list.list.FilterValue())
+		if query == "" {
+			if item, ok := a.list.list.SelectedItem().(ModuleItem); ok {
+				query = item.name
+			}
+		}
+		if query == "" {
+			return a, nil, false
+		}
+
+		a.prev = a.state
+		a.state = StateSearch
+		a.list = NewListModel(fmt.Sprintf("Search: %s", query), nil, a.styles)
+		if a.width > 0 && a.height > 0 {
+			a.list.SetSize(a.width, a.height)
+		}
+		return a, SearchModules(query), true
+	case "q":
+		// Let list model handle q when in list/search state (including filter input).
+		if a.state != StateList && a.state != StateSearch {
+			return a, tea.Quit, true
+		}
+	}
+
+	return a, nil, false
+}
+
+func (a App) handleErr(msg ErrMsg) App {
+	a.state = StateError
+	a.err = msg.Err
+	return a
+}
+
+func (a App) handleDepsListed(msg DepsListedMsg) App {
+	items := make([]ModuleItem, len(msg.File.Deps))
+	for i, dep := range msg.File.Deps {
+		items[i] = ModuleItem{
+			name:    dep.Name.String(),
+			version: dep.Version.String(),
+			dev:     dep.DevDependency,
+		}
+	}
+
+	title := "Dependencies"
+	if msg.File.Name() != "" {
+		title = fmt.Sprintf("%s - Dependencies", msg.File.Name())
+	}
+
+	a.list = NewListModel(title, items, a.styles)
+	if a.width > 0 && a.height > 0 {
+		a.list.SetSize(a.width, a.height)
+	}
+	a.state = StateList
+	return a
+}
+
+func (a App) handleModuleInfo(msg ModuleInfoMsg) App {
+	a.prev = a.state
+	a.state = StateInfo
+	a.info = msg.File
+	a.infoItem = nil
+	return a
+}
+
+func (a App) handleModuleSelected(msg ModuleSelectedMsg) App {
+	item := msg.Item
+	a.prev = a.state
+	a.state = StateInfo
+	a.info = nil
+	a.infoItem = &item
+	return a
+}
+
+func (a App) handleSearchResults(msg SearchResultsMsg) App {
+	items := make([]ModuleItem, len(msg.Results))
+	for i, result := range msg.Results {
+		items[i] = ModuleItem{
+			name:    result.Name,
+			version: result.Version,
+		}
+	}
+
+	title := "Search Results"
+	if msg.Query != "" {
+		title = fmt.Sprintf("Search: %s", msg.Query)
+	}
+	if len(items) > 0 {
+		title = fmt.Sprintf("%s (%d)", title, len(items))
+	}
+
+	a.list = NewListModel(title, items, a.styles)
+	if a.width > 0 && a.height > 0 {
+		a.list.SetSize(a.width, a.height)
+	}
+	a.state = StateSearch
+	return a
 }
 
 // View implements tea.Model - renders the current view
