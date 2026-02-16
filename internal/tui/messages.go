@@ -32,6 +32,11 @@ type ModuleInfoMsg struct {
 	File *module.File
 }
 
+// ModuleSelectedMsg is sent when a module/dependency is selected in the list.
+type ModuleSelectedMsg struct {
+	Item ModuleItem
+}
+
 // DepsListedMsg is sent when local deps are listed
 type DepsListedMsg struct {
 	File *module.File

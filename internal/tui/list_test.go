@@ -44,13 +44,25 @@ func TestListModel_Update_NavigationAndSelection(t *testing.T) {
 		t.Fatalf("Index() after down = %d, want %d", got, 1)
 	}
 
-	updated, _ = updated.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	var cmd tea.Cmd
+	updated, cmd = updated.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	selected := updated.Selected()
 	if selected == nil {
 		t.Fatal("expected selected item, got nil")
 	}
 	if selected.name != "gazelle" {
 		t.Fatalf("selected.name = %q, want %q", selected.name, "gazelle")
+	}
+	if cmd == nil {
+		t.Fatal("expected command on selection")
+	}
+	msg := cmd()
+	selectedMsg, ok := msg.(ModuleSelectedMsg)
+	if !ok {
+		t.Fatalf("expected ModuleSelectedMsg, got %T", msg)
+	}
+	if selectedMsg.Item.name != "gazelle" {
+		t.Fatalf("selected message item = %q, want %q", selectedMsg.Item.name, "gazelle")
 	}
 }
 

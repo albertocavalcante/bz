@@ -99,6 +99,9 @@ func (m ListModel) Update(msg tea.Msg) (ListModel, tea.Cmd) {
 		case key.Matches(msg, listKeys.Select):
 			if item, ok := m.list.SelectedItem().(ModuleItem); ok {
 				m.selected = &item
+				return m, func() tea.Msg {
+					return ModuleSelectedMsg{Item: item}
+				}
 			}
 			return m, nil
 		}

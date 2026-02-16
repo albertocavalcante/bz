@@ -33,11 +33,12 @@ type App struct {
 	spinner spinner.Model
 
 	// Application state
-	styles Styles
-	width  int
-	height int
-	err    error
-	info   *module.File
+	styles   Styles
+	width    int
+	height   int
+	err      error
+	info     *module.File
+	infoItem *ModuleItem
 }
 
 // NewApp creates a new application model
@@ -126,6 +127,16 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.prev = a.state
 		a.state = StateInfo
 		a.info = msg.File
+		a.infoItem = nil
+		return a, nil
+
+	// Module selected in list
+	case ModuleSelectedMsg:
+		item := msg.Item
+		a.prev = a.state
+		a.state = StateInfo
+		a.info = nil
+		a.infoItem = &item
 		return a, nil
 
 	// Spinner tick
@@ -177,6 +188,29 @@ func (a App) viewError() string {
 }
 
 func (a App) viewInfo() string {
+	if a.infoItem != nil {
+		var b strings.Builder
+		name := a.infoItem.name
+		if name == "" {
+			name = "Module Info"
+		}
+		b.WriteString(a.styles.Title.Render(name))
+		if a.infoItem.version != "" {
+			b.WriteString(" ")
+			b.WriteString(a.styles.Muted.Render("(" + a.infoItem.version + ")"))
+		}
+		b.WriteString("\n\n")
+		b.WriteString("Selected dependency from MODULE.bazel\n")
+		if a.infoItem.dev {
+			b.WriteString("Dev Dependency: yes\n")
+		} else {
+			b.WriteString("Dev Dependency: no\n")
+		}
+		b.WriteString("\n")
+		b.WriteString(a.styles.Help.Render("Press b to go back, q to quit"))
+		return a.styles.App.Render(b.String())
+	}
+
 	if a.info == nil {
 		return a.styles.App.Render(
 			a.styles.Muted.Render("No module info available.") + "\n\n" +

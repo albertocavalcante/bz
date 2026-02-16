@@ -202,6 +202,56 @@ func TestApp_KeyQ_InListFilterInput_DoesNotQuit(t *testing.T) {
 	}
 }
 
+func TestApp_ListSelection_TransitionsToInfoState(t *testing.T) {
+	t.Parallel()
+	app := NewApp()
+
+	model, _ := app.Update(DepsListedMsg{
+		File: testModuleFile("demo", "1.0.0",
+			struct{ name, ver string }{"rules_go", "0.50.0"},
+			struct{ name, ver string }{"gazelle", "0.38.0"},
+		),
+	})
+	app = model.(App)
+
+	model, _ = app.Update(tea.KeyMsg{Type: tea.KeyDown})
+	app = model.(App)
+
+	model, cmd := app.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	app = model.(App)
+	if cmd == nil {
+		t.Fatal("expected command on enter selection")
+	}
+
+	msg := cmd()
+	selectedMsg, ok := msg.(ModuleSelectedMsg)
+	if !ok {
+		t.Fatalf("expected ModuleSelectedMsg, got %T", msg)
+	}
+	if selectedMsg.Item.name != "gazelle" {
+		t.Fatalf("selected item = %q, want %q", selectedMsg.Item.name, "gazelle")
+	}
+
+	model, _ = app.Update(msg)
+	app = model.(App)
+	if app.state != StateInfo {
+		t.Fatalf("expected state StateInfo, got %v", app.state)
+	}
+	view := app.View()
+	if !strings.Contains(view, "gazelle") {
+		t.Fatalf("info view missing selected module name: %q", view)
+	}
+	if !strings.Contains(view, "Selected dependency from MODULE.bazel") {
+		t.Fatalf("info view missing selected dependency marker: %q", view)
+	}
+
+	model, _ = app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("b")})
+	app = model.(App)
+	if app.state != StateList {
+		t.Fatalf("expected state StateList after back, got %v", app.state)
+	}
+}
+
 func TestApp_DepsListedMsg_UsesFallbackTitleWithoutModuleName(t *testing.T) {
 	t.Parallel()
 	app := NewApp()
