@@ -62,7 +62,9 @@ func (a App) Init() tea.Cmd {
 	)
 }
 
-// Update implements tea.Model - handles all messages
+// Update implements tea.Model - handles all messages.
+//
+//nolint:gocyclo // This is the central state-machine event handler for the TUI.
 func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
