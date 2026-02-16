@@ -2,6 +2,8 @@ package module
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -185,5 +187,131 @@ func TestFormatBazelDep(t *testing.T) {
 				t.Errorf("FormatBazelDep() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestLoadContent_ParseErrorIncludesPosition(t *testing.T) {
+	t.Parallel()
+
+	_, err := LoadContent("MODULE.bazel", []byte(`module(name = "broken"`))
+	if err == nil {
+		t.Fatal("expected parse error, got nil")
+	}
+
+	errText := err.Error()
+	if !strings.Contains(errText, "MODULE.bazel:") {
+		t.Fatalf("expected parse error to include file position, got: %q", errText)
+	}
+}
+
+func TestFindAndLoad(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	modPath := filepath.Join(root, "MODULE.bazel")
+	if err := os.WriteFile(modPath, []byte(`module(name = "root_mod", version = "1.2.3")`), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	nested := filepath.Join(root, "a", "b")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+
+	path, err := findFrom(nested)
+	if err != nil {
+		t.Fatalf("findFrom() error = %v", err)
+	}
+	if path != modPath {
+		t.Fatalf("findFrom() = %q, want %q", path, modPath)
+	}
+
+	file, err := findAndLoadFrom(nested)
+	if err != nil {
+		t.Fatalf("findAndLoadFrom() error = %v", err)
+	}
+	if file.Path != modPath {
+		t.Errorf("findAndLoadFrom().Path = %q, want %q", file.Path, modPath)
+	}
+	if file.Name() != "root_mod" {
+		t.Errorf("findAndLoadFrom().Name() = %q, want %q", file.Name(), "root_mod")
+	}
+}
+
+func TestFind_PrefersNearestModuleFile(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	topLevel := filepath.Join(root, "MODULE.bazel")
+	if err := os.WriteFile(topLevel, []byte(`module(name = "top", version = "1.0.0")`), 0o600); err != nil {
+		t.Fatalf("WriteFile() top-level error = %v", err)
+	}
+
+	nearestDir := filepath.Join(root, "workspace")
+	if err := os.MkdirAll(nearestDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll() nearestDir error = %v", err)
+	}
+	nearest := filepath.Join(nearestDir, "MODULE.bazel")
+	if err := os.WriteFile(nearest, []byte(`module(name = "nearest", version = "2.0.0")`), 0o600); err != nil {
+		t.Fatalf("WriteFile() nearest error = %v", err)
+	}
+
+	nested := filepath.Join(nearestDir, "deep", "path")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatalf("MkdirAll() nested error = %v", err)
+	}
+
+	got, err := findFrom(nested)
+	if err != nil {
+		t.Fatalf("findFrom() error = %v", err)
+	}
+	if got != nearest {
+		t.Fatalf("findFrom() = %q, want nearest %q", got, nearest)
+	}
+}
+
+func TestFind_SkipsDirectoryNamedModuleFile(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	parentModule := filepath.Join(root, "MODULE.bazel")
+	if err := os.WriteFile(parentModule, []byte(`module(name = "parent", version = "1.0.0")`), 0o600); err != nil {
+		t.Fatalf("WriteFile() parent module error = %v", err)
+	}
+
+	child := filepath.Join(root, "child")
+	if err := os.MkdirAll(child, 0o755); err != nil {
+		t.Fatalf("MkdirAll() child error = %v", err)
+	}
+	if err := os.Mkdir(filepath.Join(child, "MODULE.bazel"), 0o755); err != nil {
+		t.Fatalf("Mkdir() fake MODULE.bazel dir error = %v", err)
+	}
+
+	nested := filepath.Join(child, "nested")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatalf("MkdirAll() nested error = %v", err)
+	}
+
+	got, err := findFrom(nested)
+	if err != nil {
+		t.Fatalf("findFrom() error = %v", err)
+	}
+	if got != parentModule {
+		t.Fatalf("findFrom() = %q, want %q", got, parentModule)
+	}
+}
+
+func TestFind_NotFound(t *testing.T) {
+	t.Parallel()
+
+	empty := t.TempDir()
+
+	_, err := findFrom(empty)
+	if err == nil {
+		t.Fatal("expected findFrom() error, got nil")
+	}
+
+	if !strings.Contains(err.Error(), "MODULE.bazel not found") {
+		t.Fatalf("findFrom() error = %q, want missing file message", err.Error())
 	}
 }

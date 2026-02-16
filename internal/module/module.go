@@ -10,6 +10,8 @@ import (
 	"github.com/albertocavalcante/go-bzlmod/ast"
 )
 
+const moduleFileName = "MODULE.bazel"
+
 // File represents a parsed MODULE.bazel with all its contents.
 type File struct {
 	Path string
@@ -74,22 +76,16 @@ func (f *File) HasExtensions() bool {
 // Load parses a MODULE.bazel file and returns structured data.
 func Load(path string) (*File, error) {
 	result, err := ast.ParseFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("parse error: %w", err)
-	}
-
-	if result.HasErrors() {
-		// Return first error with position info
-		e := result.Errors[0]
-		return nil, fmt.Errorf("%s:%d:%d: %s", e.Pos.Filename, e.Pos.Line, e.Pos.Column, e.Message)
-	}
-
-	return fromAST(path, result.File), nil
+	return loadParsed(path, result, err)
 }
 
 // LoadContent parses MODULE.bazel content from bytes.
 func LoadContent(filename string, content []byte) (*File, error) {
 	result, err := ast.ParseContent(filename, content)
+	return loadParsed(filename, result, err)
+}
+
+func loadParsed(path string, result *ast.ParseResult, err error) (*File, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse error: %w", err)
 	}
@@ -99,7 +95,7 @@ func LoadContent(filename string, content []byte) (*File, error) {
 		return nil, fmt.Errorf("%s:%d:%d: %s", e.Pos.Filename, e.Pos.Line, e.Pos.Column, e.Message)
 	}
 
-	return fromAST(filename, result.File), nil
+	return fromAST(path, result.File), nil
 }
 
 // Find locates MODULE.bazel by walking up from the current directory.
@@ -108,11 +104,14 @@ func Find() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	return findFrom(startDir)
+}
 
+func findFrom(startDir string) (string, error) {
 	dir := startDir
 	for {
-		path := filepath.Join(dir, "MODULE.bazel")
-		if _, err := os.Stat(path); err == nil {
+		path := filepath.Join(dir, moduleFileName)
+		if info, err := os.Stat(path); err == nil && !info.IsDir() {
 			return path, nil
 		}
 
@@ -123,12 +122,20 @@ func Find() (string, error) {
 		dir = parent
 	}
 
-	return "", fmt.Errorf("MODULE.bazel not found in %s or any parent directory", startDir)
+	return "", fmt.Errorf("%s not found in %s or any parent directory", moduleFileName, startDir)
 }
 
 // FindAndLoad finds and loads the MODULE.bazel file.
 func FindAndLoad() (*File, error) {
-	path, err := Find()
+	startDir, err := os.Getwd()
+	if err != nil {
+		return nil, err
+	}
+	return findAndLoadFrom(startDir)
+}
+
+func findAndLoadFrom(startDir string) (*File, error) {
+	path, err := findFrom(startDir)
 	if err != nil {
 		return nil, err
 	}
