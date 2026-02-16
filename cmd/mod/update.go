@@ -38,10 +38,10 @@ Examples:
 	RunE: runUpdate,
 }
 
-func init() {
+var _ = onLoad(func() {
 	updateCmd.Flags().BoolVar(&updateDryRun, "dry-run", false, "Show what would be updated without making changes")
 	Cmd.AddCommand(updateCmd)
-}
+})
 
 // updateInfo holds information about a dependency update.
 type updateInfo struct {

@@ -109,7 +109,7 @@ func TestIsColorEnabled_Default(t *testing.T) {
 
 func TestRootCmd_HelpShowsAllCommands(t *testing.T) {
 	// This test verifies that all expected commands appear in the help output.
-	// Deprecated commands like init are intentionally not listed.
+	// The bz CLI should show: init, mod, registry, version commands.
 
 	// Capture help output
 	buf := new(bytes.Buffer)
@@ -123,6 +123,7 @@ func TestRootCmd_HelpShowsAllCommands(t *testing.T) {
 
 	// All these commands should appear in the help output
 	expectedCommands := []string{
+		"init",     // Initialize a new Bazel module project
 		"mod",      // Manage Bazel module dependencies
 		"registry", // Registry operations
 		"tui",      // Launch interactive terminal UI
@@ -133,7 +134,6 @@ func TestRootCmd_HelpShowsAllCommands(t *testing.T) {
 		assert.Contains(t, helpOutput, cmd,
 			"Help output should contain the '%s' command", cmd)
 	}
-	assert.NotContains(t, helpOutput, "\n  init")
 }
 
 func TestRootCmd_UnknownCommandExitCode(t *testing.T) {

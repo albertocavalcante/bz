@@ -54,13 +54,13 @@ Examples:
 	RunE: runAudit,
 }
 
-func init() {
+var _ = onLoad(func() {
 	auditCmd.Flags().BoolVar(&auditJSON, "json", false, "Output as JSON")
 	auditCmd.Flags().StringVar(&auditSeverity, "severity", "", "Minimum severity to report (critical, high, medium, low)")
 	auditCmd.Flags().BoolVar(&auditFix, "fix", false, "Show suggested updates to fix vulnerabilities")
 	auditCmd.Flags().StringVar(&auditEcosystem, "ecosystem", "", "OSV ecosystem to query (e.g., Go, PyPI, crates.io, npm, Maven)")
 	rootCmd.AddCommand(auditCmd)
-}
+})
 
 // AuditResult represents the JSON output structure for audit results.
 type AuditResult struct {

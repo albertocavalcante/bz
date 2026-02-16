@@ -38,11 +38,11 @@ Examples:
 	RunE: runSearch,
 }
 
-func init() {
+var _ = onLoad(func() {
 	searchCmd.Flags().IntVarP(&searchLimit, "limit", "n", 20, "Maximum number of results")
 	searchCmd.Flags().BoolVarP(&searchVerbose, "verbose", "v", false, "Show version info for each result")
 	Cmd.AddCommand(searchCmd)
-}
+})
 
 func runSearch(cmd *cobra.Command, args []string) error {
 	// Check if command is disabled

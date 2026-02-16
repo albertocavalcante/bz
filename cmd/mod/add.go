@@ -41,12 +41,12 @@ Examples:
 	ValidArgsFunction: completeModuleNames,
 }
 
-func init() {
+var _ = onLoad(func() {
 	addCmd.Flags().BoolVar(&addDev, "dev", false, "Add as dev dependency")
 	addCmd.Flags().BoolVar(&addNoVerify, "no-verify", false, "Skip registry validation (for offline use)")
 	addCmd.Flags().BoolVar(&addDryRun, "dry-run", false, "Show what would be added without modifying MODULE.bazel")
 	Cmd.AddCommand(addCmd)
-}
+})
 
 func runAdd(cmd *cobra.Command, args []string) error {
 	// Check if command is disabled

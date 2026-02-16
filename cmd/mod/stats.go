@@ -33,10 +33,10 @@ Examples:
 	RunE: runStats,
 }
 
-func init() {
+var _ = onLoad(func() {
 	statsCmd.Flags().BoolVar(&statsJSON, "json", false, "Output as JSON")
 	Cmd.AddCommand(statsCmd)
-}
+})
 
 // Stats holds dependency statistics.
 type Stats struct {

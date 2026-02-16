@@ -29,10 +29,10 @@ Examples:
 	ValidArgsFunction: completeInstalledModules,
 }
 
-func init() {
+var _ = onLoad(func() {
 	rmCmd.Flags().BoolVar(&rmDryRun, "dry-run", false, "Show what would be removed without making changes")
 	Cmd.AddCommand(rmCmd)
-}
+})
 
 func runRm(cmd *cobra.Command, args []string) error {
 	modulePath, err := module.Find()

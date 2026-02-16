@@ -43,13 +43,13 @@ Examples:
 	RunE: runSBOM,
 }
 
-func init() {
+var _ = onLoad(func() {
 	sbomCmd.Flags().StringVar(&sbomFormat, "format", "spdx", "Output format (spdx, cyclonedx)")
 	sbomCmd.Flags().StringVar(&sbomOutput, "output", "", "Output file path (default: stdout)")
 	sbomCmd.Flags().BoolVar(&sbomIncludeTransitive, "include-transitive", true, "Include transitive dependencies")
 	sbomCmd.Flags().StringVar(&sbomRegistryFlag, "registry", registry.DefaultBCR, "Registry URL (https://, http://, file://, or /path)")
 	rootCmd.AddCommand(sbomCmd)
-}
+})
 
 // SPDX 2.3 Types
 

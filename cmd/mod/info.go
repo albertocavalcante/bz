@@ -36,10 +36,10 @@ Examples:
 	ValidArgsFunction: completeModuleNamesForSingleArg,
 }
 
-func init() {
+var _ = onLoad(func() {
 	infoCmd.Flags().BoolVar(&infoJSON, "json", false, "Output as JSON")
 	Cmd.AddCommand(infoCmd)
-}
+})
 
 func runInfo(cmd *cobra.Command, args []string) error {
 	// Check if command is disabled

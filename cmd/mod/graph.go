@@ -44,12 +44,12 @@ Examples:
 	RunE: runGraph,
 }
 
-func init() {
+var _ = onLoad(func() {
 	graphCmd.Flags().StringVar(&graphFormat, "format", "ascii", "Output format (ascii, dot, json, mermaid)")
 	graphCmd.Flags().BoolVar(&graphJSON, "json", false, "Output as JSON (shortcut for --format=json)")
 	graphCmd.Flags().IntVar(&graphDepth, "depth", 0, "Maximum depth to traverse (0 = unlimited)")
 	Cmd.AddCommand(graphCmd)
-}
+})
 
 // GraphNode represents a node in the dependency graph.
 type GraphNode struct {

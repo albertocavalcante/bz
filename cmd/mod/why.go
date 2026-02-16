@@ -34,11 +34,11 @@ Examples:
 	RunE: runWhy,
 }
 
-func init() {
+var _ = onLoad(func() {
 	whyCmd.Flags().BoolVar(&whyJSON, "json", false, "Output as JSON")
 	whyCmd.Flags().BoolVar(&whyAll, "all", false, "Show all paths (default: shortest paths only)")
 	Cmd.AddCommand(whyCmd)
-}
+})
 
 // WhyResult represents the result of finding dependency paths.
 type WhyResult struct {

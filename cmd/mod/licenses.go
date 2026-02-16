@@ -43,14 +43,14 @@ Examples:
 	RunE: runLicenses,
 }
 
-func init() {
+var _ = onLoad(func() {
 	licensesCmd.Flags().BoolVar(&licensesJSON, "json", false, "Output as JSON")
 	licensesCmd.Flags().BoolVar(&licensesCheck, "check", false, "Check licenses against policy")
 	licensesCmd.Flags().BoolVar(&licensesSummary, "summary", false, "Show license summary only")
 	licensesCmd.Flags().StringVar(&licensesAllow, "allow", "", "Comma-separated list of allowed licenses")
 	licensesCmd.Flags().StringVar(&licensesDeny, "deny", "", "Comma-separated list of denied licenses")
 	Cmd.AddCommand(licensesCmd)
-}
+})
 
 // ModuleLicense holds license information for a module.
 type ModuleLicense struct {

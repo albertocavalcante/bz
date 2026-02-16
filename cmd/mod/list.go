@@ -25,11 +25,11 @@ Examples:
 	RunE: runList,
 }
 
-func init() {
+var _ = onLoad(func() {
 	listCmd.Flags().BoolVar(&listJSON, "json", false, "Output as JSON")
 	listCmd.Flags().BoolVarP(&listAll, "all", "a", false, "Show all contents (extensions, overrides, etc.)")
 	Cmd.AddCommand(listCmd)
-}
+})
 
 func runList(cmd *cobra.Command, args []string) error {
 	f, err := module.FindAndLoad()

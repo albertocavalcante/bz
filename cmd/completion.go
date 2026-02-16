@@ -62,9 +62,9 @@ PowerShell:
 	},
 }
 
-func init() {
+var _ = onLoad(func() {
 	rootCmd.AddCommand(completionCmd)
-}
+})
 
 // GetRootCmd returns the root command for completion generation.
 // This is exported for use by subpackages that need to set up completions.
@@ -73,10 +73,10 @@ func GetRootCmd() *cobra.Command {
 }
 
 // SetupCompletionOptions configures global completion behavior.
-func init() {
+var _ = onLoad(func() {
 	// Enable descriptions in completions where supported
 	rootCmd.CompletionOptions.DisableDefaultCmd = false
 
 	// Set output to stderr by default (some shells expect this)
 	completionCmd.SetOut(os.Stdout)
-}
+})

@@ -70,6 +70,6 @@ Commands for adding, removing, listing, and updating bazel_dep entries.`,
 	},
 }
 
-func init() {
+var _ = onLoad(func() {
 	Cmd.PersistentFlags().StringVar(&registryFlag, "registry", registry.DefaultBCR, "Registry URL (https://, http://, file://, or /path)")
-}
+})

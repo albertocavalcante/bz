@@ -27,16 +27,15 @@ Examples:
   bz init --name=my_module         # set module name
   bz init --name=foo --version=1.0.0
   bz init --force                  # overwrite existing MODULE.bazel`,
-	Deprecated: "prefer `bz tui` first-run flow (press n to create MODULE.bazel)",
-	RunE:       runInit,
+	RunE: runInit,
 }
 
-func init() {
+var _ = onLoad(func() {
 	initCmd.Flags().StringVar(&initName, "name", "", "Module name (defaults to directory name)")
 	initCmd.Flags().StringVar(&initVersion, "version", "0.0.0", "Initial module version")
 	initCmd.Flags().BoolVar(&initForce, "force", false, "Overwrite existing MODULE.bazel")
 	rootCmd.AddCommand(initCmd)
-}
+})
 
 func runInit(cmd *cobra.Command, args []string) error {
 	wd, err := os.Getwd()

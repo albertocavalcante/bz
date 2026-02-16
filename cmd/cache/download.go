@@ -41,13 +41,13 @@ Examples:
 	SilenceErrors: true,
 }
 
-func init() {
+var _ = onLoad(func() {
 	downloadCmd.Flags().BoolVar(&downloadAll, "all", false, "Download ALL modules from registry (warning: large)")
 	downloadCmd.Flags().BoolVar(&downloadJSON, "json", false, "Output as JSON")
 	downloadCmd.Flags().StringVar(&downloadRegistry, "registry", registry.DefaultBCR, "Registry URL to download from")
 	downloadCmd.Flags().StringVar(&downloadCacheDir, "cache-dir", "", "Cache directory (default: ~/.cache/bz)")
 	Cmd.AddCommand(downloadCmd)
-}
+})
 
 // downloadResult holds the result of a download operation for JSON output.
 type downloadResult struct {

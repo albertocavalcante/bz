@@ -39,7 +39,7 @@ var versionCmd = &cobra.Command{
 	},
 }
 
-func init() {
+var _ = onLoad(func() {
 	versionCmd.Flags().BoolVar(&versionJSON, "json", false, "Output as JSON")
 	rootCmd.AddCommand(versionCmd)
-}
+})

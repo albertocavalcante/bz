@@ -68,7 +68,7 @@ func Execute() {
 	}
 }
 
-func init() {
+var _ = onLoad(func() {
 	rootCmd.CompletionOptions.HiddenDefaultCmd = true
 
 	// Global flags
@@ -86,4 +86,4 @@ func init() {
 	rootCmd.AddCommand(cache.Cmd)
 	rootCmd.AddCommand(mod.Cmd)
 	rootCmd.AddCommand(registry.Cmd)
-}
+})
