@@ -180,7 +180,7 @@ func checkModuleBazel(out io.Writer) DoctorCheck {
 	if _, err := os.Stat("MODULE.bazel"); os.IsNotExist(err) {
 		check.Status = statusFail
 		check.Message = "MODULE.bazel not found"
-		check.Suggestion = "Run 'bz init' to create one"
+		check.Suggestion = "Run 'bz tui' and press 'n' to create one (or use 'bz init')"
 		if !doctorJSON {
 			printCheckFail(out, check.Message, check.Suggestion)
 		}

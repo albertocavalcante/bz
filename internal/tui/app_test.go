@@ -447,6 +447,107 @@ func TestApp_View_RendersListAfterDepsListed(t *testing.T) {
 	}
 }
 
+func TestApp_View_MissingModuleBootstrap(t *testing.T) {
+	t.Parallel()
+	app := NewApp()
+
+	model, _ := app.Update(DepsListedMsg{
+		File:          &module.File{},
+		MissingModule: true,
+	})
+	updated := model.(App)
+
+	if updated.state != StateList {
+		t.Fatalf("expected state StateList, got %v", updated.state)
+	}
+	if !updated.missingModule {
+		t.Fatal("expected missingModule = true")
+	}
+
+	view := updated.View()
+	if !strings.Contains(view, "No MODULE.bazel found") {
+		t.Fatalf("bootstrap view missing title: %q", view)
+	}
+	if !strings.Contains(view, "Press n to create MODULE.bazel, q to quit") {
+		t.Fatalf("bootstrap view missing help text: %q", view)
+	}
+}
+
+func TestApp_KeyN_WhenMissingModule_InitializesModule(t *testing.T) {
+	origInitModuleCmd := initModuleCmd
+	origListLocalDepsCmd := listLocalDepsCmd
+	t.Cleanup(func() {
+		initModuleCmd = origInitModuleCmd
+		listLocalDepsCmd = origListLocalDepsCmd
+	})
+
+	initCalls := 0
+	initModuleCmd = func(name, version string, force bool) tea.Cmd {
+		initCalls++
+		if name != "" {
+			t.Fatalf("name = %q, want empty", name)
+		}
+		if version != module.DefaultModuleVersion {
+			t.Fatalf("version = %q, want %q", version, module.DefaultModuleVersion)
+		}
+		if force {
+			t.Fatal("force = true, want false")
+		}
+		return func() tea.Msg {
+			return ModuleInitializedMsg{
+				Name:    "demo_mod",
+				Version: module.DefaultModuleVersion,
+				Path:    "/tmp/work/MODULE.bazel",
+			}
+		}
+	}
+
+	listCalls := 0
+	listLocalDepsCmd = func() tea.Cmd {
+		listCalls++
+		return func() tea.Msg {
+			return DepsListedMsg{File: &module.File{}}
+		}
+	}
+
+	app := NewApp()
+	model, _ := app.Update(DepsListedMsg{
+		File:          &module.File{},
+		MissingModule: true,
+	})
+	app = model.(App)
+
+	model, cmd := app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
+	app = model.(App)
+
+	if cmd == nil {
+		t.Fatal("expected init command")
+	}
+	if initCalls != 1 {
+		t.Fatalf("initModuleCmd call count = %d, want 1", initCalls)
+	}
+
+	msg := cmd()
+	if _, ok := msg.(ModuleInitializedMsg); !ok {
+		t.Fatalf("expected ModuleInitializedMsg, got %T", msg)
+	}
+
+	model, nextCmd := app.Update(msg)
+	app = model.(App)
+	if app.state != StateLoading {
+		t.Fatalf("expected state StateLoading, got %v", app.state)
+	}
+	if app.missingModule {
+		t.Fatal("expected missingModule = false after init")
+	}
+	if nextCmd == nil {
+		t.Fatal("expected reload command after init")
+	}
+	if listCalls != 1 {
+		t.Fatalf("listLocalDepsCmd call count = %d, want 1", listCalls)
+	}
+}
+
 var errTest = &testError{msg: "test error"}
 
 type testError struct {

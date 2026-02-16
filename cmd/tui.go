@@ -18,6 +18,7 @@ var tuiCmd = &cobra.Command{
 	Long: `Launches the interactive terminal UI for browsing local dependencies
 and registry search results.
 
+If MODULE.bazel is missing, use the in-app prompt (press n) to create it.
 Use --headless to run a non-interactive output mode suitable for scripts.`,
 	RunE:          runTUICommand,
 	SilenceUsage:  true,

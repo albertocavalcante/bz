@@ -19,6 +19,8 @@ const searchTimeout = 15 * time.Second
 
 var getSearchRegistry = defaultSearchRegistry
 var findAndLoadModule = module.FindAndLoad
+var initModuleInDir = module.InitInDir
+var getWorkingDir = os.Getwd
 
 // ListLocalDeps reads and parses the local MODULE.bazel
 func ListLocalDeps() tea.Cmd {
@@ -26,11 +28,39 @@ func ListLocalDeps() tea.Cmd {
 		f, err := findAndLoadModule()
 		if err != nil {
 			if errors.Is(err, module.ErrModuleFileNotFound) {
-				return DepsListedMsg{File: &module.File{}}
+				return DepsListedMsg{
+					File:          &module.File{},
+					MissingModule: true,
+				}
 			}
 			return ErrMsg{Err: err}
 		}
 		return DepsListedMsg{File: f}
+	}
+}
+
+// InitModule initializes a MODULE.bazel in the current working directory.
+func InitModule(name, version string, force bool) tea.Cmd {
+	return func() tea.Msg {
+		wd, err := getWorkingDir()
+		if err != nil {
+			return ErrMsg{Err: fmt.Errorf("failed to get working directory: %w", err)}
+		}
+
+		path, resolvedName, err := initModuleInDir(wd, name, version, force)
+		if err != nil {
+			return ErrMsg{Err: err}
+		}
+
+		if version == "" {
+			version = module.DefaultModuleVersion
+		}
+
+		return ModuleInitializedMsg{
+			Name:    resolvedName,
+			Version: version,
+			Path:    path,
+		}
 	}
 }
 

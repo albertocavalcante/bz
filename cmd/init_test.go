@@ -8,6 +8,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/albertocavalcante/bz/internal/module"
 )
 
 func TestInitCmd_CreatesModuleFile(t *testing.T) {
@@ -261,7 +263,7 @@ func TestSanitizeModuleName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			result := sanitizeModuleName(tt.input)
+			result := module.SanitizeModuleName(tt.input)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
@@ -287,7 +289,7 @@ func TestValidateModuleName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := validateModuleName(tt.name)
+			err := module.ValidateModuleName(tt.name)
 			if tt.wantErr {
 				assert.Error(t, err)
 			} else {
@@ -298,7 +300,7 @@ func TestValidateModuleName(t *testing.T) {
 }
 
 func TestFormatModuleFile(t *testing.T) {
-	content := formatModuleFile("my_module", "1.0.0")
+	content := module.FormatModuleFile("my_module", "1.0.0")
 
 	expected := `module(
     name = "my_module",

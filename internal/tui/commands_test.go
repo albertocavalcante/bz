@@ -109,6 +109,9 @@ func TestListLocalDeps(t *testing.T) {
 		if len(depsMsg.File.Deps) != 0 {
 			t.Fatalf("len(DepsListedMsg.File.Deps) = %d, want 0", len(depsMsg.File.Deps))
 		}
+		if !depsMsg.MissingModule {
+			t.Fatal("DepsListedMsg.MissingModule = false, want true")
+		}
 	})
 
 	t.Run("non-not-found error returns ErrMsg", func(t *testing.T) {
@@ -140,6 +143,90 @@ func TestListLocalDeps(t *testing.T) {
 		}
 		if depsMsg.File != wantFile {
 			t.Fatalf("DepsListedMsg.File = %p, want %p", depsMsg.File, wantFile)
+		}
+	})
+}
+
+func TestInitModule(t *testing.T) {
+	origGetWorkingDir := getWorkingDir
+	origInitModuleInDir := initModuleInDir
+	t.Cleanup(func() {
+		getWorkingDir = origGetWorkingDir
+		initModuleInDir = origInitModuleInDir
+	})
+
+	t.Run("working directory error returns ErrMsg", func(t *testing.T) {
+		wantErr := errors.New("cwd failed")
+		getWorkingDir = func() (string, error) {
+			return "", wantErr
+		}
+		initModuleInDir = func(_, _, _ string, _ bool) (string, string, error) {
+			t.Fatal("initModuleInDir should not be called")
+			return "", "", nil
+		}
+
+		msg := InitModule("", "", false)()
+		errMsg, ok := msg.(ErrMsg)
+		if !ok {
+			t.Fatalf("InitModule()() = %T, want ErrMsg", msg)
+		}
+		if !errors.Is(errMsg.Err, wantErr) {
+			t.Fatalf("ErrMsg.Err = %v, want wrapped %v", errMsg.Err, wantErr)
+		}
+	})
+
+	t.Run("init error returns ErrMsg", func(t *testing.T) {
+		wantErr := errors.New("init failed")
+		getWorkingDir = func() (string, error) {
+			return "/tmp/work", nil
+		}
+		initModuleInDir = func(_, _, _ string, _ bool) (string, string, error) {
+			return "", "", wantErr
+		}
+
+		msg := InitModule("", "", false)()
+		errMsg, ok := msg.(ErrMsg)
+		if !ok {
+			t.Fatalf("InitModule()() = %T, want ErrMsg", msg)
+		}
+		if !errors.Is(errMsg.Err, wantErr) {
+			t.Fatalf("ErrMsg.Err = %v, want wrapped %v", errMsg.Err, wantErr)
+		}
+	})
+
+	t.Run("success returns ModuleInitializedMsg", func(t *testing.T) {
+		getWorkingDir = func() (string, error) {
+			return "/tmp/work", nil
+		}
+		initModuleInDir = func(dir, name, version string, force bool) (string, string, error) {
+			if dir != "/tmp/work" {
+				t.Fatalf("dir = %q, want %q", dir, "/tmp/work")
+			}
+			if name != "demo_mod" {
+				t.Fatalf("name = %q, want %q", name, "demo_mod")
+			}
+			if version != "" {
+				t.Fatalf("version = %q, want empty", version)
+			}
+			if force {
+				t.Fatal("force = true, want false")
+			}
+			return "/tmp/work/MODULE.bazel", "demo_mod", nil
+		}
+
+		msg := InitModule("demo_mod", "", false)()
+		initMsg, ok := msg.(ModuleInitializedMsg)
+		if !ok {
+			t.Fatalf("InitModule()() = %T, want ModuleInitializedMsg", msg)
+		}
+		if initMsg.Name != "demo_mod" {
+			t.Fatalf("ModuleInitializedMsg.Name = %q, want %q", initMsg.Name, "demo_mod")
+		}
+		if initMsg.Version != module.DefaultModuleVersion {
+			t.Fatalf("ModuleInitializedMsg.Version = %q, want %q", initMsg.Version, module.DefaultModuleVersion)
+		}
+		if initMsg.Path != "/tmp/work/MODULE.bazel" {
+			t.Fatalf("ModuleInitializedMsg.Path = %q, want %q", initMsg.Path, "/tmp/work/MODULE.bazel")
 		}
 	})
 }

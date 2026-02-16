@@ -39,7 +39,8 @@ type ModuleSelectedMsg struct {
 
 // DepsListedMsg is sent when local deps are listed
 type DepsListedMsg struct {
-	File *module.File
+	File          *module.File
+	MissingModule bool
 }
 
 // VersionsMsg is sent when versions are fetched for a module
@@ -52,6 +53,13 @@ type VersionsMsg struct {
 type DepAddedMsg struct {
 	Name    string
 	Version string
+}
+
+// ModuleInitializedMsg is sent when MODULE.bazel is initialized.
+type ModuleInitializedMsg struct {
+	Name    string
+	Version string
+	Path    string
 }
 
 // SearchResultsMsg is sent when search results are ready

@@ -11,6 +11,9 @@ import (
 	"github.com/albertocavalcante/bz/internal/module"
 )
 
+var initModuleCmd = InitModule
+var listLocalDepsCmd = ListLocalDeps
+
 // State represents the current application state (state machine)
 type State int
 
@@ -39,6 +42,8 @@ type App struct {
 	err      error
 	info     *module.File
 	infoItem *ModuleItem
+
+	missingModule bool
 }
 
 // NewApp creates a new application model
@@ -58,7 +63,7 @@ func NewApp() App {
 func (a App) Init() tea.Cmd {
 	return tea.Batch(
 		a.spinner.Tick,
-		ListLocalDeps(),
+		listLocalDepsCmd(),
 	)
 }
 
@@ -82,6 +87,8 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.handleErr(typed), nil
 	case DepsListedMsg:
 		return a.handleDepsListed(typed), nil
+	case ModuleInitializedMsg:
+		return a.handleModuleInitialized(typed)
 	case ModuleInfoMsg:
 		return a.handleModuleInfo(typed), nil
 	case ModuleSelectedMsg:
@@ -147,6 +154,10 @@ func (a App) handleKey(msg tea.KeyMsg) (App, tea.Cmd, bool) {
 			a.list.SetSize(a.width, a.height)
 		}
 		return a, SearchModules(query), true
+	case "n":
+		if a.state == StateList && a.missingModule {
+			return a, initModuleCmd("", module.DefaultModuleVersion, false), true
+		}
 	case "q":
 		// Let list model handle q when in list/search state (including filter input).
 		if a.state != StateList && a.state != StateSearch {
@@ -164,6 +175,8 @@ func (a App) handleErr(msg ErrMsg) App {
 }
 
 func (a App) handleDepsListed(msg DepsListedMsg) App {
+	a.missingModule = msg.MissingModule
+
 	items := make([]ModuleItem, len(msg.File.Deps))
 	for i, dep := range msg.File.Deps {
 		items[i] = ModuleItem{
@@ -184,6 +197,13 @@ func (a App) handleDepsListed(msg DepsListedMsg) App {
 	}
 	a.state = StateList
 	return a
+}
+
+func (a App) handleModuleInitialized(_ ModuleInitializedMsg) (App, tea.Cmd) {
+	a.err = nil
+	a.missingModule = false
+	a.state = StateLoading
+	return a, listLocalDepsCmd()
 }
 
 func (a App) handleModuleInfo(msg ModuleInfoMsg) App {
@@ -234,6 +254,9 @@ func (a App) View() string {
 	case StateLoading:
 		return a.viewLoading()
 	case StateList:
+		if a.missingModule {
+			return a.viewNoModule()
+		}
 		return a.list.View()
 	case StateSearch:
 		return a.list.View()
@@ -257,6 +280,14 @@ func (a App) viewError() string {
 		a.styles.Error.Render(fmt.Sprintf("Error: %v", a.err)) +
 			"\n\n" +
 			a.styles.Help.Render("Press q to quit"),
+	)
+}
+
+func (a App) viewNoModule() string {
+	return a.styles.App.Render(
+		a.styles.Title.Render("No MODULE.bazel found") + "\n\n" +
+			a.styles.Muted.Render("Create one from TUI to start managing dependencies.") + "\n\n" +
+			a.styles.Help.Render("Press n to create MODULE.bazel, q to quit"),
 	)
 }
 
@@ -347,6 +378,11 @@ func RunHeadless() error {
 	case ErrMsg:
 		return m.Err
 	case DepsListedMsg:
+		if m.MissingModule {
+			fmt.Println(styles.Muted.Render("No MODULE.bazel found. Run `bz tui` to create one interactively."))
+			return nil
+		}
+
 		items := make([]ModuleItem, len(m.File.Deps))
 		for i, dep := range m.File.Deps {
 			items[i] = ModuleItem{
