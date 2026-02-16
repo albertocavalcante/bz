@@ -181,6 +181,11 @@ linters = ["forbidigo"]
 path = "cmd/"
 text = "don't use `init` function"
 
+[[linters.exclusions.rules]]
+path = "internal/version/version.go"
+linters = ["revive"]
+text = "avoid package names that conflict with Go standard library package names"
+
 [issues]
 max-issues-per-linter = 0
 max-same-issues = 0
