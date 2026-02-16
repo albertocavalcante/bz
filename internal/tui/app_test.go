@@ -252,6 +252,73 @@ func TestApp_ListSelection_TransitionsToInfoState(t *testing.T) {
 	}
 }
 
+func TestApp_SearchFlow_TransitionsAndBackNavigation(t *testing.T) {
+	t.Parallel()
+	app := NewApp()
+
+	model, _ := app.Update(DepsListedMsg{
+		File: testModuleFile("demo", "1.0.0",
+			struct{ name, ver string }{"rules_go", "0.50.0"},
+			struct{ name, ver string }{"gazelle", "0.38.0"},
+		),
+	})
+	app = model.(App)
+	if app.state != StateList {
+		t.Fatalf("expected state StateList, got %v", app.state)
+	}
+
+	model, cmd := app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+	app = model.(App)
+	if app.state != StateSearch {
+		t.Fatalf("expected state StateSearch after search key, got %v", app.state)
+	}
+	if cmd == nil {
+		t.Fatal("expected search command after search key")
+	}
+
+	model, _ = app.Update(SearchResultsMsg{
+		Query: "rules_go",
+		Results: []ModuleResult{
+			{Name: "rules_go", Version: "0.51.0"},
+		},
+	})
+	app = model.(App)
+	if app.state != StateSearch {
+		t.Fatalf("expected state StateSearch after results, got %v", app.state)
+	}
+	if got := app.list.list.Title; !strings.Contains(got, "Search: rules_go") {
+		t.Fatalf("search list title = %q, want query title", got)
+	}
+
+	model, cmd = app.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	app = model.(App)
+	if cmd == nil {
+		t.Fatal("expected selection command in search state")
+	}
+
+	msg := cmd()
+	if _, ok := msg.(ModuleSelectedMsg); !ok {
+		t.Fatalf("expected ModuleSelectedMsg, got %T", msg)
+	}
+	model, _ = app.Update(msg)
+	app = model.(App)
+	if app.state != StateInfo {
+		t.Fatalf("expected state StateInfo after select, got %v", app.state)
+	}
+
+	model, _ = app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("b")})
+	app = model.(App)
+	if app.state != StateSearch {
+		t.Fatalf("expected state StateSearch after first back, got %v", app.state)
+	}
+
+	model, _ = app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("b")})
+	app = model.(App)
+	if app.state != StateList {
+		t.Fatalf("expected state StateList after second back, got %v", app.state)
+	}
+}
+
 func TestApp_DepsListedMsg_UsesFallbackTitleWithoutModuleName(t *testing.T) {
 	t.Parallel()
 	app := NewApp()

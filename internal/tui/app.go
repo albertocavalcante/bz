@@ -86,9 +86,31 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				a.state = a.prev
 				return a, nil
 			}
+			if a.state == StateSearch {
+				a.state = StateList
+				return a, nil
+			}
+		case "s", "/":
+			if a.state == StateList {
+				query := strings.TrimSpace(a.list.list.FilterValue())
+				if query == "" {
+					if item, ok := a.list.list.SelectedItem().(ModuleItem); ok {
+						query = item.name
+					}
+				}
+				if query != "" {
+					a.prev = a.state
+					a.state = StateSearch
+					a.list = NewListModel(fmt.Sprintf("Search: %s", query), nil, a.styles)
+					if a.width > 0 && a.height > 0 {
+						a.list.SetSize(a.width, a.height)
+					}
+					return a, SearchModules(query)
+				}
+			}
 		case "q":
-			// Let list model handle q when in list state (including filter input).
-			if a.state != StateList {
+			// Let list model handle q when in list/search state (including filter input).
+			if a.state != StateList && a.state != StateSearch {
 				return a, tea.Quit
 			}
 		}
@@ -139,6 +161,31 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.infoItem = &item
 		return a, nil
 
+	// Search completed
+	case SearchResultsMsg:
+		items := make([]ModuleItem, len(msg.Results))
+		for i, result := range msg.Results {
+			items[i] = ModuleItem{
+				name:    result.Name,
+				version: result.Version,
+			}
+		}
+
+		title := "Search Results"
+		if msg.Query != "" {
+			title = fmt.Sprintf("Search: %s", msg.Query)
+		}
+		if len(items) > 0 {
+			title = fmt.Sprintf("%s (%d)", title, len(items))
+		}
+
+		a.list = NewListModel(title, items, a.styles)
+		if a.width > 0 && a.height > 0 {
+			a.list.SetSize(a.width, a.height)
+		}
+		a.state = StateSearch
+		return a, nil
+
 	// Spinner tick
 	case spinner.TickMsg:
 		var cmd tea.Cmd
@@ -148,7 +195,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// Delegate to sub-models based on state
 	switch a.state {
-	case StateList:
+	case StateList, StateSearch:
 		var cmd tea.Cmd
 		a.list, cmd = a.list.Update(msg)
 		cmds = append(cmds, cmd)
@@ -163,6 +210,8 @@ func (a App) View() string {
 	case StateLoading:
 		return a.viewLoading()
 	case StateList:
+		return a.list.View()
+	case StateSearch:
 		return a.list.View()
 	case StateError:
 		return a.viewError()
