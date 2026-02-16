@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"os"
+	"sync"
 
 	"github.com/spf13/cobra"
 
@@ -23,6 +24,7 @@ func cmdContext(cmd *cobra.Command) context.Context {
 }
 
 var showVersion bool
+var configureRootOnce sync.Once
 
 var rootCmd = &cobra.Command{
 	Use:   "bz",
@@ -63,12 +65,32 @@ Environment Variables:
 
 // Execute runs the root command.
 func Execute() {
+	Configure()
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
 }
 
-var _ = onLoad(func() {
+// Configure wires all root and subcommands once.
+func Configure() {
+	configureRootOnce.Do(func() {
+		cache.Configure()
+		mod.Configure()
+		registry.Configure()
+
+		configureRootCmd()
+		configureAuditCmd()
+		configureCompletionCmd()
+		configureCompletionOptions()
+		configureDoctorCmd()
+		configureInitCmd()
+		configureSBOMCmd()
+		configureTUICmd()
+		configureVersionCmd()
+	})
+}
+
+func configureRootCmd() {
 	rootCmd.CompletionOptions.HiddenDefaultCmd = true
 
 	// Global flags
@@ -86,4 +108,4 @@ var _ = onLoad(func() {
 	rootCmd.AddCommand(cache.Cmd)
 	rootCmd.AddCommand(mod.Cmd)
 	rootCmd.AddCommand(registry.Cmd)
-})
+}

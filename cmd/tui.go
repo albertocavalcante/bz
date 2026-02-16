@@ -32,7 +32,7 @@ func runTUICommand(_ *cobra.Command, _ []string) error {
 	return runTUI()
 }
 
-var _ = onLoad(func() {
+func configureTUICmd() {
 	tuiCmd.Flags().BoolVar(&tuiHeadless, "headless", false, "Run in headless (non-interactive) mode")
 	rootCmd.AddCommand(tuiCmd)
-})
+}

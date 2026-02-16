@@ -36,11 +36,11 @@ Examples:
 	SilenceErrors: true,
 }
 
-var _ = onLoad(func() {
+func configureVerifyCmd() {
 	verifyCmd.Flags().BoolVar(&verifyJSON, "json", false, "Output as JSON")
 	verifyCmd.Flags().StringVar(&verifyCacheDir, "cache-dir", "", "Cache directory (default: ~/.cache/bz)")
 	Cmd.AddCommand(verifyCmd)
-})
+}
 
 // verifyResult holds the result of a verify operation for JSON output.
 type verifyResult struct {

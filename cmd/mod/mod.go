@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/spf13/cobra"
 
@@ -24,6 +25,7 @@ func cmdContext(cmd *cobra.Command) context.Context {
 
 // registryFlag is the registry URL (set via --registry flag)
 var registryFlag = registry.DefaultBCR
+var configureOnce sync.Once
 
 // createNetworkAwareRegistry creates a registry that respects offline mode settings.
 // It returns the registry and any error encountered.
@@ -70,6 +72,25 @@ Commands for adding, removing, listing, and updating bazel_dep entries.`,
 	},
 }
 
-var _ = onLoad(func() {
+func configureModCmd() {
 	Cmd.PersistentFlags().StringVar(&registryFlag, "registry", registry.DefaultBCR, "Registry URL (https://, http://, file://, or /path)")
-})
+}
+
+// Configure wires all `mod` subcommands once.
+func Configure() {
+	configureOnce.Do(func() {
+		configureModCmd()
+		configureAddCmd()
+		configureGraphCmd()
+		configureInfoCmd()
+		configureLicensesCmd()
+		configureListCmd()
+		configureOutdatedCmd()
+		configureRmCmd()
+		configureSearchCmd()
+		configureStatsCmd()
+		configureSyncCmd()
+		configureUpdateCmd()
+		configureWhyCmd()
+	})
+}

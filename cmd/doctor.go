@@ -86,10 +86,10 @@ Examples:
 	SilenceErrors: true,
 }
 
-var _ = onLoad(func() {
+func configureDoctorCmd() {
 	doctorCmd.Flags().BoolVar(&doctorJSON, "json", false, "Output as JSON")
 	rootCmd.AddCommand(doctorCmd)
-})
+}
 
 func runDoctor(cmd *cobra.Command, args []string) error {
 	ctx := cmdContext(cmd)

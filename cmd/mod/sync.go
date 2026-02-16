@@ -40,7 +40,7 @@ var (
 	syncConfig  string
 )
 
-var _ = onLoad(func() {
+func configureSyncCmd() {
 	syncCmd.Flags().BoolVar(&syncDryRun, "dry-run", false, "Show what would be synced without making changes")
 	syncCmd.Flags().BoolVarP(&syncVerbose, "verbose", "v", false, "Print detailed progress")
 	syncCmd.Flags().BoolVarP(&syncList, "list", "l", false, "List available workflows")
@@ -48,7 +48,7 @@ var _ = onLoad(func() {
 	syncCmd.Flags().StringVarP(&syncConfig, "config", "c", "", "Path to config file (default: bz.star)")
 
 	Cmd.AddCommand(syncCmd)
-})
+}
 
 func runSync(cmd *cobra.Command, args []string) error {
 	// Load config

@@ -41,12 +41,12 @@ Examples:
 	SilenceErrors: true,
 }
 
-var _ = onLoad(func() {
+func configureClearCmd() {
 	clearCmd.Flags().BoolVar(&clearJSON, "json", false, "Output as JSON")
 	clearCmd.Flags().BoolVarP(&clearForce, "force", "f", false, "Skip confirmation prompt")
 	clearCmd.Flags().StringVar(&clearCacheDir, "cache-dir", "", "Cache directory (default: ~/.cache/bz)")
 	Cmd.AddCommand(clearCmd)
-})
+}
 
 // clearResult holds the result of a clear operation for JSON output.
 type clearResult struct {

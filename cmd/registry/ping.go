@@ -47,10 +47,10 @@ Examples:
 	SilenceErrors: true,
 }
 
-var _ = onLoad(func() {
+func configurePingCmd() {
 	pingCmd.Flags().BoolVar(&pingJSON, "json", false, "Output as JSON")
 	Cmd.AddCommand(pingCmd)
-})
+}
 
 // pingResult holds the result of a ping operation
 type pingResult struct {

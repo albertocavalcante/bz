@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/spf13/cobra"
 
@@ -48,3 +49,12 @@ Commands for checking registry health, connectivity, and status.`,
 
 // Default registry URL for registry commands
 var defaultRegistryURL = registry.DefaultBCR
+
+var configureOnce sync.Once
+
+// Configure wires all `registry` subcommands once.
+func Configure() {
+	configureOnce.Do(func() {
+		configurePingCmd()
+	})
+}

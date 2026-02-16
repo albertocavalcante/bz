@@ -37,11 +37,11 @@ Examples:
 	SilenceErrors: true,
 }
 
-var _ = onLoad(func() {
+func configureStatsCmd() {
 	statsCmd.Flags().BoolVar(&statsJSON, "json", false, "Output as JSON")
 	statsCmd.Flags().StringVar(&statsCacheDir, "cache-dir", "", "Cache directory (default: ~/.cache/bz)")
 	Cmd.AddCommand(statsCmd)
-})
+}
 
 // statsResult holds the result of a stats operation for JSON output.
 type statsResult struct {

@@ -32,10 +32,10 @@ Examples:
 	RunE: runOutdated,
 }
 
-var _ = onLoad(func() {
+func configureOutdatedCmd() {
 	outdatedCmd.Flags().BoolVar(&outdatedJSON, "json", false, "Output as JSON")
 	Cmd.AddCommand(outdatedCmd)
-})
+}
 
 // OutdatedDep represents a dependency with version comparison info.
 type OutdatedDep struct {

@@ -30,12 +30,12 @@ Examples:
 	RunE: runInit,
 }
 
-var _ = onLoad(func() {
+func configureInitCmd() {
 	initCmd.Flags().StringVar(&initName, "name", "", "Module name (defaults to directory name)")
 	initCmd.Flags().StringVar(&initVersion, "version", "0.0.0", "Initial module version")
 	initCmd.Flags().BoolVar(&initForce, "force", false, "Overwrite existing MODULE.bazel")
 	rootCmd.AddCommand(initCmd)
-})
+}
 
 func runInit(cmd *cobra.Command, args []string) error {
 	wd, err := os.Getwd()

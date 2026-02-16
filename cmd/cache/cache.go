@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/spf13/cobra"
 )
@@ -40,4 +41,16 @@ var Cmd = &cobra.Command{
 		return fmt.Errorf("unknown command %q for %q, run '%s --help' for usage",
 			args[0], cmd.CommandPath(), cmd.CommandPath())
 	},
+}
+
+var configureOnce sync.Once
+
+// Configure wires all `cache` subcommands once.
+func Configure() {
+	configureOnce.Do(func() {
+		configureClearCmd()
+		configureDownloadCmd()
+		configureStatsCmd()
+		configureVerifyCmd()
+	})
 }
