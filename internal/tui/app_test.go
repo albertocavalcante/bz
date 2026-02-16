@@ -234,8 +234,60 @@ func TestApp_ModuleInfoMsg_TransitionsToInfoState(t *testing.T) {
 	if updated.state != StateInfo {
 		t.Fatalf("expected state StateInfo, got %v", updated.state)
 	}
-	if got := updated.View(); got != "" {
-		t.Fatalf("expected empty view in info state, got %q", got)
+	view := updated.View()
+	if !strings.Contains(view, "rules_go") {
+		t.Fatalf("info view missing module name: %q", view)
+	}
+	if !strings.Contains(view, "Dependencies: 0") {
+		t.Fatalf("info view missing dependency summary: %q", view)
+	}
+	if !strings.Contains(view, "Press b to go back, q to quit") {
+		t.Fatalf("info view missing help text: %q", view)
+	}
+}
+
+func TestApp_InfoBackNavigation_RestoresPreviousState(t *testing.T) {
+	t.Parallel()
+	app := NewApp()
+
+	model, _ := app.Update(DepsListedMsg{
+		File: testModuleFile("demo", "1.0.0",
+			struct{ name, ver string }{"rules_go", "0.50.0"},
+		),
+	})
+	app = model.(App)
+	if app.state != StateList {
+		t.Fatalf("expected state StateList, got %v", app.state)
+	}
+
+	model, _ = app.Update(ModuleInfoMsg{
+		File: testModuleFile("rules_go", "0.50.0"),
+	})
+	app = model.(App)
+	if app.state != StateInfo {
+		t.Fatalf("expected state StateInfo, got %v", app.state)
+	}
+
+	model, cmd := app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("b")})
+	app = model.(App)
+	if app.state != StateList {
+		t.Fatalf("expected state StateList after back, got %v", app.state)
+	}
+	if cmd != nil {
+		if _, ok := cmd().(tea.QuitMsg); ok {
+			t.Fatal("unexpected tea.QuitMsg from info back key")
+		}
+	}
+}
+
+func TestApp_ViewInfo_NoModuleData(t *testing.T) {
+	t.Parallel()
+	app := NewApp()
+
+	model, _ := app.Update(ModuleInfoMsg{})
+	view := model.(App).View()
+	if !strings.Contains(view, "No module info available.") {
+		t.Fatalf("info view missing empty-data text: %q", view)
 	}
 }
 

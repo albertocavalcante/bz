@@ -2,10 +2,13 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/albertocavalcante/bz/internal/module"
 )
 
 // State represents the current application state (state machine)
@@ -23,6 +26,7 @@ const (
 type App struct {
 	// Current state
 	state State
+	prev  State
 
 	// Sub-models (composed, not inherited)
 	list    ListModel
@@ -33,6 +37,7 @@ type App struct {
 	width  int
 	height int
 	err    error
+	info   *module.File
 }
 
 // NewApp creates a new application model
@@ -75,6 +80,11 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c":
 			return a, tea.Quit
+		case "b", "esc":
+			if a.state == StateInfo {
+				a.state = a.prev
+				return a, nil
+			}
 		case "q":
 			// Let list model handle q when in list state (including filter input).
 			if a.state != StateList {
@@ -113,8 +123,9 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// Module info fetched
 	case ModuleInfoMsg:
+		a.prev = a.state
 		a.state = StateInfo
-		// Could switch to an info view here
+		a.info = msg.File
 		return a, nil
 
 	// Spinner tick
@@ -144,6 +155,8 @@ func (a App) View() string {
 		return a.list.View()
 	case StateError:
 		return a.viewError()
+	case StateInfo:
+		return a.viewInfo()
 	default:
 		return ""
 	}
@@ -161,6 +174,47 @@ func (a App) viewError() string {
 			"\n\n" +
 			a.styles.Help.Render("Press q to quit"),
 	)
+}
+
+func (a App) viewInfo() string {
+	if a.info == nil {
+		return a.styles.App.Render(
+			a.styles.Muted.Render("No module info available.") + "\n\n" +
+				a.styles.Help.Render("Press b to go back, q to quit"),
+		)
+	}
+
+	var b strings.Builder
+	name := a.info.Name()
+	if name == "" {
+		name = "Module Info"
+	}
+	b.WriteString(a.styles.Title.Render(name))
+	if v := a.info.Version(); v != "" {
+		b.WriteString(" ")
+		b.WriteString(a.styles.Muted.Render("(" + v + ")"))
+	}
+	b.WriteString("\n\n")
+
+	b.WriteString(fmt.Sprintf("Dependencies: %d\n", len(a.info.Deps)))
+	b.WriteString(fmt.Sprintf("Extensions: %d\n", len(a.info.Extensions)))
+	b.WriteString(fmt.Sprintf("Overrides: %d\n", len(a.info.Overrides)))
+
+	if len(a.info.Deps) > 0 {
+		b.WriteString("\n")
+		b.WriteString("Dependency List:\n")
+		for _, dep := range a.info.Deps {
+			dev := ""
+			if dep.DevDependency {
+				dev = " (dev)"
+			}
+			b.WriteString(fmt.Sprintf("  - %s %s%s\n", dep.Name.String(), dep.Version.String(), dev))
+		}
+	}
+
+	b.WriteString("\n")
+	b.WriteString(a.styles.Help.Render("Press b to go back, q to quit"))
+	return a.styles.App.Render(b.String())
 }
 
 // Run starts the TUI application
