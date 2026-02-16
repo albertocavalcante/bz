@@ -41,6 +41,7 @@ func setupTestGitRepo(t *testing.T) string {
 	runGit(t, workDir, "branch", "-M", "main")
 	runGit(t, workDir, "remote", "add", "origin", remoteDir)
 	runGit(t, workDir, "push", "-u", "origin", "main")
+	runGit(t, remoteDir, "symbolic-ref", "HEAD", "refs/heads/main")
 
 	return remoteDir
 }
