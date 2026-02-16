@@ -126,6 +126,7 @@ func TestRootCmd_HelpShowsAllCommands(t *testing.T) {
 		"init",     // Initialize a new Bazel module project
 		"mod",      // Manage Bazel module dependencies
 		"registry", // Registry operations
+		"tui",      // Launch interactive terminal UI
 		"version",  // Print version information
 	}
 
