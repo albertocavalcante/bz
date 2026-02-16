@@ -1,5 +1,5 @@
 // Package version provides semantic version parsing and comparison utilities.
-package version //nolint:revive // intentional name: describes domain-specific version handling, not stdlib
+package version
 
 import (
 	"strconv"
