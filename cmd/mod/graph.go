@@ -22,6 +22,13 @@ var (
 	graphDepth  int
 )
 
+const (
+	graphFormatASCII   = "ascii"
+	graphFormatDOT     = "dot"
+	graphFormatJSON    = "json"
+	graphFormatMermaid = "mermaid"
+)
+
 var graphCmd = &cobra.Command{
 	Use:   "graph",
 	Short: "Display module dependency graph",
@@ -47,7 +54,7 @@ Examples:
 }
 
 func configureGraphCmd() {
-	graphCmd.Flags().StringVar(&graphFormat, "format", "ascii", "Output format (ascii, dot, json, mermaid)")
+	graphCmd.Flags().StringVar(&graphFormat, "format", graphFormatASCII, "Output format (ascii, dot, json, mermaid)")
 	graphCmd.Flags().BoolVar(&graphJSON, "json", false, "Output as JSON (shortcut for --format=json)")
 	graphCmd.Flags().IntVar(&graphDepth, "depth", 0, "Maximum depth to traverse (0 = unlimited)")
 	Cmd.AddCommand(graphCmd)
@@ -128,17 +135,17 @@ func runGraph(cmd *cobra.Command, args []string) error {
 	// Determine output format
 	format := graphFormat
 	if graphJSON {
-		format = "json"
+		format = graphFormatJSON
 	}
 
 	switch format {
-	case "ascii":
+	case graphFormatASCII:
 		return printASCIITree(out, root)
-	case "dot":
+	case graphFormatDOT:
 		return printDOTGraph(out, root)
-	case "json":
+	case graphFormatJSON:
 		return printJSONGraph(out, root)
-	case "mermaid":
+	case graphFormatMermaid:
 		return printMermaidGraph(out, root)
 	default:
 		return fmt.Errorf("unknown format: %s (valid formats: ascii, dot, json, mermaid)", format)

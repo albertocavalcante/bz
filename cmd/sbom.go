@@ -25,6 +25,11 @@ var (
 	sbomRegistryFlag      string
 )
 
+const (
+	sbomFormatSPDX      = "spdx"
+	sbomFormatCycloneDX = "cyclonedx"
+)
+
 var sbomCmd = &cobra.Command{
 	Use:   "sbom",
 	Short: "Generate Software Bill of Materials",
@@ -48,7 +53,7 @@ Examples:
 }
 
 func configureSBOMCmd() {
-	sbomCmd.Flags().StringVar(&sbomFormat, "format", "spdx", "Output format (spdx, cyclonedx)")
+	sbomCmd.Flags().StringVar(&sbomFormat, "format", sbomFormatSPDX, "Output format (spdx, cyclonedx)")
 	sbomCmd.Flags().StringVar(&sbomOutput, "output", "", "Output file path (default: stdout)")
 	sbomCmd.Flags().BoolVar(&sbomIncludeTransitive, "include-transitive", true, "Include transitive dependencies")
 	sbomCmd.Flags().StringVar(&sbomRegistryFlag, "registry", "", "Registry URL (https://, http://, file://, or /path)")
@@ -172,7 +177,7 @@ func runSBOM(cmd *cobra.Command, args []string) error {
 
 	// Validate format
 	format := strings.ToLower(sbomFormat)
-	if format != "spdx" && format != "cyclonedx" {
+	if format != sbomFormatSPDX && format != sbomFormatCycloneDX {
 		return fmt.Errorf("unknown format: %s (valid formats: spdx, cyclonedx)", sbomFormat)
 	}
 
@@ -236,9 +241,9 @@ func runSBOM(cmd *cobra.Command, args []string) error {
 
 	// Generate SBOM
 	switch format {
-	case "spdx":
+	case sbomFormatSPDX:
 		return generateSPDX(out, f, deps)
-	case "cyclonedx":
+	case sbomFormatCycloneDX:
 		return generateCycloneDX(out, f, deps)
 	default:
 		return fmt.Errorf("unknown format: %s", format)
