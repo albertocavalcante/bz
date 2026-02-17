@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/albertocavalcante/bz/internal/cli"
 	"github.com/albertocavalcante/bz/internal/osv"
 )
 
@@ -715,6 +716,9 @@ bazel_dep(name = "rules_cc", version = "0.0.9")
 }
 
 func TestAuditCmd_OfflineMode(t *testing.T) {
+	cli.ResetCachedConfig()
+	t.Cleanup(cli.ResetCachedConfig)
+
 	setupAuditTest(t, `module(name = "test", version = "1.0.0")
 
 bazel_dep(name = "rules_go", version = "0.50.1")
@@ -739,6 +743,9 @@ bazel_dep(name = "rules_go", version = "0.50.1")
 }
 
 func TestAuditCmd_DisabledViaConfig(t *testing.T) {
+	cli.ResetCachedConfig()
+	t.Cleanup(cli.ResetCachedConfig)
+
 	tmpDir := t.TempDir()
 	oldWd, _ := os.Getwd()
 	t.Cleanup(func() { _ = os.Chdir(oldWd) })

@@ -32,6 +32,8 @@ func TestCheckCommandAllowed_NotDisabled(t *testing.T) {
 	oldWd, _ := os.Getwd()
 	t.Cleanup(func() { _ = os.Chdir(oldWd) })
 	require.NoError(t, os.Chdir(tmpDir))
+	ResetCachedConfig()
+	t.Cleanup(ResetCachedConfig)
 
 	// No config file means no disabled commands
 	err := CheckCommandAllowed("info")
@@ -43,6 +45,8 @@ func TestCheckCommandAllowed_Disabled(t *testing.T) {
 	oldWd, _ := os.Getwd()
 	t.Cleanup(func() { _ = os.Chdir(oldWd) })
 	require.NoError(t, os.Chdir(tmpDir))
+	ResetCachedConfig()
+	t.Cleanup(ResetCachedConfig)
 
 	configContent := `
 [commands]
@@ -63,6 +67,8 @@ func TestCheckCommandAllowed_OtherCommandNotDisabled(t *testing.T) {
 	oldWd, _ := os.Getwd()
 	t.Cleanup(func() { _ = os.Chdir(oldWd) })
 	require.NoError(t, os.Chdir(tmpDir))
+	ResetCachedConfig()
+	t.Cleanup(ResetCachedConfig)
 
 	configContent := `
 [commands]
@@ -80,6 +86,8 @@ func TestCheckCommandAllowed_DisabledViaEnv(t *testing.T) {
 	oldWd, _ := os.Getwd()
 	t.Cleanup(func() { _ = os.Chdir(oldWd) })
 	require.NoError(t, os.Chdir(tmpDir))
+	ResetCachedConfig()
+	t.Cleanup(ResetCachedConfig)
 
 	// Set environment variable
 	t.Setenv("BZ_DISABLE_COMMANDS", "audit,search")
@@ -97,6 +105,8 @@ func TestCheckOfflineAllowed_NotOffline(t *testing.T) {
 	oldWd, _ := os.Getwd()
 	t.Cleanup(func() { _ = os.Chdir(oldWd) })
 	require.NoError(t, os.Chdir(tmpDir))
+	ResetCachedConfig()
+	t.Cleanup(ResetCachedConfig)
 
 	// Clear global state
 	Global = Options{}
@@ -110,6 +120,8 @@ func TestCheckOfflineAllowed_OfflineMode(t *testing.T) {
 	oldWd, _ := os.Getwd()
 	t.Cleanup(func() { _ = os.Chdir(oldWd) })
 	require.NoError(t, os.Chdir(tmpDir))
+	ResetCachedConfig()
+	t.Cleanup(ResetCachedConfig)
 
 	// Set offline mode via global options
 	Global = Options{Offline: true}
@@ -128,6 +140,8 @@ func TestCheckOfflineAllowed_OfflineViaEnv(t *testing.T) {
 	oldWd, _ := os.Getwd()
 	t.Cleanup(func() { _ = os.Chdir(oldWd) })
 	require.NoError(t, os.Chdir(tmpDir))
+	ResetCachedConfig()
+	t.Cleanup(ResetCachedConfig)
 
 	// Set offline via env var
 	t.Setenv("BZ_OFFLINE", "1")
@@ -166,6 +180,8 @@ func TestCheckOfflineAllowed_OfflineViaConfig(t *testing.T) {
 	oldWd, _ := os.Getwd()
 	t.Cleanup(func() { _ = os.Chdir(oldWd) })
 	require.NoError(t, os.Chdir(tmpDir))
+	ResetCachedConfig()
+	t.Cleanup(ResetCachedConfig)
 
 	configContent := `
 [network]

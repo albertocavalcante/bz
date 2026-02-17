@@ -12,6 +12,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/albertocavalcante/bz/internal/cli"
 )
 
 // MockCommandRunner is used for mocking exec.Command calls
@@ -834,6 +836,9 @@ func TestIsBazel7OrNewer(t *testing.T) {
 }
 
 func TestDoctorCmd_OfflineMode_SkipsRegistryCheck(t *testing.T) {
+	cli.ResetCachedConfig()
+	t.Cleanup(cli.ResetCachedConfig)
+
 	tmpDir := setupDoctorTest(t)
 	resetDoctorFlags()
 
@@ -878,6 +883,9 @@ func TestDoctorCmd_OfflineMode_SkipsRegistryCheck(t *testing.T) {
 }
 
 func TestDoctorCmd_OfflineMode_JSON_SkipsRegistryCheck(t *testing.T) {
+	cli.ResetCachedConfig()
+	t.Cleanup(cli.ResetCachedConfig)
+
 	tmpDir := setupDoctorTest(t)
 	resetDoctorFlags()
 	doctorJSON = true

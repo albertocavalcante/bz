@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/albertocavalcante/bz/internal/cli"
 	"github.com/albertocavalcante/bz/internal/registry"
 )
 
@@ -154,6 +155,9 @@ func TestInfoCmd_ModuleNotFoundWithoutSuggestions(t *testing.T) {
 }
 
 func TestInfoCmd_DisabledViaConfig(t *testing.T) {
+	cli.ResetCachedConfig()
+	t.Cleanup(cli.ResetCachedConfig)
+
 	tmpDir := t.TempDir()
 	oldWd, _ := os.Getwd()
 	t.Cleanup(func() { _ = os.Chdir(oldWd) })
@@ -181,6 +185,9 @@ disabled = ["info"]
 }
 
 func TestInfoCmd_OfflineMode(t *testing.T) {
+	cli.ResetCachedConfig()
+	t.Cleanup(cli.ResetCachedConfig)
+
 	tmpDir := t.TempDir()
 	oldWd, _ := os.Getwd()
 	t.Cleanup(func() { _ = os.Chdir(oldWd) })
