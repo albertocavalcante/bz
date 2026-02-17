@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/albertocavalcante/bz/internal/cli"
+	"github.com/albertocavalcante/bz/internal/cmdutil"
 	"github.com/albertocavalcante/bz/internal/module"
 	"github.com/albertocavalcante/bz/internal/registry"
 )
@@ -51,7 +52,7 @@ func runInfo(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("module argument required")
 	}
 	name, version := parseModuleArg(args[0])
-	ctx := cmdContext(cmd)
+	ctx := cmdutil.CommandContext(cmd)
 
 	// Create network-aware registry
 	reg, err := createNetworkAwareRegistry()

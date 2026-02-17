@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/albertocavalcante/bz/internal/cli"
 	"github.com/albertocavalcante/bz/internal/module"
 )
 
@@ -27,7 +28,9 @@ Examples:
   bz init --name=my_module         # set module name
   bz init --name=foo --version=1.0.0
   bz init --force                  # overwrite existing MODULE.bazel`,
-	RunE: runInit,
+	RunE:          runInit,
+	SilenceUsage:  true,
+	SilenceErrors: true,
 }
 
 func configureInitCmd() {
@@ -38,6 +41,10 @@ func configureInitCmd() {
 }
 
 func runInit(cmd *cobra.Command, args []string) error {
+	if err := cli.CheckCommandAllowed("init"); err != nil {
+		return err
+	}
+
 	wd, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("failed to get working directory: %w", err)

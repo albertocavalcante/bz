@@ -12,6 +12,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 
+	"github.com/albertocavalcante/bz/internal/cli"
+	"github.com/albertocavalcante/bz/internal/depgraph"
 	"github.com/albertocavalcante/bz/internal/module"
 	"github.com/albertocavalcante/bz/internal/registry"
 )
@@ -20,7 +22,7 @@ var (
 	sbomFormat            string
 	sbomOutput            string
 	sbomIncludeTransitive bool
-	sbomRegistryFlag      = registry.DefaultBCR
+	sbomRegistryFlag      string
 )
 
 var sbomCmd = &cobra.Command{
@@ -40,14 +42,16 @@ Examples:
   bz sbom --format=cyclonedx
   bz sbom --output=sbom.json
   bz sbom --include-transitive=false`,
-	RunE: runSBOM,
+	RunE:          runSBOM,
+	SilenceUsage:  true,
+	SilenceErrors: true,
 }
 
 func configureSBOMCmd() {
 	sbomCmd.Flags().StringVar(&sbomFormat, "format", "spdx", "Output format (spdx, cyclonedx)")
 	sbomCmd.Flags().StringVar(&sbomOutput, "output", "", "Output file path (default: stdout)")
 	sbomCmd.Flags().BoolVar(&sbomIncludeTransitive, "include-transitive", true, "Include transitive dependencies")
-	sbomCmd.Flags().StringVar(&sbomRegistryFlag, "registry", registry.DefaultBCR, "Registry URL (https://, http://, file://, or /path)")
+	sbomCmd.Flags().StringVar(&sbomRegistryFlag, "registry", "", "Registry URL (https://, http://, file://, or /path)")
 	rootCmd.AddCommand(sbomCmd)
 }
 
@@ -162,6 +166,10 @@ type sbomDependency struct {
 }
 
 func runSBOM(cmd *cobra.Command, args []string) error {
+	if err := cli.CheckCommandAllowed("sbom"); err != nil {
+		return err
+	}
+
 	// Validate format
 	format := strings.ToLower(sbomFormat)
 	if format != "spdx" && format != "cyclonedx" {
@@ -175,7 +183,15 @@ func runSBOM(cmd *cobra.Command, args []string) error {
 
 	ctx := cmdContext(cmd)
 
-	reg, err := registry.New(sbomRegistryFlag)
+	registryURL := sbomRegistryFlag
+	if registryURL == "" {
+		registryURL = cli.GetRegistry()
+	}
+	if registryURL == "" {
+		registryURL = registry.DefaultBCR
+	}
+
+	reg, err := registry.New(registryURL)
 	if err != nil {
 		return fmt.Errorf("invalid registry: %w", err)
 	}
@@ -189,7 +205,7 @@ func runSBOM(cmd *cobra.Command, args []string) error {
 		for _, dep := range f.Deps {
 			name := dep.Name.String()
 			ver := dep.Version.String()
-			collectTransitiveDeps(ctx, reg, name, ver, deps, visited)
+			collectTransitiveDeps(ctx, reg, registryURL, name, ver, deps, visited)
 		}
 	} else {
 		// Only direct dependencies
@@ -200,7 +216,7 @@ func runSBOM(cmd *cobra.Command, args []string) error {
 			deps[key] = &sbomDependency{
 				Name:             name,
 				Version:          ver,
-				DownloadLocation: buildDownloadLocation(sbomRegistryFlag, name, ver),
+				DownloadLocation: buildDownloadLocation(registryURL, name, ver),
 			}
 		}
 	}
@@ -230,7 +246,13 @@ func runSBOM(cmd *cobra.Command, args []string) error {
 }
 
 // collectTransitiveDeps recursively collects all transitive dependencies.
-func collectTransitiveDeps(ctx context.Context, reg registry.Registry, name, ver string, deps map[string]*sbomDependency, visited map[string]bool) {
+func collectTransitiveDeps(
+	ctx context.Context,
+	reg registry.Registry,
+	registryURL, name, ver string,
+	deps map[string]*sbomDependency,
+	visited map[string]bool,
+) {
 	key := name + "@" + ver
 	if visited[key] {
 		return
@@ -240,27 +262,21 @@ func collectTransitiveDeps(ctx context.Context, reg registry.Registry, name, ver
 	dep := &sbomDependency{
 		Name:             name,
 		Version:          ver,
-		DownloadLocation: buildDownloadLocation(sbomRegistryFlag, name, ver),
+		DownloadLocation: buildDownloadLocation(registryURL, name, ver),
 	}
 	deps[key] = dep
 
-	// Fetch module to get its dependencies
-	content, err := reg.GetModuleBazel(ctx, name, ver)
-	if err != nil {
-		return
-	}
-
-	modFile, err := module.LoadContent(name, content)
+	depRefs, err := depgraph.FetchDeps(ctx, reg, depgraph.ModuleRef{Name: name, Version: ver})
 	if err != nil {
 		return
 	}
 
 	// Record direct deps of this module
-	for _, d := range modFile.Deps {
-		depName := d.Name.String()
-		depVer := d.Version.String()
+	for _, depRef := range depRefs {
+		depName := depRef.Name
+		depVer := depRef.Version
 		dep.DirectDeps = append(dep.DirectDeps, depName+"@"+depVer)
-		collectTransitiveDeps(ctx, reg, depName, depVer, deps, visited)
+		collectTransitiveDeps(ctx, reg, registryURL, depName, depVer, deps, visited)
 	}
 }
 

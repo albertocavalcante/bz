@@ -6,6 +6,8 @@ import (
 
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
+
+	"github.com/albertocavalcante/bz/internal/starlark/convertutil"
 )
 
 // ToStarlark converts a Go value to a Starlark value.
@@ -340,58 +342,10 @@ func convertReflect(val starlark.Value, dest reflect.Value) error {
 
 // toGoValue converts a Starlark value to a Go interface{} value.
 func toGoValue(val starlark.Value) (any, error) {
-	switch v := val.(type) {
-	case starlark.NoneType:
-		return nil, nil //nolint:nilnil // nil is the correct Go representation of Starlark None
-	case starlark.Bool:
-		return bool(v), nil
-	case starlark.String:
-		return string(v), nil
-	case starlark.Int:
-		i, ok := v.Int64()
-		if !ok {
-			return nil, fmt.Errorf("integer overflow")
-		}
-		return i, nil
-	case starlark.Float:
-		return float64(v), nil
-	case *starlark.List:
-		result := make([]any, v.Len())
-		for i := 0; i < v.Len(); i++ {
-			elem, err := toGoValue(v.Index(i))
-			if err != nil {
-				return nil, err
-			}
-			result[i] = elem
-		}
-		return result, nil
-	case *starlark.Dict:
-		result := make(map[string]any)
-		for _, item := range v.Items() {
-			k, ok := item[0].(starlark.String)
-			if !ok {
-				return nil, fmt.Errorf("dict key: expected string, got %s", item[0].Type())
-			}
-			val, err := toGoValue(item[1])
-			if err != nil {
-				return nil, err
-			}
-			result[string(k)] = val
-		}
-		return result, nil
-	case starlark.Tuple:
-		result := make([]any, len(v))
-		for i, elem := range v {
-			val, err := toGoValue(elem)
-			if err != nil {
-				return nil, err
-			}
-			result[i] = val
-		}
-		return result, nil
-	default:
-		return nil, fmt.Errorf("unsupported Starlark type: %s", val.Type())
-	}
+	return convertutil.ToGoValue(val, convertutil.ToGoOptions{
+		IntOverflowAsString: false,
+		UnknownAsValue:      false,
+	})
 }
 
 // MustString extracts a string from a Starlark value or returns an error.

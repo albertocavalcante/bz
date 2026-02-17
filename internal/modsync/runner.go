@@ -9,6 +9,7 @@ import (
 	"github.com/albertocavalcante/bz/internal/config"
 	"github.com/albertocavalcante/bz/internal/publisher"
 	"github.com/albertocavalcante/bz/internal/registry"
+	bzversion "github.com/albertocavalcante/bz/internal/version"
 )
 
 // runner executes a single workflow.
@@ -204,18 +205,11 @@ func (r *runner) syncVersion(ctx context.Context, moduleName, version string) (w
 // This is a helper that handles the fact that the registry interface
 // doesn't have a direct GetSource method.
 func (r *runner) getSourceJSON(ctx context.Context, moduleName, version string) ([]byte, error) {
-	// For HTTP registries, we can fetch directly
-	if httpReg, ok := r.source.(*registry.HTTPRegistry); ok {
-		return httpReg.GetSource(ctx, moduleName, version)
+	if sourceReg, ok := r.source.(registry.SourceGetter); ok {
+		return sourceReg.GetSource(ctx, moduleName, version)
 	}
 
-	// For file registries, we can fetch directly
-	if fileReg, ok := r.source.(*registry.FileRegistry); ok {
-		return fileReg.GetSource(ctx, moduleName, version)
-	}
-
-	// Fallback: try to use the registry's String() to build URL
-	// This is a best-effort approach for unknown registry types
+	// source.json is optional and not supported by every registry backend.
 	return nil, nil
 }
 
@@ -291,29 +285,15 @@ func filterSince(versions []string, since string) []string {
 func filterRange(versions []string, minVer, maxVer string) []string {
 	var filtered []string
 	for _, v := range versions {
-		if minVer != "" && compareSemver(v, minVer) < 0 {
+		if minVer != "" && bzversion.CompareStrings(v, minVer) < 0 {
 			continue
 		}
-		if maxVer != "" && compareSemver(v, maxVer) > 0 {
+		if maxVer != "" && bzversion.CompareStrings(v, maxVer) > 0 {
 			continue
 		}
 		filtered = append(filtered, v)
 	}
 	return filtered
-}
-
-// compareSemver is a simple semver comparison.
-// Returns -1 if a < b, 0 if a == b, 1 if a > b.
-func compareSemver(a, b string) int {
-	// Simple string comparison for now
-	// A full implementation would parse semver properly
-	if a < b {
-		return -1
-	}
-	if a > b {
-		return 1
-	}
-	return 0
 }
 
 // registryFromConfig creates a registry from config.

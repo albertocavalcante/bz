@@ -10,6 +10,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/albertocavalcante/bz/internal/cli"
+	"github.com/albertocavalcante/bz/internal/cmdutil"
+	"github.com/albertocavalcante/bz/internal/depgraph"
 	"github.com/albertocavalcante/bz/internal/module"
 	"github.com/albertocavalcante/bz/internal/registry"
 )
@@ -47,12 +49,6 @@ type Stats struct {
 	DevDeps        int `json:"dev_dependencies"`
 }
 
-// moduleKey uniquely identifies a module by name@version.
-type moduleKey struct {
-	name    string
-	version string
-}
-
 func runStats(cmd *cobra.Command, args []string) error {
 	// Check if command is disabled
 	if err := cli.CheckCommandAllowed("stats"); err != nil {
@@ -64,7 +60,7 @@ func runStats(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	ctx := cmdContext(cmd)
+	ctx := cmdutil.CommandContext(cmd)
 
 	// Create network-aware registry
 	reg, err := createNetworkAwareRegistry()
@@ -109,20 +105,20 @@ func calculateStats(ctx context.Context, reg registry.Registry, f *module.File) 
 	}
 
 	// Track all modules we've seen (to avoid counting duplicates)
-	allModules := make(map[moduleKey]bool)
+	allModules := make(map[depgraph.ModuleRef]bool)
 
 	// Add direct deps to all modules set
 	for _, dep := range f.Deps {
-		key := moduleKey{name: dep.Name.String(), version: dep.Version.String()}
+		key := depgraph.ModuleRef{Name: dep.Name.String(), Version: dep.Version.String()}
 		allModules[key] = true
 	}
 
 	// Calculate max depth and find all transitive deps
 	maxDepth := 0
-	visited := make(map[moduleKey]bool)
+	visited := make(map[depgraph.ModuleRef]bool)
 
 	for _, dep := range f.Deps {
-		key := moduleKey{name: dep.Name.String(), version: dep.Version.String()}
+		key := depgraph.ModuleRef{Name: dep.Name.String(), Version: dep.Version.String()}
 		depth := resolveTransitiveDeps(ctx, reg, key, allModules, visited, 1)
 		if depth > maxDepth {
 			maxDepth = depth
@@ -142,9 +138,9 @@ func calculateStats(ctx context.Context, reg registry.Registry, f *module.File) 
 func resolveTransitiveDeps(
 	ctx context.Context,
 	reg registry.Registry,
-	key moduleKey,
-	allModules map[moduleKey]bool,
-	visited map[moduleKey]bool,
+	key depgraph.ModuleRef,
+	allModules map[depgraph.ModuleRef]bool,
+	visited map[depgraph.ModuleRef]bool,
 	currentDepth int,
 ) int {
 	// Avoid infinite loops for circular dependencies
@@ -153,29 +149,19 @@ func resolveTransitiveDeps(
 	}
 	visited[key] = true
 
-	// Fetch the module's MODULE.bazel to get its dependencies
-	content, err := reg.GetModuleBazel(ctx, key.name, key.version)
-	if err != nil {
-		// If we can't fetch the module, just return current depth
-		return currentDepth
-	}
-
-	// Parse the MODULE.bazel
-	modFile, err := module.LoadContent(key.name, content)
+	deps, err := depgraph.FetchDeps(ctx, reg, key)
 	if err != nil {
 		return currentDepth
 	}
 
 	// No dependencies means we're at a leaf
-	if len(modFile.Deps) == 0 {
+	if len(deps) == 0 {
 		return currentDepth
 	}
 
 	maxDepth := currentDepth
 
-	for _, dep := range modFile.Deps {
-		depKey := moduleKey{name: dep.Name.String(), version: dep.Version.String()}
-
+	for _, depKey := range deps {
 		// Track this module
 		allModules[depKey] = true
 

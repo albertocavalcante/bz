@@ -61,14 +61,9 @@ type moduleStatus struct {
 func runVerify(cmd *cobra.Command, args []string) error {
 	out := cmd.OutOrStdout()
 
-	// Determine cache directory
-	cacheDir := verifyCacheDir
-	if cacheDir == "" {
-		homeDir, err := os.UserHomeDir()
-		if err != nil {
-			return fmt.Errorf("failed to get home directory: %w", err)
-		}
-		cacheDir = filepath.Join(homeDir, ".cache", "bz")
+	cacheDir, err := resolveCacheDir(verifyCacheDir)
+	if err != nil {
+		return err
 	}
 
 	// Load MODULE.bazel

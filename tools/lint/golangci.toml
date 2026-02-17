@@ -3,7 +3,7 @@ version = "2"
 [run]
 timeout = "5m"
 modules-download-mode = "readonly"
-tests = false
+tests = true
 
 # ─── Formatters ──────────────────────────────────────────────────────────────
 
@@ -171,7 +171,25 @@ presets = ["comments", "std-error-handling", "common-false-positives"]
 
 [[linters.exclusions.rules]]
 path = '.*_test\.go$'
-linters = ["dupl", "gocyclo", "goconst", "funlen", "errcheck", "gosec", "errorlint"]
+linters = [
+  "copyloopvar",
+  "dupl",
+  "errorlint",
+  "errcheck",
+  "goconst",
+  "gocritic",
+  "gocyclo",
+  "gofmt",
+  "goimports",
+  "gosec",
+  "ineffassign",
+  "misspell",
+  "noctx",
+  "revive",
+  "unparam",
+  "unused",
+  "wastedassign",
+]
 
 [[linters.exclusions.rules]]
 path = "(main|cmd)"

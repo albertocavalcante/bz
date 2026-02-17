@@ -20,7 +20,12 @@ build:
 
 # Build with version info
 build-release version="dev":
-    go build -ldflags "-s -w -X main.version={{version}}" -o bz .
+    #!/usr/bin/env bash
+    set -euo pipefail
+    commit="$(git rev-parse --short HEAD)"
+    date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    ldflags="-s -w -X github.com/albertocavalcante/bz/cmd.version={{version}} -X github.com/albertocavalcante/bz/cmd.commit=${commit} -X github.com/albertocavalcante/bz/cmd.date=${date}"
+    go build -ldflags "$ldflags" -o bz .
 
 # Run tests
 test:

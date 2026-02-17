@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/albertocavalcante/bz/internal/cli"
+	"github.com/albertocavalcante/bz/internal/cmdutil"
 	"github.com/albertocavalcante/bz/internal/registry"
 )
 
@@ -51,7 +52,7 @@ func runSearch(cmd *cobra.Command, args []string) error {
 	}
 
 	query := args[0]
-	ctx := cmdContext(cmd)
+	ctx := cmdutil.CommandContext(cmd)
 
 	// Create network-aware registry
 	reg, err := createNetworkAwareRegistry()

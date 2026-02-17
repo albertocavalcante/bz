@@ -142,148 +142,118 @@ func (r *NetworkAwareRegistry) isPreferOffline() bool {
 	return r.opts != nil && r.opts.PreferOffline
 }
 
-// GetMetadata fetches the metadata for a module, respecting network mode.
-//
-// Behavior by mode:
-//   - Offline: Cache only, error if miss.
-//   - PreferOffline: Cache first, then network.
-//   - Online: Network first (existing behavior).
-func (r *NetworkAwareRegistry) GetMetadata(ctx context.Context, module string) (*Metadata, error) {
-	// Offline mode: cache only
+func withNetworkPolicy[T any](
+	r *NetworkAwareRegistry,
+	offline func() (T, error),
+	preferOffline func() (T, error),
+	online func() (T, error),
+) (T, error) {
 	if r.isOffline() {
-		return r.getMetadataFromCacheOnly(ctx, module)
+		return offline()
 	}
-
-	// Prefer-offline mode: cache first, then network
 	if r.isPreferOffline() {
-		return r.getMetadataPreferCache(ctx, module)
+		return preferOffline()
 	}
-
-	// Online mode: use inner registry directly
-	return r.inner.GetMetadata(ctx, module)
+	return online()
 }
 
-// getMetadataFromCacheOnly attempts to get metadata from cache only.
-// Returns a helpful error if not found in cache.
-func (r *NetworkAwareRegistry) getMetadataFromCacheOnly(ctx context.Context, module string) (*Metadata, error) {
-	if r.cache == nil {
-		return nil, NewOfflineCacheMissError(module, r.inner.String())
+func (r *NetworkAwareRegistry) sourceGetter(reg Registry) SourceGetter {
+	sg, ok := reg.(SourceGetter)
+	if !ok {
+		return nil
 	}
-
-	meta, err := r.cache.GetMetadata(ctx, module)
-	if err != nil {
-		return nil, NewOfflineCacheMissError(module, r.inner.String())
-	}
-
-	return meta, nil
+	return sg
 }
 
-// getMetadataPreferCache tries cache first, falls back to network.
-func (r *NetworkAwareRegistry) getMetadataPreferCache(ctx context.Context, module string) (*Metadata, error) {
-	// Try cache first if available
-	if r.cache != nil {
-		meta, err := r.cache.GetMetadata(ctx, module)
-		if err == nil {
+// GetMetadata fetches the metadata for a module, respecting network mode.
+func (r *NetworkAwareRegistry) GetMetadata(ctx context.Context, module string) (*Metadata, error) {
+	return withNetworkPolicy(
+		r,
+		func() (*Metadata, error) {
+			if r.cache == nil {
+				return nil, NewOfflineCacheMissError(module, r.inner.String())
+			}
+			meta, err := r.cache.GetMetadata(ctx, module)
+			if err != nil {
+				return nil, NewOfflineCacheMissError(module, r.inner.String())
+			}
 			return meta, nil
-		}
-		// Cache miss - fall through to network
-	}
-
-	// Fall back to network
-	return r.inner.GetMetadata(ctx, module)
+		},
+		func() (*Metadata, error) {
+			if r.cache != nil {
+				meta, err := r.cache.GetMetadata(ctx, module)
+				if err == nil {
+					return meta, nil
+				}
+			}
+			return r.inner.GetMetadata(ctx, module)
+		},
+		func() (*Metadata, error) {
+			return r.inner.GetMetadata(ctx, module)
+		},
+	)
 }
 
 // GetModuleBazel fetches the MODULE.bazel content, respecting network mode.
 func (r *NetworkAwareRegistry) GetModuleBazel(ctx context.Context, module, version string) ([]byte, error) {
-	// Offline mode: cache only
-	if r.isOffline() {
-		return r.getModuleBazelFromCacheOnly(ctx, module, version)
-	}
-
-	// Prefer-offline mode: cache first, then network
-	if r.isPreferOffline() {
-		return r.getModuleBazelPreferCache(ctx, module, version)
-	}
-
-	// Online mode: use inner registry directly
-	return r.inner.GetModuleBazel(ctx, module, version)
-}
-
-// getModuleBazelFromCacheOnly attempts to get MODULE.bazel from cache only.
-func (r *NetworkAwareRegistry) getModuleBazelFromCacheOnly(ctx context.Context, module, version string) ([]byte, error) {
-	if r.cache == nil {
-		return nil, NewOfflineVersionMissError(module, version, r.inner.String())
-	}
-
-	content, err := r.cache.GetModuleBazel(ctx, module, version)
-	if err != nil {
-		return nil, NewOfflineVersionMissError(module, version, r.inner.String())
-	}
-
-	return content, nil
-}
-
-// getModuleBazelPreferCache tries cache first, falls back to network.
-func (r *NetworkAwareRegistry) getModuleBazelPreferCache(ctx context.Context, module, version string) ([]byte, error) {
-	// Try cache first if available
-	if r.cache != nil {
-		content, err := r.cache.GetModuleBazel(ctx, module, version)
-		if err == nil {
+	return withNetworkPolicy(
+		r,
+		func() ([]byte, error) {
+			if r.cache == nil {
+				return nil, NewOfflineVersionMissError(module, version, r.inner.String())
+			}
+			content, err := r.cache.GetModuleBazel(ctx, module, version)
+			if err != nil {
+				return nil, NewOfflineVersionMissError(module, version, r.inner.String())
+			}
 			return content, nil
-		}
-		// Cache miss - fall through to network
-	}
-
-	// Fall back to network
-	return r.inner.GetModuleBazel(ctx, module, version)
+		},
+		func() ([]byte, error) {
+			if r.cache != nil {
+				content, err := r.cache.GetModuleBazel(ctx, module, version)
+				if err == nil {
+					return content, nil
+				}
+			}
+			return r.inner.GetModuleBazel(ctx, module, version)
+		},
+		func() ([]byte, error) {
+			return r.inner.GetModuleBazel(ctx, module, version)
+		},
+	)
 }
 
 // ListModules lists all modules, respecting network mode.
 func (r *NetworkAwareRegistry) ListModules(ctx context.Context) ([]string, error) {
-	// Offline mode: cache only
-	if r.isOffline() {
-		return r.listModulesFromCacheOnly(ctx)
-	}
-
-	// Prefer-offline mode: cache first, then network
-	if r.isPreferOffline() {
-		return r.listModulesPreferCache(ctx)
-	}
-
-	// Online mode: use inner registry directly
-	return r.inner.ListModules(ctx)
-}
-
-// listModulesFromCacheOnly lists modules from cache only.
-func (r *NetworkAwareRegistry) listModulesFromCacheOnly(ctx context.Context) ([]string, error) {
-	if r.cache == nil {
-		return nil, &NetworkError{
-			Operation: "You are in offline mode but no cache is available.",
-			URL:       r.inner.String(),
-			Err:       ErrListingNotSupported,
-			Suggestions: []string{
-				"Configure a cache directory in your bz.star config",
-				"Use --prefer-offline to allow network fallback",
-			},
-		}
-	}
-
-	return r.cache.ListModules(ctx)
-}
-
-// listModulesPreferCache tries cache first, falls back to network.
-func (r *NetworkAwareRegistry) listModulesPreferCache(ctx context.Context) ([]string, error) {
-	// Try cache first if available
-	if r.cache != nil {
-		modules, err := r.cache.ListModules(ctx)
-		if err == nil && len(modules) > 0 {
-			return modules, nil
-		}
-		// Cache miss or empty - fall through to network
-	}
-
-	// Fall back to network
-	return r.inner.ListModules(ctx)
+	return withNetworkPolicy(
+		r,
+		func() ([]string, error) {
+			if r.cache == nil {
+				return nil, &NetworkError{
+					Operation: "You are in offline mode but no cache is available.",
+					URL:       r.inner.String(),
+					Err:       ErrListingNotSupported,
+					Suggestions: []string{
+						"Configure a cache directory in your bz.star config",
+						"Use --prefer-offline to allow network fallback",
+					},
+				}
+			}
+			return r.cache.ListModules(ctx)
+		},
+		func() ([]string, error) {
+			if r.cache != nil {
+				modules, err := r.cache.ListModules(ctx)
+				if err == nil && len(modules) > 0 {
+					return modules, nil
+				}
+			}
+			return r.inner.ListModules(ctx)
+		},
+		func() ([]string, error) {
+			return r.inner.ListModules(ctx)
+		},
+	)
 }
 
 // Type returns the type of the underlying registry.
@@ -299,60 +269,43 @@ func (r *NetworkAwareRegistry) String() string {
 // GetSource fetches source.json, respecting network mode.
 // Delegates to the inner registry if it implements SourceGetter.
 func (r *NetworkAwareRegistry) GetSource(ctx context.Context, module, version string) ([]byte, error) {
-	// Offline mode: cache only
-	if r.isOffline() {
-		return r.getSourceFromCacheOnly(ctx, module, version)
-	}
-
-	// Prefer-offline mode: cache first, then network
-	if r.isPreferOffline() {
-		return r.getSourcePreferCache(ctx, module, version)
-	}
-
-	// Online mode: use inner registry directly
-	if sg, ok := r.inner.(SourceGetter); ok {
-		return sg.GetSource(ctx, module, version)
-	}
-
-	return nil, nil
-}
-
-// getSourceFromCacheOnly attempts to get source.json from cache only.
-func (r *NetworkAwareRegistry) getSourceFromCacheOnly(ctx context.Context, module, version string) ([]byte, error) {
-	if r.cache == nil {
-		return nil, NewOfflineVersionMissError(module, version, r.inner.String())
-	}
-
-	if sg, ok := r.cache.(SourceGetter); ok {
-		data, err := sg.GetSource(ctx, module, version)
-		if err != nil {
-			return nil, NewOfflineVersionMissError(module, version, r.inner.String())
-		}
-		return data, nil
-	}
-
-	return nil, nil
-}
-
-// getSourcePreferCache tries cache first, falls back to network.
-func (r *NetworkAwareRegistry) getSourcePreferCache(ctx context.Context, module, version string) ([]byte, error) {
-	// Try cache first if available
-	if r.cache != nil {
-		if sg, ok := r.cache.(SourceGetter); ok {
-			data, err := sg.GetSource(ctx, module, version)
-			if err == nil {
-				return data, nil
+	return withNetworkPolicy(
+		r,
+		func() ([]byte, error) {
+			if r.cache == nil {
+				return nil, NewOfflineVersionMissError(module, version, r.inner.String())
 			}
-			// Cache miss - fall through to network
-		}
-	}
-
-	// Fall back to network
-	if sg, ok := r.inner.(SourceGetter); ok {
-		return sg.GetSource(ctx, module, version)
-	}
-
-	return nil, nil
+			sg := r.sourceGetter(r.cache)
+			if sg == nil {
+				return nil, nil
+			}
+			data, err := sg.GetSource(ctx, module, version)
+			if err != nil {
+				return nil, NewOfflineVersionMissError(module, version, r.inner.String())
+			}
+			return data, nil
+		},
+		func() ([]byte, error) {
+			if r.cache != nil {
+				if sg := r.sourceGetter(r.cache); sg != nil {
+					data, err := sg.GetSource(ctx, module, version)
+					if err == nil {
+						return data, nil
+					}
+				}
+			}
+			if sg := r.sourceGetter(r.inner); sg != nil {
+				return sg.GetSource(ctx, module, version)
+			}
+			return nil, nil
+		},
+		func() ([]byte, error) {
+			if sg := r.sourceGetter(r.inner); sg != nil {
+				return sg.GetSource(ctx, module, version)
+			}
+			return nil, nil
+		},
+	)
 }
 
 // Verify NetworkAwareRegistry implements Registry.

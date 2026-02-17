@@ -11,6 +11,7 @@ bz
 
 # Output of go coverage
 *.out
+coverage.html
 
 # Build output
 dist/

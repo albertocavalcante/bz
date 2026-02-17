@@ -5,6 +5,10 @@ on:
     tags:
       - "v*"
 
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: write
 
@@ -65,7 +69,13 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: "0"
         run: |
-          go build -ldflags "-s -w -X main.version=${{ steps.version.outputs.version }}" -o bz .
+          COMMIT="${GITHUB_SHA::7}"
+          DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          LDFLAGS="-s -w \
+            -X github.com/albertocavalcante/bz/cmd.version=${{ steps.version.outputs.version }} \
+            -X github.com/albertocavalcante/bz/cmd.commit=${COMMIT} \
+            -X github.com/albertocavalcante/bz/cmd.date=${DATE}"
+          go build -ldflags "$LDFLAGS" -o bz .
           mkdir -p dist
           tar -czvf dist/bz-${{ matrix.name }}.tar.gz bz
           cd dist
@@ -79,7 +89,10 @@ jobs:
           CGO_ENABLED: "0"
         shell: pwsh
         run: |
-          go build -ldflags "-s -w -X main.version=${{ steps.version.outputs.version }}" -o bz.exe .
+          $commit = "${{ github.sha }}".Substring(0, 7)
+          $date = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+          $ldflags = "-s -w -X github.com/albertocavalcante/bz/cmd.version=${{ steps.version.outputs.version }} -X github.com/albertocavalcante/bz/cmd.commit=$commit -X github.com/albertocavalcante/bz/cmd.date=$date"
+          go build -ldflags "$ldflags" -o bz.exe .
           New-Item -ItemType Directory -Force -Path dist
           Compress-Archive -Path bz.exe -DestinationPath dist/bz-${{ matrix.name }}.zip
           $hash = (Get-FileHash -Algorithm SHA256 dist/bz-${{ matrix.name }}.zip).Hash.ToLower()

@@ -3,6 +3,8 @@ package bzconfig
 import (
 	"os"
 	"strings"
+
+	"github.com/albertocavalcante/bz/internal/envutil"
 )
 
 // Environment variable names.
@@ -38,8 +40,7 @@ func (c *Config) applyEnvVars() {
 
 // isEnvTrue returns true if the environment variable is set to a truthy value.
 func isEnvTrue(name string) bool {
-	val := strings.ToLower(os.Getenv(name))
-	return val == "1" || val == "true" || val == "yes"
+	return envutil.IsTruthyEnv(name)
 }
 
 // parseCommaSeparated parses a comma-separated string into a slice.

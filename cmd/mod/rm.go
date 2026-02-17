@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/albertocavalcante/bz/internal/cli"
 	"github.com/albertocavalcante/bz/internal/module"
 )
 
@@ -35,6 +36,10 @@ func configureRmCmd() {
 }
 
 func runRm(cmd *cobra.Command, args []string) error {
+	if err := cli.CheckCommandAllowed("rm"); err != nil {
+		return err
+	}
+
 	modulePath, err := module.Find()
 	if err != nil {
 		return err

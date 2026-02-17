@@ -10,7 +10,11 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/albertocavalcante/bz/internal/cli"
+	"github.com/albertocavalcante/bz/internal/cmdutil"
+	"github.com/albertocavalcante/bz/internal/depgraph"
 	"github.com/albertocavalcante/bz/internal/module"
+	"github.com/albertocavalcante/bz/internal/modulearg"
 	"github.com/albertocavalcante/bz/internal/registry"
 )
 
@@ -44,7 +48,7 @@ Examples:
 func configureDownloadCmd() {
 	downloadCmd.Flags().BoolVar(&downloadAll, "all", false, "Download ALL modules from registry (warning: large)")
 	downloadCmd.Flags().BoolVar(&downloadJSON, "json", false, "Output as JSON")
-	downloadCmd.Flags().StringVar(&downloadRegistry, "registry", registry.DefaultBCR, "Registry URL to download from")
+	downloadCmd.Flags().StringVar(&downloadRegistry, "registry", "", "Registry URL to download from")
 	downloadCmd.Flags().StringVar(&downloadCacheDir, "cache-dir", "", "Cache directory (default: ~/.cache/bz)")
 	Cmd.AddCommand(downloadCmd)
 }
@@ -58,23 +62,31 @@ type downloadResult struct {
 	CacheDir   string   `json:"cache_dir"`
 }
 
+//nolint:gocyclo // CLI handler coordinates registry resolution, dependency expansion, and download reporting.
 func runDownload(cmd *cobra.Command, args []string) error {
-	ctx := cmdContext(cmd)
+	if err := cli.CheckCommandAllowed("download"); err != nil {
+		return err
+	}
+
+	ctx := cmdutil.CommandContext(cmd)
 
 	out := cmd.OutOrStdout()
 
-	// Determine cache directory
-	cacheDir := downloadCacheDir
-	if cacheDir == "" {
-		homeDir, err := os.UserHomeDir()
-		if err != nil {
-			return fmt.Errorf("failed to get home directory: %w", err)
-		}
-		cacheDir = filepath.Join(homeDir, ".cache", "bz")
+	cacheDir, err := resolveCacheDir(downloadCacheDir)
+	if err != nil {
+		return err
+	}
+
+	registryURL := downloadRegistry
+	if registryURL == "" {
+		registryURL = cli.GetRegistry()
+	}
+	if registryURL == "" {
+		registryURL = registry.DefaultBCR
 	}
 
 	// Create registry client
-	reg, err := registry.New(downloadRegistry)
+	reg, err := registry.New(registryURL)
 	if err != nil {
 		return fmt.Errorf("invalid registry: %w", err)
 	}
@@ -188,42 +200,15 @@ type moduleVersion struct {
 
 // resolveTransitiveDeps resolves all transitive dependencies for the given modules.
 func resolveTransitiveDeps(ctx context.Context, reg registry.Registry, initial []moduleVersion) []moduleVersion {
-	seen := make(map[string]bool)
-	var result []moduleVersion
-	queue := initial
+	refs := make([]depgraph.ModuleRef, 0, len(initial))
+	for _, mv := range initial {
+		refs = append(refs, depgraph.ModuleRef{Name: mv.name, Version: mv.version})
+	}
 
-	for len(queue) > 0 {
-		mv := queue[0]
-		queue = queue[1:]
-
-		key := mv.name + "@" + mv.version
-		if seen[key] {
-			continue
-		}
-		seen[key] = true
-		result = append(result, mv)
-
-		// Fetch MODULE.bazel to get dependencies
-		content, err := reg.GetModuleBazel(ctx, mv.name, mv.version)
-		if err != nil {
-			// If we can't fetch, skip but continue
-			continue
-		}
-
-		modFile, err := module.LoadContent(mv.name, content)
-		if err != nil {
-			continue
-		}
-
-		for _, dep := range modFile.Deps {
-			depKey := dep.Name.String() + "@" + dep.Version.String()
-			if !seen[depKey] {
-				queue = append(queue, moduleVersion{
-					name:    dep.Name.String(),
-					version: dep.Version.String(),
-				})
-			}
-		}
+	resolved := depgraph.ResolveTransitive(ctx, reg, refs)
+	result := make([]moduleVersion, 0, len(resolved))
+	for _, ref := range resolved {
+		result = append(result, moduleVersion{name: ref.Name, version: ref.Version})
 	}
 
 	return result
@@ -261,8 +246,8 @@ func downloadModule(ctx context.Context, reg registry.Registry, cacheDir, name, 
 	}
 
 	// Try to download source.json (optional, not all registries have it)
-	if httpReg, ok := reg.(*registry.HTTPRegistry); ok {
-		sourceJSON, err := httpReg.GetSource(ctx, name, version)
+	if sourceReg, ok := reg.(registry.SourceGetter); ok {
+		sourceJSON, err := sourceReg.GetSource(ctx, name, version)
 		if err == nil {
 			_ = os.WriteFile(filepath.Join(versionDir, "source.json"), sourceJSON, 0o644) // non-fatal: optional metadata
 		}
@@ -273,12 +258,7 @@ func downloadModule(ctx context.Context, reg registry.Registry, cacheDir, name, 
 
 // parseModuleArg splits "module@version" into name and version.
 func parseModuleArg(arg string) (name, version string) {
-	for i := len(arg) - 1; i >= 0; i-- {
-		if arg[i] == '@' {
-			return arg[:i], arg[i+1:]
-		}
-	}
-	return arg, ""
+	return modulearg.Parse(arg)
 }
 
 func printDownloadJSON(w io.Writer, result downloadResult) error {

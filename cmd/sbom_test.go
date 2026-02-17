@@ -103,6 +103,7 @@ func resetSBOMFlags() {
 	sbomFormat = "spdx"
 	sbomOutput = ""
 	sbomIncludeTransitive = true
+	sbomRegistryFlag = ""
 }
 
 func TestSBOMCmd_SPDXFormat(t *testing.T) {

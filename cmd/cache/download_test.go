@@ -26,7 +26,7 @@ func resetDownloadCmd() *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&downloadAll, "all", false, "Download ALL modules from registry (warning: large)")
 	cmd.Flags().BoolVar(&downloadJSON, "json", false, "Output as JSON")
-	cmd.Flags().StringVar(&downloadRegistry, "registry", "https://bcr.bazel.build", "Registry URL to download from")
+	cmd.Flags().StringVar(&downloadRegistry, "registry", "", "Registry URL to download from")
 	cmd.Flags().StringVar(&downloadCacheDir, "cache-dir", "", "Cache directory (default: ~/.cache/bz)")
 	return cmd
 }
@@ -245,4 +245,27 @@ func TestDownloadCmd_NoRegistry(t *testing.T) {
 
 	err := cmd.Execute()
 	assert.Error(t, err)
+}
+
+func TestParseModuleArg(t *testing.T) {
+	tests := []struct {
+		input       string
+		wantName    string
+		wantVersion string
+	}{
+		{input: "rules_go@0.50.1", wantName: "rules_go", wantVersion: "0.50.1"},
+		{input: "rules_go", wantName: "rules_go", wantVersion: ""},
+		{input: "@scope/pkg", wantName: "@scope/pkg", wantVersion: ""},
+		{input: "@scope/pkg@1.2.3", wantName: "@scope/pkg", wantVersion: "1.2.3"},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.input, func(t *testing.T) {
+			t.Parallel()
+			gotName, gotVersion := parseModuleArg(tt.input)
+			assert.Equal(t, tt.wantName, gotName)
+			assert.Equal(t, tt.wantVersion, gotVersion)
+		})
+	}
 }

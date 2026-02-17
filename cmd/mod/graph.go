@@ -10,6 +10,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/albertocavalcante/bz/internal/cli"
+	"github.com/albertocavalcante/bz/internal/cmdutil"
+	"github.com/albertocavalcante/bz/internal/depgraph"
 	"github.com/albertocavalcante/bz/internal/module"
 	"github.com/albertocavalcante/bz/internal/registry"
 )
@@ -75,7 +77,7 @@ func runGraph(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	ctx := cmdContext(cmd)
+	ctx := cmdutil.CommandContext(cmd)
 
 	// Create network-aware registry
 	reg, err := createNetworkAwareRegistry()
@@ -173,25 +175,17 @@ func buildGraph(ctx context.Context, reg registry.Registry, name, version string
 	}
 	visited[key] = true
 
-	// Fetch module dependencies from registry
-	content, err := reg.GetModuleBazel(ctx, name, version)
+	deps, err := depgraph.FetchDeps(ctx, reg, depgraph.ModuleRef{Name: name, Version: version})
 	if err != nil {
 		// Module not found in registry - just return the node without children
-		return node
-	}
-
-	modFile, err := module.LoadContent(name, content)
-	if err != nil {
 		return node
 	}
 
 	// Add dependencies (only if we haven't reached the depth limit)
 	// Depth limit check: if graphDepth > 0 and we're at max depth, don't add children
 	if graphDepth == 0 || depth < graphDepth {
-		for _, dep := range modFile.Deps {
-			depName := dep.Name.String()
-			depVersion := dep.Version.String()
-			child := buildGraph(ctx, reg, depName, depVersion, visited, visiting, depth+1)
+		for _, dep := range deps {
+			child := buildGraph(ctx, reg, dep.Name, dep.Version, visited, visiting, depth+1)
 			node.Dependencies = append(node.Dependencies, child)
 		}
 	}
@@ -255,11 +249,11 @@ func printDOTGraph(w io.Writer, root *GraphNode) error {
 
 func printDOTNode(w io.Writer, node *GraphNode, edges map[string]bool) {
 	nodeName := formatNodeName(node)
-	nodeID := sanitizeDOTID(nodeName)
+	nodeID := sanitizeGraphID(nodeName)
 
 	for _, child := range node.Dependencies {
 		childName := formatNodeName(child)
-		childID := sanitizeDOTID(childName)
+		childID := sanitizeGraphID(childName)
 
 		edgeKey := nodeID + "->" + childID
 		if !edges[edgeKey] {
@@ -275,14 +269,6 @@ func printDOTNode(w io.Writer, node *GraphNode, edges map[string]bool) {
 			printDOTNode(w, child, edges)
 		}
 	}
-}
-
-func sanitizeDOTID(s string) string {
-	// Replace special characters for DOT node IDs
-	s = strings.ReplaceAll(s, "@", "_")
-	s = strings.ReplaceAll(s, ".", "_")
-	s = strings.ReplaceAll(s, "-", "_")
-	return s
 }
 
 func formatNodeName(node *GraphNode) string {
@@ -313,11 +299,11 @@ func printMermaidGraph(w io.Writer, root *GraphNode) error {
 
 func printMermaidNode(w io.Writer, node *GraphNode, edges map[string]bool) {
 	nodeName := formatNodeName(node)
-	nodeID := sanitizeMermaidID(nodeName)
+	nodeID := sanitizeGraphID(nodeName)
 
 	for _, child := range node.Dependencies {
 		childName := formatNodeName(child)
-		childID := sanitizeMermaidID(childName)
+		childID := sanitizeGraphID(childName)
 
 		edgeKey := nodeID + "-->" + childID
 		if !edges[edgeKey] {
@@ -331,8 +317,8 @@ func printMermaidNode(w io.Writer, node *GraphNode, edges map[string]bool) {
 	}
 }
 
-func sanitizeMermaidID(s string) string {
-	// Replace special characters for Mermaid node IDs
+func sanitizeGraphID(s string) string {
+	// Replace special characters for diagram node IDs.
 	s = strings.ReplaceAll(s, "@", "_")
 	s = strings.ReplaceAll(s, ".", "_")
 	s = strings.ReplaceAll(s, "-", "_")

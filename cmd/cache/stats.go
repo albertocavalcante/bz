@@ -56,14 +56,9 @@ type statsResult struct {
 func runStats(cmd *cobra.Command, args []string) error {
 	out := cmd.OutOrStdout()
 
-	// Determine cache directory
-	cacheDir := statsCacheDir
-	if cacheDir == "" {
-		homeDir, err := os.UserHomeDir()
-		if err != nil {
-			return fmt.Errorf("failed to get home directory: %w", err)
-		}
-		cacheDir = filepath.Join(homeDir, ".cache", "bz")
+	cacheDir, err := resolveCacheDir(statsCacheDir)
+	if err != nil {
+		return err
 	}
 
 	// Calculate statistics

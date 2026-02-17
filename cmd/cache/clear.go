@@ -60,14 +60,9 @@ func runClear(cmd *cobra.Command, args []string) error {
 	out := cmd.OutOrStdout()
 	in := cmd.InOrStdin()
 
-	// Determine cache directory
-	cacheDir := clearCacheDir
-	if cacheDir == "" {
-		homeDir, err := os.UserHomeDir()
-		if err != nil {
-			return fmt.Errorf("failed to get home directory: %w", err)
-		}
-		cacheDir = filepath.Join(homeDir, ".cache", "bz")
+	cacheDir, err := resolveCacheDir(clearCacheDir)
+	if err != nil {
+		return err
 	}
 
 	modulesDir := filepath.Join(cacheDir, "modules")

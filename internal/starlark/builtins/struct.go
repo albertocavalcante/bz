@@ -5,6 +5,9 @@ import (
 
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
+
+	"github.com/albertocavalcante/bz/internal/starlark/convertutil"
+	valueconv "github.com/albertocavalcante/bz/internal/starlark/value"
 )
 
 // NewStruct creates a Starlark struct from a map of fields.
@@ -57,45 +60,12 @@ func (b *StructBuilder) Build() *starlarkstruct.Struct {
 //   - map[string]interface{} -> Dict
 //   - starlark.Value -> passed through unchanged
 func ToStarlarkValue(v any) starlark.Value {
-	if v == nil {
-		return starlark.None
+	converted, err := valueconv.ToStarlark(v)
+	if err == nil {
+		return converted
 	}
-
-	switch val := v.(type) {
-	case starlark.Value:
-		return val
-	case bool:
-		return starlark.Bool(val)
-	case int:
-		return starlark.MakeInt(val)
-	case int64:
-		return starlark.MakeInt64(val)
-	case float64:
-		return starlark.Float(val)
-	case string:
-		return starlark.String(val)
-	case []string:
-		elems := make([]starlark.Value, len(val))
-		for i, s := range val {
-			elems[i] = starlark.String(s)
-		}
-		return starlark.NewList(elems)
-	case []any:
-		elems := make([]starlark.Value, len(val))
-		for i, elem := range val {
-			elems[i] = ToStarlarkValue(elem)
-		}
-		return starlark.NewList(elems)
-	case map[string]any:
-		dict := starlark.NewDict(len(val))
-		for k, v := range val {
-			_ = dict.SetKey(starlark.String(k), ToStarlarkValue(v))
-		}
-		return dict
-	default:
-		// Fallback: convert to string representation using fmt
-		return starlark.String(fmt.Sprintf("%v", val))
-	}
+	// Preserve historical behavior for unsupported values.
+	return starlark.String(fmt.Sprintf("%v", v))
 }
 
 // FromStarlarkValue converts a Starlark value to a Go value.
@@ -109,33 +79,25 @@ func ToStarlarkValue(v any) starlark.Value {
 //   - starlark.Dict -> map[string]interface{}
 //   - other -> the original starlark.Value
 func FromStarlarkValue(v starlark.Value) any {
-	switch val := v.(type) {
-	case starlark.NoneType:
-		return nil
-	case starlark.Bool:
-		return bool(val)
-	case starlark.Int:
-		i, _ := val.Int64()
-		return i
-	case starlark.Float:
-		return float64(val)
-	case starlark.String:
-		return string(val)
-	case *starlark.List:
-		result := make([]any, val.Len())
-		for i := 0; i < val.Len(); i++ {
-			result[i] = FromStarlarkValue(val.Index(i))
-		}
-		return result
-	case *starlark.Dict:
-		result := make(map[string]any)
-		for _, item := range val.Items() {
-			if key, ok := item[0].(starlark.String); ok {
+	converted, err := convertutil.ToGoValue(v, convertutil.ToGoOptions{
+		IntOverflowAsString: true,
+		UnknownAsValue:      true,
+	})
+	if err != nil {
+		// Preserve historical behavior for dicts with unsupported keys:
+		// skip non-string keys rather than failing conversion.
+		if dict, ok := v.(*starlark.Dict); ok {
+			result := make(map[string]any)
+			for _, item := range dict.Items() {
+				key, ok := item[0].(starlark.String)
+				if !ok {
+					continue
+				}
 				result[string(key)] = FromStarlarkValue(item[1])
 			}
+			return result
 		}
-		return result
-	default:
 		return v
 	}
+	return converted
 }

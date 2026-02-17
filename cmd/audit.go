@@ -51,7 +51,9 @@ Examples:
   bz audit --severity=high        # Only show high/critical vulnerabilities
   bz audit --fix                  # Show suggested updates
   bz audit --ecosystem=Go         # Force all modules to query Go ecosystem`,
-	RunE: runAudit,
+	RunE:          runAudit,
+	SilenceUsage:  true,
+	SilenceErrors: true,
 }
 
 func configureAuditCmd() {

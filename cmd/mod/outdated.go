@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/albertocavalcante/bz/internal/cli"
+	"github.com/albertocavalcante/bz/internal/cmdutil"
 	"github.com/albertocavalcante/bz/internal/module"
 	"github.com/albertocavalcante/bz/internal/version"
 )
@@ -62,7 +63,7 @@ func runOutdated(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	ctx := cmdContext(cmd)
+	ctx := cmdutil.CommandContext(cmd)
 
 	// Create network-aware registry
 	reg, err := createNetworkAwareRegistry()

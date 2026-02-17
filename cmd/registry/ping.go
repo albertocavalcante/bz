@@ -10,6 +10,9 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+
+	"github.com/albertocavalcante/bz/internal/cli"
+	"github.com/albertocavalcante/bz/internal/cmdutil"
 )
 
 var (
@@ -61,10 +64,17 @@ type pingResult struct {
 }
 
 func runPing(cmd *cobra.Command, args []string) error {
-	ctx := cmdContext(cmd)
+	if err := cli.CheckCommandAllowed("ping"); err != nil {
+		return err
+	}
+
+	ctx := cmdutil.CommandContext(cmd)
 
 	// Determine registry URL
 	registryURL := defaultRegistryURL
+	if globalRegistry := cli.GetRegistry(); globalRegistry != "" {
+		registryURL = globalRegistry
+	}
 	if len(args) > 0 {
 		registryURL = args[0]
 	}
@@ -132,20 +142,10 @@ func ping(ctx context.Context, registryURL string) pingResult {
 		result.Error = fmt.Sprintf("connection failed: %v", err)
 		return result
 	}
-	defer resp.Body.Close()
 
-	// Check for successful response
-	// Accept 200 OK and 403 Forbidden (some registries block directory listing but are still "up")
-	// Also accept 405 Method Not Allowed (some servers don't support HEAD)
-	if resp.StatusCode == http.StatusOK ||
-		resp.StatusCode == http.StatusForbidden ||
-		resp.StatusCode == http.StatusMethodNotAllowed {
-		result.Status = pingStatusOK
-		return result
-	}
-
-	// If HEAD failed with 405, try GET
+	// 405 means HEAD is not supported. Retry with GET before deciding status.
 	if resp.StatusCode == http.StatusMethodNotAllowed {
+		_ = resp.Body.Close()
 		req, _ = http.NewRequestWithContext(ctx, http.MethodGet, checkURL, nil)
 		start = time.Now()
 		resp, err = client.Do(req)
@@ -157,12 +157,14 @@ func ping(ctx context.Context, registryURL string) pingResult {
 			result.Error = fmt.Sprintf("connection failed: %v", err)
 			return result
 		}
-		defer resp.Body.Close()
+	}
+	defer resp.Body.Close()
 
-		if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusForbidden {
-			result.Status = pingStatusOK
-			return result
-		}
+	// Check for successful response.
+	// Accept 200 OK and 403 Forbidden (some registries block reads but are still "up").
+	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusForbidden {
+		result.Status = pingStatusOK
+		return result
 	}
 
 	result.Status = pingStatusError

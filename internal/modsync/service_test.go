@@ -297,7 +297,7 @@ func TestLatestN(t *testing.T) {
 
 func TestFilterRange(t *testing.T) {
 	t.Parallel()
-	versions := []string{"1.0.0", "1.1.0", "1.2.0", "2.0.0"}
+	versions := []string{"1.0.0", "1.1.0", "1.2.0", "1.10.0", "2.0.0"}
 
 	tests := []struct {
 		name   string
@@ -309,7 +309,7 @@ func TestFilterRange(t *testing.T) {
 			name:   "min only",
 			min:    "1.1.0",
 			max:    "",
-			expect: []string{"1.1.0", "1.2.0", "2.0.0"},
+			expect: []string{"1.1.0", "1.2.0", "1.10.0", "2.0.0"},
 		},
 		{
 			name:   "max only",
@@ -323,6 +323,12 @@ func TestFilterRange(t *testing.T) {
 			max:    "1.2.0",
 			expect: []string{"1.1.0", "1.2.0"},
 		},
+		{
+			name:   "semantic ordering",
+			min:    "1.2.0",
+			max:    "1.10.0",
+			expect: []string{"1.2.0", "1.10.0"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -331,6 +337,13 @@ func TestFilterRange(t *testing.T) {
 			got := filterRange(versions, tt.min, tt.max)
 			if len(got) != len(tt.expect) {
 				t.Errorf("filterRange() = %v, want %v", got, tt.expect)
+				return
+			}
+			for i := range got {
+				if got[i] != tt.expect[i] {
+					t.Errorf("filterRange() = %v, want %v", got, tt.expect)
+					return
+				}
 			}
 		})
 	}

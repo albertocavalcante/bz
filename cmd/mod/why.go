@@ -10,6 +10,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/albertocavalcante/bz/internal/cli"
+	"github.com/albertocavalcante/bz/internal/cmdutil"
+	"github.com/albertocavalcante/bz/internal/depgraph"
 	"github.com/albertocavalcante/bz/internal/module"
 	"github.com/albertocavalcante/bz/internal/registry"
 )
@@ -77,7 +79,7 @@ func runWhy(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	ctx := cmdContext(cmd)
+	ctx := cmdutil.CommandContext(cmd)
 
 	// Create network-aware registry
 	reg, err := createNetworkAwareRegistry()
@@ -156,21 +158,18 @@ func findDependencyPaths(ctx context.Context, reg registry.Registry, f *module.F
 		}
 		visited[nodeKey] = true
 
-		// Fetch dependencies of current node
-		content, err := reg.GetModuleBazel(ctx, item.current.name, item.current.version)
-		if err != nil {
-			continue
-		}
-
-		modFile, err := module.LoadContent(item.current.name, content)
+		depRefs, err := depgraph.FetchDeps(ctx, reg, depgraph.ModuleRef{
+			Name:    item.current.name,
+			Version: item.current.version,
+		})
 		if err != nil {
 			continue
 		}
 
 		// Check each dependency
-		for _, dep := range modFile.Deps {
-			depName := dep.Name.String()
-			depVersion := dep.Version.String()
+		for _, ref := range depRefs {
+			depName := ref.Name
+			depVersion := ref.Version
 			depNode := depNode{name: depName, version: depVersion}
 
 			newPath := make([]string, len(item.path)+1)

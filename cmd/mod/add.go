@@ -11,7 +11,9 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/albertocavalcante/bz/internal/cli"
+	"github.com/albertocavalcante/bz/internal/cmdutil"
 	"github.com/albertocavalcante/bz/internal/module"
+	"github.com/albertocavalcante/bz/internal/modulearg"
 	"github.com/albertocavalcante/bz/internal/registry"
 )
 
@@ -98,7 +100,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 
 	// Validate modules exist in registry (unless --no-verify is set)
 	if !addNoVerify {
-		ctx := cmdContext(cmd)
+		ctx := cmdutil.CommandContext(cmd)
 
 		// Create network-aware registry
 		reg, err := createNetworkAwareRegistry()
@@ -219,16 +221,5 @@ func newVersionNotFoundError(name, version string, availableVersions []string) e
 
 // parseModuleArg splits "module@version" into name and version
 func parseModuleArg(arg string) (name, version string) {
-	// Handle @scope/pkg@version format
-	lastAt := strings.LastIndex(arg, "@")
-	if lastAt == -1 || lastAt == 0 {
-		return arg, ""
-	}
-
-	// Check if the @ is part of a scoped package name
-	if arg[0] == '@' && strings.Count(arg, "@") == 1 {
-		return arg, ""
-	}
-
-	return arg[:lastAt], arg[lastAt+1:]
+	return modulearg.Parse(arg)
 }

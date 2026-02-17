@@ -7,6 +7,8 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
+
+	"github.com/albertocavalcante/bz/internal/envutil"
 )
 
 // Options holds global CLI options that affect output behavior.
@@ -66,11 +68,7 @@ func IsOffline() bool {
 	if Global.Offline {
 		return true
 	}
-	// Also respect BZ_OFFLINE environment variable
-	if val, ok := os.LookupEnv("BZ_OFFLINE"); ok && val != "" && val != "0" && val != "false" {
-		return true
-	}
-	return false
+	return envutil.IsTruthyEnv("BZ_OFFLINE")
 }
 
 // IsPreferOffline returns true if cache-first mode is enabled.
@@ -79,11 +77,7 @@ func IsPreferOffline() bool {
 	if Global.PreferOffline {
 		return true
 	}
-	// Also respect BZ_PREFER_OFFLINE environment variable
-	if val, ok := os.LookupEnv("BZ_PREFER_OFFLINE"); ok && val != "" && val != "0" && val != "false" {
-		return true
-	}
-	return false
+	return envutil.IsTruthyEnv("BZ_PREFER_OFFLINE")
 }
 
 // GetRegistry returns the registry URL if overridden, empty string otherwise.

@@ -5,6 +5,8 @@ import (
 	"reflect"
 
 	"go.starlark.net/starlark"
+
+	"github.com/albertocavalcante/bz/internal/starlark/convertutil"
 )
 
 // ToValue converts a Go value to a Starlark value.
@@ -289,77 +291,11 @@ func dictToMap(v starlark.Value, rv reflect.Value) error {
 }
 
 // toGoValue converts a Starlark value to its natural Go representation.
-//
-//nolint:nilnil // nil is a valid Go representation of Starlark None
 func toGoValue(v starlark.Value) (any, error) {
-	switch val := v.(type) {
-	case starlark.NoneType:
-		return nil, nil
-	case starlark.Bool:
-		return bool(val), nil
-	case starlark.Int:
-		if i, ok := val.Int64(); ok {
-			return i, nil
-		}
-		// Return as string if too large
-		return val.String(), nil
-	case starlark.Float:
-		return float64(val), nil
-	case starlark.String:
-		return string(val), nil
-	case *starlark.List:
-		return listToGoSlice(val)
-	case starlark.Tuple:
-		return tupleToGoSlice(val)
-	case *starlark.Dict:
-		return dictToGoMap(val)
-	default:
-		// Return the Starlark value itself for unknown types
-		return val, nil
-	}
-}
-
-// listToGoSlice converts a Starlark list to []interface{}.
-func listToGoSlice(list *starlark.List) ([]any, error) {
-	result := make([]any, list.Len())
-	for i := 0; i < list.Len(); i++ {
-		val, err := toGoValue(list.Index(i))
-		if err != nil {
-			return nil, err
-		}
-		result[i] = val
-	}
-	return result, nil
-}
-
-// tupleToGoSlice converts a Starlark tuple to []interface{}.
-func tupleToGoSlice(tuple starlark.Tuple) ([]any, error) {
-	result := make([]any, len(tuple))
-	for i, v := range tuple {
-		val, err := toGoValue(v)
-		if err != nil {
-			return nil, err
-		}
-		result[i] = val
-	}
-	return result, nil
-}
-
-// dictToGoMap converts a Starlark dict to map[string]interface{}.
-func dictToGoMap(dict *starlark.Dict) (map[string]any, error) {
-	result := make(map[string]any, dict.Len())
-	for _, item := range dict.Items() {
-		key, ok := item[0].(starlark.String)
-		if !ok {
-			return nil, NewTypeError("string key", item[0].Type())
-		}
-		val, err := toGoValue(item[1])
-		if err != nil {
-			return nil, err
-		}
-		result[string(key)] = val
-	}
-	return result, nil
+	return convertutil.ToGoValue(v, convertutil.ToGoOptions{
+		IntOverflowAsString: true,
+		UnknownAsValue:      true,
+	})
 }
 
 // ToString extracts a string from a Starlark value.
