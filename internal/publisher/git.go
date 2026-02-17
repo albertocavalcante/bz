@@ -96,7 +96,7 @@ func (p *GitPublisher) Finalize(ctx context.Context, message string) error {
 	}
 
 	// Stage all changes
-	if err := p.gitCommand(ctx, "add", "."); err != nil {
+	if err := p.runGitCommand(ctx, "add", "."); err != nil {
 		return fmt.Errorf("git add: %w", err)
 	}
 
@@ -108,12 +108,12 @@ func (p *GitPublisher) Finalize(ctx context.Context, message string) error {
 	}
 
 	// Commit
-	if err := p.gitCommand(ctx, "commit", "-m", message); err != nil {
+	if err := p.runGitCommand(ctx, "commit", "-m", message); err != nil {
 		return fmt.Errorf("git commit: %w", err)
 	}
 
 	// Push
-	if err := p.gitCommand(ctx, "push"); err != nil {
+	if err := p.runGitCommand(ctx, "push"); err != nil {
 		return fmt.Errorf("git push: %w", err)
 	}
 
@@ -137,7 +137,7 @@ func (p *GitPublisher) Close() error {
 func (p *GitPublisher) clone() error {
 	ctx := context.Background()
 
-	args := []string{"clone", "--depth", "1", "--branch", p.branch, p.repoURL, p.workDir}
+	args := []string{"clone", "--depth", "1", "--branch", p.branch, "--", p.repoURL, p.workDir}
 
 	cmd := exec.CommandContext(ctx, "git", args...)
 	var stderr bytes.Buffer
@@ -148,11 +148,6 @@ func (p *GitPublisher) clone() error {
 	}
 
 	return nil
-}
-
-// gitCommand runs a git command in the work directory.
-func (p *GitPublisher) gitCommand(ctx context.Context, args ...string) error {
-	return p.runGitCommand(ctx, args...)
 }
 
 // runGitCommand runs a git command and returns an error if it fails.

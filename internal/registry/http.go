@@ -24,6 +24,12 @@ const (
 	httpTimeout = 30 * time.Second
 )
 
+// Maximum response body sizes for HTTP reads.
+const (
+	maxFetchResponseBytes     = 50 << 20 // 50 MB
+	maxDirectoryResponseBytes = 10 << 20 // 10 MB
+)
+
 // nginx autoindex entry types.
 const (
 	nginxTypeDirectory = "directory"
@@ -174,7 +180,7 @@ func (r *HTTPRegistry) fetchDirectoryListing(ctx context.Context, url string) ([
 		return nil, "", fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxDirectoryResponseBytes))
 	if err != nil {
 		return nil, "", err
 	}
@@ -255,7 +261,7 @@ func (r *HTTPRegistry) fetch(ctx context.Context, url string) ([]byte, error) {
 		return nil, fmt.Errorf("HTTP %d from %s", resp.StatusCode, url)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxFetchResponseBytes))
 	if err != nil {
 		return nil, fmt.Errorf("read response: %w", err)
 	}

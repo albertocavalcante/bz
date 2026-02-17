@@ -182,9 +182,6 @@ func ClassifyUpdate(current, latest string) UpdateType {
 
 	// If we can't parse as semver, it's unknown
 	if semCurrent == nil || semLatest == nil {
-		if current == latest {
-			return None
-		}
 		return Unknown
 	}
 

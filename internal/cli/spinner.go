@@ -3,6 +3,7 @@ package cli
 import (
 	"io"
 	"os"
+	"sync/atomic"
 	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -128,7 +129,7 @@ type SimpleSpinner struct {
 	message string
 	writer  io.Writer
 	done    chan struct{}
-	running bool
+	running atomic.Bool
 }
 
 // NewSimpleSpinner creates a new simple spinner.
@@ -146,7 +147,7 @@ func (s *SimpleSpinner) Start() {
 		return
 	}
 
-	s.running = true
+	s.running.Store(true)
 	frames := []string{".", "..", "..."}
 	go func() {
 		i := 0
@@ -170,11 +171,11 @@ func (s *SimpleSpinner) Start() {
 
 // Stop stops the spinner and clears the line.
 func (s *SimpleSpinner) Stop() {
-	if !s.running {
+	if !s.running.Load() {
 		return
 	}
 	close(s.done)
-	s.running = false
+	s.running.Store(false)
 	// Clear the spinner line
 	if f, ok := s.writer.(*os.File); ok && isTerminal(f) {
 		_, _ = io.WriteString(s.writer, "\r                                                  \r")

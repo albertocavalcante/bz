@@ -3,7 +3,6 @@ package publisher
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"fmt"
 	"net/http"
 	"os"
@@ -159,10 +158,7 @@ func (p *HTTPPublisher) addAuth(req *http.Request) {
 
 	switch p.auth.Type {
 	case AuthTypeBasic:
-		credentials := base64.StdEncoding.EncodeToString(
-			[]byte(p.auth.Username + ":" + p.auth.Password),
-		)
-		req.Header.Set("Authorization", "Basic "+credentials)
+		req.SetBasicAuth(p.auth.Username, p.auth.Password)
 
 	case AuthTypeBearer:
 		token := p.auth.Token
@@ -228,8 +224,13 @@ func (p *HTTPPublisher) parentDirs(filePath string) []string {
 	dir := path.Dir(filePath)
 
 	for dir != "." && dir != "/" {
-		dirs = append([]string{dir}, dirs...)
+		dirs = append(dirs, dir)
 		dir = path.Dir(dir)
+	}
+
+	// Reverse so parents come before children
+	for i, j := 0, len(dirs)-1; i < j; i, j = i+1, j-1 {
+		dirs[i], dirs[j] = dirs[j], dirs[i]
 	}
 
 	return dirs

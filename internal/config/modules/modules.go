@@ -43,11 +43,13 @@ var (
 	_ starlark.HasAttrs = (*moduleValue)(nil)
 )
 
-func (m *moduleValue) String() string        { return m.name }
-func (m *moduleValue) Type() string          { return "module" }
-func (m *moduleValue) Freeze()               {} // immutable
-func (m *moduleValue) Truth() starlark.Bool  { return true }
-func (m *moduleValue) Hash() (uint32, error) { return 0, nil }
+func (m *moduleValue) String() string       { return m.name }
+func (m *moduleValue) Type() string         { return "module" }
+func (m *moduleValue) Freeze()              {} // immutable
+func (m *moduleValue) Truth() starlark.Bool { return true }
+func (m *moduleValue) Hash() (uint32, error) {
+	return 0, fmt.Errorf("unhashable type: module")
+}
 
 func (m *moduleValue) Attr(name string) (starlark.Value, error) {
 	if v, ok := m.attrs[name]; ok {

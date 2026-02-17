@@ -76,7 +76,7 @@ func MapModuleToEcosystem(moduleName string) (ecosystem string, known bool) {
 // For example, "rules_go" might map to "golang.org/x/..." packages.
 // Currently returns the module name as-is since Bazel modules don't always have
 // a direct 1:1 mapping to package names.
-func ExtractPackageName(moduleName, ecosystem string) string {
+func ExtractPackageName(moduleName string) string {
 	// For now, return the module name as-is
 	// In the future, this could be enhanced to extract actual package names
 	// from extension tags or other sources
@@ -275,7 +275,7 @@ func (c *HTTPClient) Query(ctx context.Context, name, version, ecosystem string)
 
 	req := QueryRequest{
 		Package: Package{
-			Name:      ExtractPackageName(name, ecosystem),
+			Name:      ExtractPackageName(name),
 			Ecosystem: ecosystem,
 		},
 		Version: version,
@@ -299,7 +299,7 @@ func (c *HTTPClient) Query(ctx context.Context, name, version, ecosystem string)
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		bodyBytes, _ := io.ReadAll(resp.Body)
+		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 		return nil, fmt.Errorf("OSV API returned status %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 

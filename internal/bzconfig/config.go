@@ -219,10 +219,7 @@ func (c *Config) merge(other *Config) {
 	}
 
 	// Network
-	if other.Network.Mode != "" && other.Network.Mode != NetworkModeOnline {
-		c.Network.Mode = other.Network.Mode
-	} else if other.Network.Mode == NetworkModeOnline {
-		// Explicitly set to online
+	if other.Network.Mode != "" {
 		c.Network.Mode = other.Network.Mode
 	}
 	if other.Network.Registry != "" && other.Network.Registry != DefaultRegistry {

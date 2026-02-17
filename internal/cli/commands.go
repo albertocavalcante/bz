@@ -1,11 +1,32 @@
 package cli
 
 import (
-	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/albertocavalcante/bz/internal/bzconfig"
 )
+
+var (
+	cachedCfg     *bzconfig.Config
+	cachedCfgOnce sync.Once
+	cachedCfgErr  error
+)
+
+func loadCachedConfig() (*bzconfig.Config, error) {
+	cachedCfgOnce.Do(func() {
+		cachedCfg, cachedCfgErr = bzconfig.Load(nil, bzconfig.WithProjectConfig(".bzconfig.toml"))
+	})
+	return cachedCfg, cachedCfgErr
+}
+
+// ResetCachedConfig resets the cached configuration so it will be reloaded on next access.
+// This is intended for use in tests.
+func ResetCachedConfig() {
+	cachedCfgOnce = sync.Once{}
+	cachedCfg = nil
+	cachedCfgErr = nil
+}
 
 // CommandDisabledError is returned when a command is disabled in configuration.
 type CommandDisabledError struct {
@@ -19,8 +40,8 @@ func (e *CommandDisabledError) Error() string {
 
 // Is implements errors.Is for CommandDisabledError.
 func (e *CommandDisabledError) Is(target error) bool {
-	var t *CommandDisabledError
-	return errors.As(target, &t)
+	_, ok := target.(*CommandDisabledError)
+	return ok
 }
 
 // OfflineModeError is returned when a command requires network access but offline mode is enabled.
@@ -42,14 +63,14 @@ func (e *OfflineModeError) Error() string {
 
 // Is implements errors.Is for OfflineModeError.
 func (e *OfflineModeError) Is(target error) bool {
-	var t *OfflineModeError
-	return errors.As(target, &t)
+	_, ok := target.(*OfflineModeError)
+	return ok
 }
 
 // CheckCommandAllowed checks if a command is allowed based on configuration.
 // Returns CommandDisabledError if the command is disabled.
 func CheckCommandAllowed(cmdName string) error {
-	cfg, err := bzconfig.Load(nil, bzconfig.WithProjectConfig(".bzconfig.toml"))
+	cfg, err := loadCachedConfig()
 	if err != nil {
 		return nil //nolint:nilerr // config loading failure is non-fatal; allow command to proceed
 	}
@@ -76,7 +97,7 @@ func CheckOfflineAllowed(cmdName string) error {
 	}
 
 	// Also check config file
-	cfg, err := bzconfig.Load(nil, bzconfig.WithProjectConfig(".bzconfig.toml"))
+	cfg, err := loadCachedConfig()
 	if err != nil {
 		return nil //nolint:nilerr // config loading failure is non-fatal; allow command to proceed
 	}
@@ -96,7 +117,7 @@ func IsEffectivelyOffline() bool {
 		return true
 	}
 
-	cfg, err := bzconfig.Load(nil, bzconfig.WithProjectConfig(".bzconfig.toml"))
+	cfg, err := loadCachedConfig()
 	if err != nil {
 		return false
 	}
@@ -110,7 +131,7 @@ func IsEffectivelyPreferOffline() bool {
 		return true
 	}
 
-	cfg, err := bzconfig.Load(nil, bzconfig.WithProjectConfig(".bzconfig.toml"))
+	cfg, err := loadCachedConfig()
 	if err != nil {
 		return false
 	}

@@ -14,11 +14,6 @@ func (e ErrMsg) Error() string {
 	return e.Err.Error()
 }
 
-// ModulesFetchedMsg is sent when modules are fetched from the registry
-type ModulesFetchedMsg struct {
-	Modules []ModuleResult
-}
-
 // ModuleResult represents a module from search or info
 type ModuleResult struct {
 	Name        string
@@ -43,12 +38,6 @@ type DepsListedMsg struct {
 	MissingModule bool
 }
 
-// VersionsMsg is sent when versions are fetched for a module
-type VersionsMsg struct {
-	Name     string
-	Versions []string
-}
-
 // DepAddedMsg is sent when a dependency is successfully added
 type DepAddedMsg struct {
 	Name    string
@@ -67,6 +56,3 @@ type SearchResultsMsg struct {
 	Query   string
 	Results []ModuleResult
 }
-
-// QuitMsg signals the app should quit
-type QuitMsg struct{}
