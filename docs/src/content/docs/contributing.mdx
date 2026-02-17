@@ -41,23 +41,51 @@ We welcome contributions to bz! This guide explains how to get started.
    ```bash
    go test ./...
    ```
+
+5. **Set up dev workflow**
+
+   The project uses [`just`](https://just.systems/) as a task runner and [`lefthook`](https://github.com/evilmartians/lefthook) for Git hooks. Install both, then run:
+
+   ```bash
+   lefthook install
+   ```
+
+   See the `justfile` for available recipes (e.g., `just test`, `just lint`).
 </Steps>
 
 ## Code Structure
 
 ```
 bz/
-├── cmd/           # CLI commands (Cobra)
-│   ├── mod/       # mod subcommands (search, show, sync)
-│   └── root.go    # Root command
-├── internal/      # Internal packages
-│   ├── config/    # Starlark configuration
-│   ├── registry/  # Registry implementations
-│   ├── publisher/ # Publisher implementations
-│   ├── starlark/  # Starlark interpreter
-│   └── sync/      # Sync service
-├── docs/          # Documentation (Starlight)
-└── main.go        # Entry point
+├── cmd/              # CLI commands (Cobra)
+│   ├── mod/          # mod subcommands (search, sync, etc.)
+│   ├── registry/     # registry subcommands
+│   └── root.go       # Root command
+├── internal/         # Internal packages
+│   ├── bzconfig/     # bz configuration loading
+│   ├── cli/          # CLI helpers
+│   ├── cmdutil/      # Command utilities
+│   ├── config/       # Configuration types
+│   │   └── modules/  # Module configuration
+│   ├── depgraph/     # Dependency graph
+│   ├── envutil/      # Environment utilities
+│   ├── modsync/      # Module sync service
+│   ├── module/       # Module types
+│   ├── modulearg/    # Module argument parsing
+│   ├── osv/          # OSV vulnerability data
+│   ├── publisher/    # Publisher implementations
+│   ├── registry/     # Registry implementations
+│   ├── starlark/     # Starlark interpreter
+│   │   ├── builtins/ # Built-in Starlark functions
+│   │   ├── convertutil/ # Starlark conversion utilities
+│   │   └── value/    # Starlark value types
+│   ├── testutil/     # Test utilities
+│   ├── tui/          # Terminal UI components
+│   └── version/      # Version information
+├── docs/             # Documentation (Starlight)
+├── justfile          # Task runner recipes (just)
+├── lefthook.yml      # Git hooks configuration
+└── main.go           # Entry point
 ```
 
 ## Making Changes
@@ -86,7 +114,7 @@ bz/
 4. **Run linter**
 
    ```bash
-   golangci-lint run
+   go tool -modfile=tools.go.mod golangci-lint run --config=tools/lint/golangci.toml
    ```
 
 5. **Commit**
@@ -142,7 +170,7 @@ go test ./internal/registry/...
 # Build and test CLI
 go build -o bz .
 ./bz mod search rules_go
-./bz mod show rules_go
+./bz mod info rules_go
 ```
 
 ## Documentation

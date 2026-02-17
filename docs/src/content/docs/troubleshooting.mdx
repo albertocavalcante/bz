@@ -24,7 +24,7 @@ echo 'export PATH=$PATH:$(go env GOPATH)/bin' >> ~/.zshrc
 
 ### Build errors from source
 
-Ensure you have Go 1.21 or later:
+Ensure you have Go 1.25 or later:
 
 ```bash
 go version
@@ -106,7 +106,7 @@ The module doesn't exist in the registry. Verify:
 bz mod search <partial-name>
 
 # Check the exact name
-bz mod show <exact-name>
+bz mod info <exact-name>
 ```
 
 Common mistakes:

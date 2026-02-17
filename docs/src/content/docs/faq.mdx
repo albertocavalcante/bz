@@ -29,7 +29,7 @@ Starlark is:
 
 ### Can I use YAML or JSON instead?
 
-Currently, bz only supports Starlark configuration. This provides consistency with the Bazel ecosystem.
+bz primarily uses Starlark configuration (`.bzconfig.star`), which provides consistency with the Bazel ecosystem. bz also supports TOML configuration via `.bzconfig.toml` for users who prefer a simpler format. See the [TOML Config](/bz/configuration/toml/) page for details.
 
 ### Where does bz look for the config file?
 
@@ -119,7 +119,7 @@ The module might not exist in the source registry. Check with:
 
 ```bash
 bz mod search <module-name>
-bz mod show <module-name>
+bz mod info <module-name>
 ```
 
 ### How do I debug sync issues?

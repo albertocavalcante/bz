@@ -71,6 +71,7 @@ export default defineConfig({
             { label: 'Registries', slug: 'configuration/registries' },
             { label: 'Publishers', slug: 'configuration/publishers' },
             { label: 'Transforms', slug: 'configuration/transforms' },
+            { label: 'TOML Config', slug: 'configuration/toml' },
           ],
         },
         {
@@ -78,7 +79,6 @@ export default defineConfig({
           items: [
             { label: 'Overview', slug: 'cli' },
             { label: 'mod search', slug: 'cli/mod-search' },
-            { label: 'mod show', slug: 'cli/mod-show' },
             { label: 'mod sync', slug: 'cli/mod-sync', badge: { text: 'New', variant: 'tip' } },
           ],
         },
@@ -88,6 +88,7 @@ export default defineConfig({
             { label: 'Overview', slug: 'guides' },
             { label: 'Mirror BCR', slug: 'guides/mirror-bcr' },
             { label: 'Air-gapped Setup', slug: 'guides/air-gapped' },
+            { label: 'Security', slug: 'guides/security' },
           ],
         },
         {
