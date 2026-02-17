@@ -2,7 +2,6 @@ package mod
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"text/tabwriter"
@@ -190,7 +189,5 @@ func printStatsTable(w io.Writer, stats *Stats) error {
 }
 
 func printStatsJSON(w io.Writer, stats *Stats) error {
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	return enc.Encode(stats)
+	return cmdutil.WriteJSON(w, stats)
 }

@@ -1,7 +1,6 @@
 package cache
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
@@ -10,6 +9,8 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+
+	"github.com/albertocavalcante/bz/internal/cmdutil"
 )
 
 var (
@@ -168,7 +169,5 @@ func printStatsText(w io.Writer, stats statsResult) error {
 }
 
 func printStatsJSON(w io.Writer, stats statsResult) error {
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	return enc.Encode(stats)
+	return cmdutil.WriteJSON(w, stats)
 }

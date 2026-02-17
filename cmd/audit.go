@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -11,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/albertocavalcante/bz/internal/cli"
+	"github.com/albertocavalcante/bz/internal/cmdutil"
 	"github.com/albertocavalcante/bz/internal/module"
 	"github.com/albertocavalcante/bz/internal/osv"
 )
@@ -111,7 +111,7 @@ func runAudit(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	ctx := cmdContext(cmd)
+	ctx := cmdutil.CommandContext(cmd)
 
 	// Determine minimum severity filter
 	minSeverity := osv.SeverityUnknown
@@ -232,9 +232,7 @@ func printAuditJSON(w io.Writer, total int, vulns []AuditVuln) error {
 		result.Vulnerabilities = []AuditVuln{}
 	}
 
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	return enc.Encode(result)
+	return cmdutil.WriteJSON(w, result)
 }
 
 func printAuditTable(w io.Writer, vulns []AuditVuln, showFix bool) error {

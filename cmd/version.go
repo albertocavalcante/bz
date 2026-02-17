@@ -1,10 +1,11 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
 
 	"github.com/spf13/cobra"
+
+	"github.com/albertocavalcante/bz/internal/cmdutil"
 )
 
 var (
@@ -30,9 +31,7 @@ var versionCmd = &cobra.Command{
 				Commit:    commit,
 				BuildDate: date,
 			}
-			enc := json.NewEncoder(out)
-			enc.SetIndent("", "  ")
-			_ = enc.Encode(info)
+			_ = cmdutil.WriteJSON(out, info)
 			return
 		}
 		fmt.Fprintf(out, "bz %s (%s) built on %s\n", version, commit, date)

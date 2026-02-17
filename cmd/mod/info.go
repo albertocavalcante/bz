@@ -1,7 +1,6 @@
 package mod
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -160,9 +159,7 @@ func printMetadataJSON(w io.Writer, name string, meta *registry.Metadata) error 
 		Name:     name,
 		Metadata: meta,
 	}
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	return enc.Encode(output)
+	return cmdutil.WriteJSON(w, output)
 }
 
 func printModuleTable(w io.Writer, name, version string, mod *module.File) error {
@@ -210,7 +207,5 @@ func printModuleJSON(w io.Writer, name, version string, mod *module.File) error 
 		"dependencies": deps,
 	}
 
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	return enc.Encode(output)
+	return cmdutil.WriteJSON(w, output)
 }

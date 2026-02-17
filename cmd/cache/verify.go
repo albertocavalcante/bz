@@ -1,7 +1,6 @@
 package cache
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -10,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/albertocavalcante/bz/internal/cli"
+	"github.com/albertocavalcante/bz/internal/cmdutil"
 	"github.com/albertocavalcante/bz/internal/module"
 )
 
@@ -162,7 +162,5 @@ func printVerifyJSON(w io.Writer, result verifyResult) error {
 		result.MissingModules = []string{}
 	}
 
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	return enc.Encode(result)
+	return cmdutil.WriteJSON(w, result)
 }

@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"os"
 	"sync"
 
@@ -11,15 +10,7 @@ import (
 	"github.com/albertocavalcante/bz/cmd/mod"
 	"github.com/albertocavalcante/bz/cmd/registry"
 	"github.com/albertocavalcante/bz/internal/cli"
-	"github.com/albertocavalcante/bz/internal/cmdutil"
 )
-
-// cmdContext returns the command's context, defaulting to context.Background()
-// if none has been set. This is needed because cobra only sets a context when
-// running through Execute(); tests that call RunE directly may have a nil context.
-func cmdContext(cmd *cobra.Command) context.Context {
-	return cmdutil.CommandContext(cmd)
-}
 
 var showVersion bool
 var configureRootOnce sync.Once

@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -13,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/albertocavalcante/bz/internal/cli"
+	"github.com/albertocavalcante/bz/internal/cmdutil"
 	"github.com/albertocavalcante/bz/internal/depgraph"
 	"github.com/albertocavalcante/bz/internal/module"
 	"github.com/albertocavalcante/bz/internal/registry"
@@ -186,7 +186,7 @@ func runSBOM(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	ctx := cmdContext(cmd)
+	ctx := cmdutil.CommandContext(cmd)
 
 	registryURL := sbomRegistryFlag
 	if registryURL == "" {
@@ -370,9 +370,7 @@ func generateSPDX(w io.Writer, f *module.File, deps map[string]*sbomDependency) 
 		})
 	}
 
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	return enc.Encode(doc)
+	return cmdutil.WriteJSON(w, doc)
 }
 
 // generateCycloneDX generates a CycloneDX 1.4 document.
@@ -443,9 +441,7 @@ func generateCycloneDX(w io.Writer, f *module.File, deps map[string]*sbomDepende
 		bom.Dependencies = append(bom.Dependencies, cdxDep)
 	}
 
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	return enc.Encode(bom)
+	return cmdutil.WriteJSON(w, bom)
 }
 
 // sanitizeSPDXID removes or replaces characters invalid in SPDX IDs.

@@ -262,9 +262,7 @@ func parseModuleArg(arg string) (name, version string) {
 }
 
 func printDownloadJSON(w io.Writer, result downloadResult) error {
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	return enc.Encode(result)
+	return cmdutil.WriteJSON(w, result)
 }
 
 // successIcon returns a checkmark character.

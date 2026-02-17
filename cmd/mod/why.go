@@ -2,7 +2,6 @@ package mod
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
@@ -215,9 +214,7 @@ func findDependencyPaths(ctx context.Context, reg registry.Registry, f *module.F
 }
 
 func printWhyJSON(w io.Writer, result WhyResult) error {
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	return enc.Encode(result)
+	return cmdutil.WriteJSON(w, result)
 }
 
 func printWhyText(w io.Writer, result WhyResult, rootName string) error {

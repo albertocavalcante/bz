@@ -194,9 +194,7 @@ func printLicensesJSON(w io.Writer, licenses []ModuleLicense) error {
 		Summary: buildSummary(licenses),
 	}
 
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	return enc.Encode(output)
+	return cmdutil.WriteJSON(w, output)
 }
 
 func printLicensesSummary(w io.Writer, licenses []ModuleLicense) error {

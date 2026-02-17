@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/albertocavalcante/bz/internal/cli"
+	"github.com/albertocavalcante/bz/internal/cmdutil"
 	"github.com/albertocavalcante/bz/internal/registry"
 )
 
@@ -92,7 +92,7 @@ func configureDoctorCmd() {
 }
 
 func runDoctor(cmd *cobra.Command, args []string) error {
-	ctx := cmdContext(cmd)
+	ctx := cmdutil.CommandContext(cmd)
 
 	out := cmd.OutOrStdout()
 
@@ -406,9 +406,7 @@ func printDoctorText(out io.Writer, result DoctorResult) error {
 }
 
 func printDoctorJSON(out io.Writer, result DoctorResult) error {
-	enc := json.NewEncoder(out)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(result); err != nil {
+	if err := cmdutil.WriteJSON(out, result); err != nil {
 		return fmt.Errorf("failed to encode JSON: %w", err)
 	}
 

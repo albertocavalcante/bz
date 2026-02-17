@@ -2,7 +2,6 @@ package mod
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
@@ -288,9 +287,7 @@ func formatNodeName(node *GraphNode) string {
 // printJSONGraph prints the graph as JSON.
 func printJSONGraph(w io.Writer, root *GraphNode) error {
 	output := GraphOutput{Root: root}
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	return enc.Encode(output)
+	return cmdutil.WriteJSON(w, output)
 }
 
 // printMermaidGraph prints the graph in Mermaid format.

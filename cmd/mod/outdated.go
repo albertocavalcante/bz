@@ -1,7 +1,6 @@
 package mod
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"text/tabwriter"
@@ -183,7 +182,5 @@ func printOutdatedJSON(w io.Writer, deps []OutdatedDep) error {
 		Deps:     deps,
 	}
 
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	return enc.Encode(output)
+	return cmdutil.WriteJSON(w, output)
 }

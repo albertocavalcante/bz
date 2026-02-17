@@ -2,7 +2,6 @@ package registry
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -194,9 +193,7 @@ func printPingText(w io.Writer, result pingResult) error {
 }
 
 func printPingJSON(w io.Writer, result pingResult) error {
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(result); err != nil {
+	if err := cmdutil.WriteJSON(w, result); err != nil {
 		return fmt.Errorf("failed to encode JSON: %w", err)
 	}
 

@@ -2,7 +2,6 @@ package cache
 
 import (
 	"bufio"
-	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
@@ -13,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/albertocavalcante/bz/internal/cli"
+	"github.com/albertocavalcante/bz/internal/cmdutil"
 )
 
 var (
@@ -57,6 +57,10 @@ type clearResult struct {
 }
 
 func runClear(cmd *cobra.Command, args []string) error {
+	if err := cli.CheckCommandAllowed("clear"); err != nil {
+		return err
+	}
+
 	out := cmd.OutOrStdout()
 	in := cmd.InOrStdin()
 
@@ -183,7 +187,5 @@ func printClearJSON(w io.Writer, result clearResult) error {
 	if result.Modules == nil {
 		result.Modules = []string{}
 	}
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	return enc.Encode(result)
+	return cmdutil.WriteJSON(w, result)
 }
