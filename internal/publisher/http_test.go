@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/albertocavalcante/bz/internal/config/modules"
 )
 
 func TestHTTPPublisher_Type(t *testing.T) {
@@ -187,7 +189,7 @@ func TestHTTPPublisher_BasicAuth(t *testing.T) {
 	defer server.Close()
 
 	auth := &Auth{
-		Type:     AuthTypeBasic,
+		Type:     modules.AuthTypeBasic,
 		Username: "user",
 		Password: "pass",
 	}
@@ -221,8 +223,8 @@ func TestHTTPPublisher_BearerAuth(t *testing.T) {
 	defer server.Close()
 
 	auth := &Auth{
-		Type:  AuthTypeBearer,
-		Token: "my-secret-token",
+		Type:       modules.AuthTypeBearerToken,
+		TokenValue: "my-secret-token",
 	}
 
 	pub, err := NewHTTPPublisher(server.URL, auth)
@@ -255,7 +257,7 @@ func TestHTTPPublisher_BearerAuthFromEnv(t *testing.T) {
 	t.Setenv("TEST_TOKEN", "env-token-value")
 
 	auth := &Auth{
-		Type:   AuthTypeBearer,
+		Type:   modules.AuthTypeBearerToken,
 		EnvVar: "TEST_TOKEN",
 	}
 
@@ -287,7 +289,7 @@ func TestHTTPPublisher_CustomHeaderAuth(t *testing.T) {
 	defer server.Close()
 
 	auth := &Auth{
-		Type:        AuthTypeHeader,
+		Type:        modules.AuthTypeHeader,
 		HeaderName:  "X-Api-Key",
 		HeaderValue: "secret-api-key",
 	}

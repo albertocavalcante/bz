@@ -22,7 +22,6 @@ var (
 	sbomFormat            string
 	sbomOutput            string
 	sbomIncludeTransitive bool
-	sbomRegistryFlag      string
 )
 
 const (
@@ -56,8 +55,17 @@ func configureSBOMCmd() {
 	sbomCmd.Flags().StringVar(&sbomFormat, "format", sbomFormatSPDX, "Output format (spdx, cyclonedx)")
 	sbomCmd.Flags().StringVar(&sbomOutput, "output", "", "Output file path (default: stdout)")
 	sbomCmd.Flags().BoolVar(&sbomIncludeTransitive, "include-transitive", true, "Include transitive dependencies")
-	sbomCmd.Flags().StringVar(&sbomRegistryFlag, "registry", "", "Registry URL (https://, http://, file://, or /path)")
 	rootCmd.AddCommand(sbomCmd)
+}
+
+// resolvedSBOMRegistryURL returns the effective registry URL, respecting
+// the global --registry flag / BZ_REGISTRY env var, with a fallback to the
+// default Bazel Central Registry.
+func resolvedSBOMRegistryURL() string {
+	if global := cli.GetRegistry(); global != "" {
+		return global
+	}
+	return registry.DefaultBCR
 }
 
 // SPDX 2.3 Types
@@ -188,13 +196,7 @@ func runSBOM(cmd *cobra.Command, args []string) error {
 
 	ctx := cmdutil.CommandContext(cmd)
 
-	registryURL := sbomRegistryFlag
-	if registryURL == "" {
-		registryURL = cli.GetRegistry()
-	}
-	if registryURL == "" {
-		registryURL = registry.DefaultBCR
-	}
+	registryURL := resolvedSBOMRegistryURL()
 
 	reg, err := registry.New(registryURL)
 	if err != nil {

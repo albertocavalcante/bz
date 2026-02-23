@@ -9,6 +9,8 @@ import (
 	"path"
 	"strings"
 	"time"
+
+	"github.com/albertocavalcante/bz/internal/config/modules"
 )
 
 // HTTP client configuration.
@@ -16,16 +18,11 @@ const (
 	httpTimeout = 30 * time.Second
 )
 
-// Auth types for HTTP authentication.
-const (
-	AuthTypeBasic  = "basic"
-	AuthTypeBearer = "bearer"
-	AuthTypeHeader = "header"
-)
-
 // Auth contains authentication configuration for HTTP requests.
+// Auth type constants are defined in the modules package
+// (modules.AuthTypeBasic, modules.AuthTypeBearerToken, modules.AuthTypeHeader).
 type Auth struct {
-	// Type is the authentication method: "basic", "bearer", or "header".
+	// Type is the authentication method: "basic", "bearer_token", or "header".
 	Type string
 
 	// Username for basic auth.
@@ -34,8 +31,8 @@ type Auth struct {
 	// Password for basic auth.
 	Password string
 
-	// Token for bearer auth.
-	Token string
+	// TokenValue for bearer auth.
+	TokenValue string
 
 	// EnvVar for bearer auth (environment variable containing the token).
 	EnvVar string
@@ -157,11 +154,11 @@ func (p *HTTPPublisher) addAuth(req *http.Request) {
 	}
 
 	switch p.auth.Type {
-	case AuthTypeBasic:
+	case modules.AuthTypeBasic:
 		req.SetBasicAuth(p.auth.Username, p.auth.Password)
 
-	case AuthTypeBearer:
-		token := p.auth.Token
+	case modules.AuthTypeBearerToken:
+		token := p.auth.TokenValue
 		if token == "" && p.auth.EnvVar != "" {
 			token = os.Getenv(p.auth.EnvVar)
 		}
@@ -169,7 +166,7 @@ func (p *HTTPPublisher) addAuth(req *http.Request) {
 			req.Header.Set("Authorization", "Bearer "+token)
 		}
 
-	case AuthTypeHeader:
+	case modules.AuthTypeHeader:
 		if p.auth.HeaderName != "" && p.auth.HeaderValue != "" {
 			req.Header.Set(p.auth.HeaderName, p.auth.HeaderValue)
 		}

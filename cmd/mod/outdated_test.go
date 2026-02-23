@@ -29,9 +29,7 @@ bazel_dep(name = "rules_go", version = "0.50.1")
 `
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "MODULE.bazel"), []byte(moduleContent), 0o644))
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	// Set registry flag
 	oldRegistry := registryFlag
@@ -70,9 +68,7 @@ bazel_dep(name = "rules_python", version = "0.31.0")
 `
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "MODULE.bazel"), []byte(moduleContent), 0o644))
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	oldRegistry := registryFlag
 	registryFlag = registryDir
@@ -116,9 +112,7 @@ bazel_dep(name = "rules_go", version = "0.46.0")
 `
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "MODULE.bazel"), []byte(moduleContent), 0o644))
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	oldRegistry := registryFlag
 	registryFlag = registryDir
@@ -162,9 +156,7 @@ func TestOutdatedCmd_NoDeps(t *testing.T) {
 `
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "MODULE.bazel"), []byte(moduleContent), 0o644))
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	outdatedJSON = false
 
@@ -192,9 +184,7 @@ bazel_dep(name = "rules_go", version = "0.50.1")
 `
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "MODULE.bazel"), []byte(moduleContent), 0o644))
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	oldRegistry := registryFlag
 	registryFlag = registryDir
@@ -217,9 +207,7 @@ bazel_dep(name = "rules_go", version = "0.50.1")
 func TestOutdatedCmd_NoModuleFile(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	outdatedJSON = false
 

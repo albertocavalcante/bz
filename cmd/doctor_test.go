@@ -30,10 +30,7 @@ func setupDoctorTest(t *testing.T) string {
 	t.Helper()
 
 	tmpDir := t.TempDir()
-
-	oldWd, _ := os.Getwd()
-	t.Cleanup(func() { _ = os.Chdir(oldWd) })
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	return tmpDir
 }

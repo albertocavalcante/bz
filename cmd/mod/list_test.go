@@ -23,9 +23,7 @@ bazel_dep(name = "gazelle", version = "0.38.0", dev_dependency = True)
 	require.NoError(t, err)
 
 	// Change to temp dir
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	// Reset flags for test isolation
 	listJSON = false
@@ -53,9 +51,7 @@ bazel_dep(name = "rules_go", version = "0.50.1")
 	err := os.WriteFile(filepath.Join(tmpDir, "MODULE.bazel"), []byte(moduleContent), 0o644)
 	require.NoError(t, err)
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	// Set JSON flag
 	listJSON = true
@@ -76,9 +72,7 @@ bazel_dep(name = "rules_go", version = "0.50.1")
 func TestListCmd_NoModuleFile(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	listJSON = false
 
@@ -94,9 +88,7 @@ func TestListCmd_EmptyDependencies(t *testing.T) {
 	err := os.WriteFile(filepath.Join(tmpDir, "MODULE.bazel"), []byte(moduleContent), 0o644)
 	require.NoError(t, err)
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	listJSON = false
 

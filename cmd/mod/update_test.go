@@ -30,9 +30,7 @@ bazel_dep(name = "rules_python", version = "0.31.0")
 	modulePath := filepath.Join(tmpDir, "MODULE.bazel")
 	require.NoError(t, os.WriteFile(modulePath, []byte(moduleContent), 0o644))
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	oldRegistry := registryFlag
 	registryFlag = registryDir
@@ -79,9 +77,7 @@ bazel_dep(name = "rules_python", version = "0.30.0")
 	modulePath := filepath.Join(tmpDir, "MODULE.bazel")
 	require.NoError(t, os.WriteFile(modulePath, []byte(moduleContent), 0o644))
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	oldRegistry := registryFlag
 	registryFlag = registryDir
@@ -125,9 +121,7 @@ bazel_dep(name = "rules_java", version = "7.0.0")
 	modulePath := filepath.Join(tmpDir, "MODULE.bazel")
 	require.NoError(t, os.WriteFile(modulePath, []byte(moduleContent), 0o644))
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	oldRegistry := registryFlag
 	registryFlag = registryDir
@@ -166,9 +160,7 @@ bazel_dep(name = "rules_go", version = "0.46.0")
 	modulePath := filepath.Join(tmpDir, "MODULE.bazel")
 	require.NoError(t, os.WriteFile(modulePath, []byte(moduleContent), 0o644))
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	oldRegistry := registryFlag
 	registryFlag = registryDir
@@ -212,9 +204,7 @@ bazel_dep(name = "rules_go", version = "0.50.1")
 	modulePath := filepath.Join(tmpDir, "MODULE.bazel")
 	require.NoError(t, os.WriteFile(modulePath, []byte(moduleContent), 0o644))
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	oldRegistry := registryFlag
 	registryFlag = registryDir
@@ -240,9 +230,7 @@ func TestUpdateCmd_NoDeps(t *testing.T) {
 `
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "MODULE.bazel"), []byte(moduleContent), 0o644))
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	updateDryRun = false
 
@@ -270,9 +258,7 @@ bazel_dep(name = "rules_go", version = "0.46.0")
 	modulePath := filepath.Join(tmpDir, "MODULE.bazel")
 	require.NoError(t, os.WriteFile(modulePath, []byte(moduleContent), 0o644))
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	oldRegistry := registryFlag
 	registryFlag = registryDir
@@ -309,9 +295,7 @@ bazel_dep(name = "rules_go", version = "0.46.0")
 	modulePath := filepath.Join(tmpDir, "MODULE.bazel")
 	require.NoError(t, os.WriteFile(modulePath, []byte(moduleContent), 0o644))
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	oldRegistry := registryFlag
 	registryFlag = registryDir
@@ -335,9 +319,7 @@ bazel_dep(name = "rules_go", version = "0.46.0")
 func TestUpdateCmd_NoModuleFile(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	updateDryRun = false
 
@@ -361,9 +343,7 @@ bazel_dep(name = "rules_go", version = "0.46.0")
 	modulePath := filepath.Join(tmpDir, "MODULE.bazel")
 	require.NoError(t, os.WriteFile(modulePath, []byte(moduleContent), 0o644))
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	oldRegistry := registryFlag
 	registryFlag = registryDir
@@ -404,9 +384,7 @@ register_toolchains("@rules_go//go:toolchain")
 	modulePath := filepath.Join(tmpDir, "MODULE.bazel")
 	require.NoError(t, os.WriteFile(modulePath, []byte(moduleContent), 0o644))
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	oldRegistry := registryFlag
 	registryFlag = registryDir
@@ -446,9 +424,7 @@ bazel_dep(name = "gazelle", version = "0.36.0", dev_dependency = True)
 	modulePath := filepath.Join(tmpDir, "MODULE.bazel")
 	require.NoError(t, os.WriteFile(modulePath, []byte(moduleContent), 0o644))
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	oldRegistry := registryFlag
 	registryFlag = registryDir
@@ -485,9 +461,7 @@ bazel_dep(name = "rules_go", version = "0.46.0")
 	modulePath := filepath.Join(tmpDir, "MODULE.bazel")
 	require.NoError(t, os.WriteFile(modulePath, []byte(moduleContent), 0o644))
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	oldRegistry := registryFlag
 	registryFlag = registryDir
@@ -531,9 +505,7 @@ bazel_dep(name = "rules_python", version = "0.30.0")
 	modulePath := filepath.Join(tmpDir, "MODULE.bazel")
 	require.NoError(t, os.WriteFile(modulePath, []byte(moduleContent), 0o644))
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	oldRegistry := registryFlag
 	registryFlag = registryDir
@@ -578,9 +550,7 @@ bazel_dep(name = "rules_go", version = "0.46.0", repo_name = "io_bazel_rules_go"
 	modulePath := filepath.Join(tmpDir, "MODULE.bazel")
 	require.NoError(t, os.WriteFile(modulePath, []byte(moduleContent), 0o644))
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	oldRegistry := registryFlag
 	registryFlag = registryDir
@@ -621,9 +591,7 @@ bazel_dep(name = "rules_java", version = "7.0.0")
 	modulePath := filepath.Join(tmpDir, "MODULE.bazel")
 	require.NoError(t, os.WriteFile(modulePath, []byte(moduleContent), 0o644))
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	oldRegistry := registryFlag
 	registryFlag = registryDir
@@ -663,9 +631,7 @@ bazel_dep(name = "rules_go", version = "0.46.0")
 	modulePath := filepath.Join(tmpDir, "MODULE.bazel")
 	require.NoError(t, os.WriteFile(modulePath, []byte(moduleContent), 0o644))
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	oldRegistry := registryFlag
 	registryFlag = registryDir

@@ -25,9 +25,7 @@ func setupAuditTest(t *testing.T, moduleContent string) string {
 		0o644,
 	))
 
-	oldWd, _ := os.Getwd()
-	t.Cleanup(func() { _ = os.Chdir(oldWd) })
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	return tmpDir
 }
@@ -417,9 +415,7 @@ func TestAuditCmd_NoDependencies(t *testing.T) {
 
 func TestAuditCmd_NoModuleFile(t *testing.T) {
 	tmpDir := t.TempDir()
-	oldWd, _ := os.Getwd()
-	t.Cleanup(func() { _ = os.Chdir(oldWd) })
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	resetAuditFlags()
 
@@ -747,9 +743,7 @@ func TestAuditCmd_DisabledViaConfig(t *testing.T) {
 	t.Cleanup(cli.ResetCachedConfig)
 
 	tmpDir := t.TempDir()
-	oldWd, _ := os.Getwd()
-	t.Cleanup(func() { _ = os.Chdir(oldWd) })
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	// Create MODULE.bazel
 	require.NoError(t, os.WriteFile(

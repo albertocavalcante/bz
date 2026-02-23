@@ -159,9 +159,7 @@ func TestInfoCmd_DisabledViaConfig(t *testing.T) {
 	t.Cleanup(cli.ResetCachedConfig)
 
 	tmpDir := t.TempDir()
-	oldWd, _ := os.Getwd()
-	t.Cleanup(func() { _ = os.Chdir(oldWd) })
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	// Create config that disables info command
 	configContent := `
@@ -189,9 +187,7 @@ func TestInfoCmd_OfflineMode(t *testing.T) {
 	t.Cleanup(cli.ResetCachedConfig)
 
 	tmpDir := t.TempDir()
-	oldWd, _ := os.Getwd()
-	t.Cleanup(func() { _ = os.Chdir(oldWd) })
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	// Set offline mode via environment variable
 	t.Setenv("BZ_OFFLINE", "1")

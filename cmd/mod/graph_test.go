@@ -46,9 +46,7 @@ bazel_dep(name = "gazelle", version = "0.38.0")
 `
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "MODULE.bazel"), []byte(moduleContent), 0o644))
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	// Set registry flag
 	oldRegistry := registryFlag
@@ -78,8 +76,8 @@ bazel_dep(name = "gazelle", version = "0.38.0")
 	assert.Contains(t, output, "gazelle@0.38.0")
 
 	// Check tree formatting characters are present
-	assert.Contains(t, output, "├──")
-	assert.Contains(t, output, "└──")
+	assert.Contains(t, output, "\u251c\u2500\u2500")
+	assert.Contains(t, output, "\u2514\u2500\u2500")
 }
 
 func TestGraphCmd_DOTOutput(t *testing.T) {
@@ -99,9 +97,7 @@ bazel_dep(name = "rules_go", version = "0.50.1")
 `
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "MODULE.bazel"), []byte(moduleContent), 0o644))
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	oldRegistry := registryFlag
 	registryFlag = registryDir
@@ -146,9 +142,7 @@ bazel_dep(name = "rules_go", version = "0.50.1")
 `
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "MODULE.bazel"), []byte(moduleContent), 0o644))
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	oldRegistry := registryFlag
 	registryFlag = registryDir
@@ -198,9 +192,7 @@ bazel_dep(name = "rules_go", version = "0.50.1")
 `
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "MODULE.bazel"), []byte(moduleContent), 0o644))
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	oldRegistry := registryFlag
 	registryFlag = registryDir
@@ -247,9 +239,7 @@ bazel_dep(name = "mod_b", version = "1.0.0")
 `
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "MODULE.bazel"), []byte(moduleContent), 0o644))
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	oldRegistry := registryFlag
 	registryFlag = registryDir
@@ -301,9 +291,7 @@ bazel_dep(name = "mod_b", version = "1.0.0")
 `
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "MODULE.bazel"), []byte(moduleContent), 0o644))
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	oldRegistry := registryFlag
 	registryFlag = registryDir
@@ -348,9 +336,7 @@ bazel_dep(name = "rules_go", version = "0.50.1")
 `
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "MODULE.bazel"), []byte(moduleContent), 0o644))
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	oldRegistry := registryFlag
 	registryFlag = registryDir
@@ -379,9 +365,7 @@ bazel_dep(name = "rules_go", version = "0.50.1")
 func TestGraphCmd_NoModuleFile(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	graphFormat = "ascii"
 	graphJSON = false
@@ -399,9 +383,7 @@ func TestGraphCmd_NoDeps(t *testing.T) {
 `
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "MODULE.bazel"), []byte(moduleContent), 0o644))
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	graphFormat = "ascii"
 	graphJSON = false
@@ -426,9 +408,7 @@ func TestGraphCmd_InvalidFormat(t *testing.T) {
 `
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "MODULE.bazel"), []byte(moduleContent), 0o644))
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	graphFormat = "invalid"
 	graphJSON = false

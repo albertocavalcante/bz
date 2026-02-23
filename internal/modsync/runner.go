@@ -337,7 +337,7 @@ func publisherFromConfig(cfg *config.Registry) (publisher.Publisher, error) {
 				Type:        cfg.Auth.Type,
 				Username:    cfg.Auth.Username,
 				Password:    cfg.Auth.Password,
-				Token:       cfg.Auth.TokenValue,
+				TokenValue:  cfg.Auth.TokenValue,
 				EnvVar:      cfg.Auth.EnvVar,
 				HeaderName:  cfg.Auth.HeaderName,
 				HeaderValue: cfg.Auth.HeaderValue,

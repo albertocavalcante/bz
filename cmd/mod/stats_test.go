@@ -32,9 +32,7 @@ bazel_dep(name = "gazelle", version = "0.38.0")
 `
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "MODULE.bazel"), []byte(moduleContent), 0o644))
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	oldRegistry := registryFlag
 	registryFlag = registryDir
@@ -93,9 +91,7 @@ bazel_dep(name = "gazelle", version = "0.38.0")
 `
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "MODULE.bazel"), []byte(moduleContent), 0o644))
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	oldRegistry := registryFlag
 	registryFlag = registryDir
@@ -150,9 +146,7 @@ bazel_dep(name = "module_a", version = "1.0.0")
 `
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "MODULE.bazel"), []byte(moduleContent), 0o644))
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	oldRegistry := registryFlag
 	registryFlag = registryDir
@@ -196,9 +190,7 @@ bazel_dep(name = "bazel_skylib", version = "1.5.0", dev_dependency = True)
 `
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "MODULE.bazel"), []byte(moduleContent), 0o644))
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	oldRegistry := registryFlag
 	registryFlag = registryDir
@@ -249,9 +241,7 @@ bazel_dep(name = "gazelle", version = "0.38.0", dev_dependency = True)
 `
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "MODULE.bazel"), []byte(moduleContent), 0o644))
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	oldRegistry := registryFlag
 	registryFlag = registryDir
@@ -278,9 +268,7 @@ func TestStatsCmd_NoDeps(t *testing.T) {
 `
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "MODULE.bazel"), []byte(moduleContent), 0o644))
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	statsJSON = false
 
@@ -299,9 +287,7 @@ func TestStatsCmd_NoDeps(t *testing.T) {
 func TestStatsCmd_NoModuleFile(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	statsJSON = false
 

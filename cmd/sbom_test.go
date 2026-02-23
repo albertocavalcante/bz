@@ -10,6 +10,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/albertocavalcante/bz/internal/cli"
 )
 
 func setupSBOMTest(t *testing.T, moduleContent string) string {
@@ -22,9 +24,7 @@ func setupSBOMTest(t *testing.T, moduleContent string) string {
 		0o644,
 	))
 
-	oldWd, _ := os.Getwd()
-	t.Cleanup(func() { _ = os.Chdir(oldWd) })
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	return tmpDir
 }
@@ -103,7 +103,7 @@ func resetSBOMFlags() {
 	sbomFormat = "spdx"
 	sbomOutput = ""
 	sbomIncludeTransitive = true
-	sbomRegistryFlag = ""
+	cli.Global.Registry = ""
 }
 
 func TestSBOMCmd_SPDXFormat(t *testing.T) {
@@ -127,9 +127,9 @@ bazel_dep(name = "rules_python", version = "0.35.0")
 	resetSBOMFlags()
 	sbomFormat = "spdx"
 
-	oldRegistry := sbomRegistryFlag
-	sbomRegistryFlag = registryDir
-	t.Cleanup(func() { sbomRegistryFlag = oldRegistry })
+	oldRegistry := cli.Global.Registry
+	cli.Global.Registry = registryDir
+	t.Cleanup(func() { cli.Global.Registry = oldRegistry })
 
 	var buf bytes.Buffer
 	sbomCmd.SetOut(&buf)
@@ -187,9 +187,9 @@ bazel_dep(name = "rules_python", version = "0.35.0")
 	resetSBOMFlags()
 	sbomFormat = "cyclonedx"
 
-	oldRegistry := sbomRegistryFlag
-	sbomRegistryFlag = registryDir
-	t.Cleanup(func() { sbomRegistryFlag = oldRegistry })
+	oldRegistry := cli.Global.Registry
+	cli.Global.Registry = registryDir
+	t.Cleanup(func() { cli.Global.Registry = oldRegistry })
 
 	var buf bytes.Buffer
 	sbomCmd.SetOut(&buf)
@@ -251,9 +251,9 @@ bazel_dep(name = "rules_go", version = "0.50.1")
 	sbomFormat = "spdx"
 	sbomIncludeTransitive = true
 
-	oldRegistry := sbomRegistryFlag
-	sbomRegistryFlag = registryDir
-	t.Cleanup(func() { sbomRegistryFlag = oldRegistry })
+	oldRegistry := cli.Global.Registry
+	cli.Global.Registry = registryDir
+	t.Cleanup(func() { cli.Global.Registry = oldRegistry })
 
 	var buf bytes.Buffer
 	sbomCmd.SetOut(&buf)
@@ -300,9 +300,9 @@ bazel_dep(name = "rules_go", version = "0.50.1")
 	sbomFormat = "spdx"
 	sbomIncludeTransitive = false
 
-	oldRegistry := sbomRegistryFlag
-	sbomRegistryFlag = registryDir
-	t.Cleanup(func() { sbomRegistryFlag = oldRegistry })
+	oldRegistry := cli.Global.Registry
+	cli.Global.Registry = registryDir
+	t.Cleanup(func() { cli.Global.Registry = oldRegistry })
 
 	var buf bytes.Buffer
 	sbomCmd.SetOut(&buf)
@@ -346,9 +346,9 @@ bazel_dep(name = "rules_go", version = "0.50.1")
 	outputFile := filepath.Join(tmpDir, "sbom.json")
 	sbomOutput = outputFile
 
-	oldRegistry := sbomRegistryFlag
-	sbomRegistryFlag = registryDir
-	t.Cleanup(func() { sbomRegistryFlag = oldRegistry })
+	oldRegistry := cli.Global.Registry
+	cli.Global.Registry = registryDir
+	t.Cleanup(func() { cli.Global.Registry = oldRegistry })
 
 	var buf bytes.Buffer
 	sbomCmd.SetOut(&buf)
@@ -383,9 +383,7 @@ bazel_dep(name = "rules_go", version = "0.50.1")
 func TestSBOMCmd_NoModuleFile(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	oldWd, _ := os.Getwd()
-	t.Cleanup(func() { _ = os.Chdir(oldWd) })
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	resetSBOMFlags()
 
@@ -433,9 +431,9 @@ bazel_dep(name = "rules_go", version = "0.50.1")
 	resetSBOMFlags()
 	sbomFormat = "spdx"
 
-	oldRegistry := sbomRegistryFlag
-	sbomRegistryFlag = registryDir
-	t.Cleanup(func() { sbomRegistryFlag = oldRegistry })
+	oldRegistry := cli.Global.Registry
+	cli.Global.Registry = registryDir
+	t.Cleanup(func() { cli.Global.Registry = oldRegistry })
 
 	var buf bytes.Buffer
 	sbomCmd.SetOut(&buf)
@@ -472,9 +470,9 @@ bazel_dep(name = "rules_go", version = "0.50.1")
 	resetSBOMFlags()
 	sbomFormat = "cyclonedx"
 
-	oldRegistry := sbomRegistryFlag
-	sbomRegistryFlag = registryDir
-	t.Cleanup(func() { sbomRegistryFlag = oldRegistry })
+	oldRegistry := cli.Global.Registry
+	cli.Global.Registry = registryDir
+	t.Cleanup(func() { cli.Global.Registry = oldRegistry })
 
 	var buf bytes.Buffer
 	sbomCmd.SetOut(&buf)
@@ -524,9 +522,9 @@ bazel_dep(name = "mod_a", version = "1.0.0")
 	sbomFormat = "spdx"
 	sbomIncludeTransitive = true
 
-	oldRegistry := sbomRegistryFlag
-	sbomRegistryFlag = registryDir
-	t.Cleanup(func() { sbomRegistryFlag = oldRegistry })
+	oldRegistry := cli.Global.Registry
+	cli.Global.Registry = registryDir
+	t.Cleanup(func() { cli.Global.Registry = oldRegistry })
 
 	var buf bytes.Buffer
 	sbomCmd.SetOut(&buf)
@@ -571,9 +569,9 @@ bazel_dep(name = "rules_go", version = "0.50.1")
 	resetSBOMFlags()
 	sbomFormat = "cyclonedx"
 
-	oldRegistry := sbomRegistryFlag
-	sbomRegistryFlag = registryDir
-	t.Cleanup(func() { sbomRegistryFlag = oldRegistry })
+	oldRegistry := cli.Global.Registry
+	cli.Global.Registry = registryDir
+	t.Cleanup(func() { cli.Global.Registry = oldRegistry })
 
 	var buf bytes.Buffer
 	sbomCmd.SetOut(&buf)
@@ -612,9 +610,9 @@ bazel_dep(name = "rules_go", version = "0.50.1")
 	resetSBOMFlags()
 	sbomFormat = "spdx"
 
-	oldRegistry := sbomRegistryFlag
-	sbomRegistryFlag = registryDir
-	t.Cleanup(func() { sbomRegistryFlag = oldRegistry })
+	oldRegistry := cli.Global.Registry
+	cli.Global.Registry = registryDir
+	t.Cleanup(func() { cli.Global.Registry = oldRegistry })
 
 	var buf bytes.Buffer
 	sbomCmd.SetOut(&buf)

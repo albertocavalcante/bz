@@ -118,10 +118,7 @@ bazel_dep(name = "gazelle", version = "0.38.0")
 	require.NoError(t, err)
 
 	// Change to project directory for test
-	oldWd, err := os.Getwd()
-	require.NoError(t, err)
-	defer func() { require.NoError(t, os.Chdir(oldWd)) }()
-	require.NoError(t, os.Chdir(projectDir))
+	t.Chdir(projectDir)
 
 	// Set up a temporary cache directory
 	cacheDir := t.TempDir()
@@ -262,7 +259,6 @@ func TestParseModuleArg(t *testing.T) {
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.input, func(t *testing.T) {
-			t.Parallel()
 			gotName, gotVersion := parseModuleArg(tt.input)
 			assert.Equal(t, tt.wantName, gotName)
 			assert.Equal(t, tt.wantVersion, gotVersion)

@@ -57,10 +57,7 @@ bazel_dep(name = "rules_go", version = "0.50.1")
 	createMockCacheEntry(t, cacheDir, "rules_go", "0.50.1", 100)
 
 	// Change to project directory
-	oldWd, err := os.Getwd()
-	require.NoError(t, err)
-	defer func() { require.NoError(t, os.Chdir(oldWd)) }()
-	require.NoError(t, os.Chdir(projectDir))
+	t.Chdir(projectDir)
 
 	verifyJSON = false
 	cmd := resetVerifyCmd()
@@ -69,7 +66,7 @@ bazel_dep(name = "rules_go", version = "0.50.1")
 	cmd.SetOut(&stdout)
 	cmd.SetArgs([]string{"--cache-dir=" + cacheDir})
 
-	err = cmd.Execute()
+	err := cmd.Execute()
 	require.NoError(t, err)
 
 	output := stdout.String()
@@ -93,10 +90,7 @@ bazel_dep(name = "gazelle", version = "0.38.0")
 	// gazelle is missing!
 
 	// Change to project directory
-	oldWd, err := os.Getwd()
-	require.NoError(t, err)
-	defer func() { require.NoError(t, os.Chdir(oldWd)) }()
-	require.NoError(t, os.Chdir(projectDir))
+	t.Chdir(projectDir)
 
 	verifyJSON = false
 	cmd := resetVerifyCmd()
@@ -105,7 +99,7 @@ bazel_dep(name = "gazelle", version = "0.38.0")
 	cmd.SetOut(&stdout)
 	cmd.SetArgs([]string{"--cache-dir=" + cacheDir})
 
-	err = cmd.Execute()
+	err := cmd.Execute()
 	assert.Error(t, err) // Should return error for incomplete cache
 
 	output := stdout.String()
@@ -129,10 +123,7 @@ bazel_dep(name = "rules_go", version = "0.50.1")
 	createMockCacheEntry(t, cacheDir, "rules_go", "0.50.1", 100)
 
 	// Change to project directory
-	oldWd, err := os.Getwd()
-	require.NoError(t, err)
-	defer func() { require.NoError(t, os.Chdir(oldWd)) }()
-	require.NoError(t, os.Chdir(projectDir))
+	t.Chdir(projectDir)
 
 	verifyJSON = false
 	cmd := resetVerifyCmd()
@@ -141,7 +132,7 @@ bazel_dep(name = "rules_go", version = "0.50.1")
 	cmd.SetOut(&stdout)
 	cmd.SetArgs([]string{"--cache-dir=" + cacheDir, "--json"})
 
-	err = cmd.Execute()
+	err := cmd.Execute()
 	require.NoError(t, err)
 
 	// Parse JSON output
@@ -169,10 +160,7 @@ bazel_dep(name = "gazelle", version = "0.38.0")
 	createMockCacheEntry(t, cacheDir, "rules_go", "0.50.1", 100)
 
 	// Change to project directory
-	oldWd, err := os.Getwd()
-	require.NoError(t, err)
-	defer func() { require.NoError(t, os.Chdir(oldWd)) }()
-	require.NoError(t, os.Chdir(projectDir))
+	t.Chdir(projectDir)
 
 	verifyJSON = false
 	cmd := resetVerifyCmd()
@@ -181,7 +169,7 @@ bazel_dep(name = "gazelle", version = "0.38.0")
 	cmd.SetOut(&stdout)
 	cmd.SetArgs([]string{"--cache-dir=" + cacheDir, "--json"})
 
-	err = cmd.Execute()
+	err := cmd.Execute()
 	assert.Error(t, err)
 
 	// Parse JSON output
@@ -200,10 +188,7 @@ func TestVerifyCmd_NoMODULEBazel(t *testing.T) {
 	projectDir := t.TempDir()
 
 	// Change to project directory
-	oldWd, err := os.Getwd()
-	require.NoError(t, err)
-	defer func() { require.NoError(t, os.Chdir(oldWd)) }()
-	require.NoError(t, os.Chdir(projectDir))
+	t.Chdir(projectDir)
 
 	cacheDir := t.TempDir()
 
@@ -214,6 +199,6 @@ func TestVerifyCmd_NoMODULEBazel(t *testing.T) {
 	cmd.SetOut(&stdout)
 	cmd.SetArgs([]string{"--cache-dir=" + cacheDir})
 
-	err = cmd.Execute()
+	err := cmd.Execute()
 	assert.Error(t, err) // Should error because no MODULE.bazel found
 }

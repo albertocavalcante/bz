@@ -18,9 +18,7 @@ func TestAddCmd_AddsNewDependency(t *testing.T) {
 	err := os.WriteFile(modulePath, []byte(moduleContent), 0o644)
 	require.NoError(t, err)
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	// Reset flags
 	addDev = false
@@ -43,9 +41,7 @@ func TestAddCmd_AddsDevDependency(t *testing.T) {
 	err := os.WriteFile(modulePath, []byte(moduleContent), 0o644)
 	require.NoError(t, err)
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	// Set dev flag
 	addDev = true
@@ -69,9 +65,7 @@ bazel_dep(name = "rules_go", version = "0.50.0")
 	err := os.WriteFile(modulePath, []byte(moduleContent), 0o644)
 	require.NoError(t, err)
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	addDev = false
 
@@ -94,9 +88,7 @@ func TestAddCmd_RequiresVersion(t *testing.T) {
 	err := os.WriteFile(filepath.Join(tmpDir, "MODULE.bazel"), []byte(moduleContent), 0o644)
 	require.NoError(t, err)
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	addDev = false
 
@@ -109,9 +101,7 @@ func TestAddCmd_RequiresVersion(t *testing.T) {
 func TestAddCmd_NoModuleFile(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	addDev = false
 
@@ -128,9 +118,7 @@ func TestAddCmd_MultipleModules(t *testing.T) {
 	err := os.WriteFile(modulePath, []byte(moduleContent), 0o644)
 	require.NoError(t, err)
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	addDev = false
 
@@ -197,9 +185,7 @@ func TestAddCmd_ValidatesModuleExistsInRegistry(t *testing.T) {
 	modulePath := filepath.Join(tmpDir, "MODULE.bazel")
 	require.NoError(t, os.WriteFile(modulePath, []byte(moduleContent), 0o644))
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	// Save and restore registry flag and other flags
 	oldRegistry := registryFlag
@@ -273,9 +259,7 @@ func TestAddCmd_NoVerifySkipsValidation(t *testing.T) {
 	modulePath := filepath.Join(tmpDir, "MODULE.bazel")
 	require.NoError(t, os.WriteFile(modulePath, []byte(moduleContent), 0o644))
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	// Save and restore registry flag and other flags
 	oldRegistry := registryFlag
@@ -318,9 +302,7 @@ func TestAddCmd_ValidationShowsSearchHint(t *testing.T) {
 	modulePath := filepath.Join(tmpDir, "MODULE.bazel")
 	require.NoError(t, os.WriteFile(modulePath, []byte(moduleContent), 0o644))
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	// Save and restore registry flag and other flags
 	oldRegistry := registryFlag
@@ -348,9 +330,7 @@ func TestAddCmd_DryRun(t *testing.T) {
 	err := os.WriteFile(modulePath, []byte(moduleContent), 0o644)
 	require.NoError(t, err)
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	// Reset flags
 	addDev = false
@@ -387,9 +367,7 @@ func TestAddCmd_DryRunMultiple(t *testing.T) {
 	err := os.WriteFile(modulePath, []byte(moduleContent), 0o644)
 	require.NoError(t, err)
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	addDev = false
 	addDryRun = true

@@ -21,9 +21,7 @@ bazel_dep(name = "rules_python", version = "0.35.0")
 	err := os.WriteFile(modulePath, []byte(moduleContent), 0o644)
 	require.NoError(t, err)
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	rmDryRun = false
 
@@ -50,9 +48,7 @@ bazel_dep(name = "rules_java", version = "7.0.0")
 	err := os.WriteFile(modulePath, []byte(moduleContent), 0o644)
 	require.NoError(t, err)
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	rmDryRun = false
 
@@ -77,9 +73,7 @@ bazel_dep(name = "rules_go", version = "0.50.1")
 	err := os.WriteFile(modulePath, []byte(moduleContent), 0o644)
 	require.NoError(t, err)
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	rmDryRun = false
 
@@ -110,9 +104,7 @@ bazel_dep(name = "rules_go", version = "0.50.1")
 	err := os.WriteFile(modulePath, []byte(moduleContent), 0o644)
 	require.NoError(t, err)
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	rmDryRun = true
 	defer func() { rmDryRun = false }()
@@ -144,9 +136,7 @@ bazel_dep(name = "gazelle", version = "0.38.0", dev_dependency = True)
 	err := os.WriteFile(modulePath, []byte(moduleContent), 0o644)
 	require.NoError(t, err)
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	rmDryRun = false
 
@@ -163,9 +153,7 @@ bazel_dep(name = "gazelle", version = "0.38.0", dev_dependency = True)
 func TestRmCmd_NoModuleFile(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	rmDryRun = false
 
@@ -185,9 +173,7 @@ bazel_dep(name = "rules_python", version = "0.35.0")
 	err := os.WriteFile(modulePath, []byte(moduleContent), 0o644)
 	require.NoError(t, err)
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	rmDryRun = false
 
@@ -222,9 +208,7 @@ bazel_dep(name = "rules_go", version = "0.50.1")
 	err := os.WriteFile(modulePath, []byte(moduleContent), 0o644)
 	require.NoError(t, err)
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	rmDryRun = false
 
@@ -255,9 +239,7 @@ register_toolchains("@rules_go//go:toolchain")
 	err := os.WriteFile(modulePath, []byte(moduleContent), 0o644)
 	require.NoError(t, err)
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	rmDryRun = false
 

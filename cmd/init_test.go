@@ -15,9 +15,7 @@ import (
 func TestInitCmd_CreatesModuleFile(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	// Reset flags
 	initName = "test_module"
@@ -49,9 +47,7 @@ func TestInitCmd_CreatesModuleFile(t *testing.T) {
 func TestInitCmd_UsesCustomVersion(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	initName = "my_module"
 	initVersion = "1.0.0"
@@ -78,9 +74,7 @@ func TestInitCmd_UsesDirectoryNameWhenNoName(t *testing.T) {
 	testDir := filepath.Join(parentDir, "my_project")
 	require.NoError(t, os.Mkdir(testDir, 0o755))
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(testDir))
+	t.Chdir(testDir)
 
 	initName = "" // No name provided
 	initVersion = "0.0.0"
@@ -107,9 +101,7 @@ func TestInitCmd_ErrorsOnExistingFile(t *testing.T) {
 	err := os.WriteFile(modulePath, []byte("existing content"), 0o644)
 	require.NoError(t, err)
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	initName = "test_module"
 	initVersion = "0.0.0"
@@ -132,9 +124,7 @@ func TestInitCmd_ForceOverwritesExistingFile(t *testing.T) {
 	err := os.WriteFile(modulePath, []byte("existing content"), 0o644)
 	require.NoError(t, err)
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	initName = "new_module"
 	initVersion = "2.0.0"
@@ -159,9 +149,7 @@ func TestInitCmd_ForceOverwritesExistingFile(t *testing.T) {
 func TestInitCmd_InvalidModuleName(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	tests := []struct {
 		name        string
@@ -313,9 +301,7 @@ func TestFormatModuleFile(t *testing.T) {
 func TestInitCmd_OutputMessage(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	initName = "awesome_module"
 	initVersion = "1.2.3"
@@ -344,9 +330,7 @@ func TestInitCmd_SanitizesDirectoryName(t *testing.T) {
 	testDir := filepath.Join(parentDir, "My Project 123")
 	require.NoError(t, os.Mkdir(testDir, 0o755))
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(testDir))
+	t.Chdir(testDir)
 
 	initName = "" // No name provided, use directory name
 	initVersion = "0.0.0"
@@ -371,9 +355,7 @@ func TestInitCmd_SanitizesDirectoryName(t *testing.T) {
 func TestInitCmd_PreservesValidSpecialChars(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	initName = "my-module.v2_test"
 	initVersion = "0.0.0"
@@ -397,9 +379,7 @@ func TestInitCmd_PreservesValidSpecialChars(t *testing.T) {
 func TestInitCmd_ModuleFileFormat(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	initName = "test"
 	initVersion = "1.0.0"

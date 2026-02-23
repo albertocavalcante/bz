@@ -140,9 +140,7 @@ bazel_dep(name = "gazelle", version = "0.38.0", dev_dependency = True)
 	require.NoError(t, os.WriteFile(modulePath, []byte(moduleContent), 0o644))
 
 	// Change to the temp directory
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	// Check that ValidArgsFunction is set
 	require.NotNil(t, rmCmd.ValidArgsFunction, "rmCmd should have ValidArgsFunction set")
@@ -167,9 +165,7 @@ bazel_dep(name = "gazelle", version = "0.38.0")
 	modulePath := filepath.Join(tmpDir, "MODULE.bazel")
 	require.NoError(t, os.WriteFile(modulePath, []byte(moduleContent), 0o644))
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	require.NotNil(t, rmCmd.ValidArgsFunction, "rmCmd should have ValidArgsFunction set")
 
@@ -193,9 +189,7 @@ bazel_dep(name = "gazelle", version = "0.38.0")
 	modulePath := filepath.Join(tmpDir, "MODULE.bazel")
 	require.NoError(t, os.WriteFile(modulePath, []byte(moduleContent), 0o644))
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	require.NotNil(t, rmCmd.ValidArgsFunction, "rmCmd should have ValidArgsFunction set")
 
@@ -225,9 +219,7 @@ func TestRmCmd_NoCompletionsWithoutModuleFile(t *testing.T) {
 	// Use a directory without MODULE.bazel
 	tmpDir := t.TempDir()
 
-	oldWd, _ := os.Getwd()
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(tmpDir))
+	t.Chdir(tmpDir)
 
 	require.NotNil(t, rmCmd.ValidArgsFunction, "rmCmd should have ValidArgsFunction set")
 
