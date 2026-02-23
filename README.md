@@ -1,5 +1,11 @@
 # bz
 
+[![CI](https://github.com/albertocavalcante/bz/actions/workflows/ci.yml/badge.svg)](https://github.com/albertocavalcante/bz/actions/workflows/ci.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/albertocavalcante/bz)](https://goreportcard.com/report/github.com/albertocavalcante/bz)
+[![Go Reference](https://pkg.go.dev/badge/github.com/albertocavalcante/bz.svg)](https://pkg.go.dev/github.com/albertocavalcante/bz)
+[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue)](LICENSE-MIT)
+[![Release](https://img.shields.io/github/v/release/albertocavalcante/bz)](https://github.com/albertocavalcante/bz/releases/latest)
+
 A CLI for Bzlmod - Bazel's module system.
 
 Manage MODULE.bazel dependencies, query the Bazel Central Registry, and streamline your Bazel module workflow.
@@ -316,6 +322,10 @@ bz mod sync --dry-run            # preview sync
 - [CLI Reference](docs/src/content/docs/cli/)
 - [Configuration Guide](docs/src/content/docs/configuration/)
 - [Air-gap Guide](docs/src/content/docs/guides/air-gapped.mdx)
+
+## Contributing
+
+See [CONTRIBUTING.md](.github/CONTRIBUTING.md) to get started.
 
 ## License
 

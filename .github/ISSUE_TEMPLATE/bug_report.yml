@@ -1,0 +1,65 @@
+name: Bug Report
+description: Report a bug in bz
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug!
+
+  - type: input
+    id: bz-version
+    attributes:
+      label: bz version
+      description: Output of `bz version`
+      placeholder: "bz v0.1.0 (commit abc1234)"
+    validations:
+      required: true
+
+  - type: input
+    id: go-version
+    attributes:
+      label: Go version
+      description: Output of `go version` (if built from source)
+      placeholder: "go1.24.0 darwin/arm64"
+
+  - type: input
+    id: os-arch
+    attributes:
+      label: OS / Architecture
+      placeholder: "macOS 15.2 / arm64"
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps to reproduce the issue.
+      placeholder: |
+        1. Run `bz mod add rules_go@0.50.1`
+        2. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What you expected to happen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What actually happened. Include full error output if applicable.
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Any other relevant information (MODULE.bazel snippet, config, etc.).
