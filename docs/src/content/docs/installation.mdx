@@ -13,8 +13,20 @@ import { Tabs, TabItem } from '@astrojs/starlight/components';
 ## Install Methods
 
 <Tabs>
+  <TabItem label="Binary">
+    Download a pre-built binary from the [latest release](https://github.com/albertocavalcante/bz/releases/latest), extract it, and move it to a directory in your PATH:
+
+    ```bash
+    # Example for Linux (amd64)
+    tar -xzf bz-linux-amd64.tar.gz
+    sudo mv bz /usr/local/bin/
+    ```
+
+    Binaries are available for Linux, macOS, and Windows on both amd64 and arm64.
+  </TabItem>
+
   <TabItem label="Go Install">
-    The simplest way to install bz is using Go:
+    Install directly with Go (requires Go 1.25+):
 
     ```bash
     go install github.com/albertocavalcante/bz@latest
@@ -37,10 +49,6 @@ import { Tabs, TabItem } from '@astrojs/starlight/components';
     ```bash
     sudo mv bz /usr/local/bin/
     ```
-  </TabItem>
-
-  <TabItem label="Bazelisk">
-    This project does not currently include Bazel BUILD files, so building with Bazel/Bazelisk is not supported at this time. Please use `go install` or build from source with `go build` instead.
   </TabItem>
 </Tabs>
 
