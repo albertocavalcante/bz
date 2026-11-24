@@ -28,7 +28,9 @@ type fileSchema struct {
 
 // ParseFile decodes one configuration file into a layer of the given kind.
 //
-// A leading "~" in [cache] dir is expanded against home.
+// A leading "~" in [cache] dir is expanded against home. Entries of
+// [commands] disabled are trimmed and empty entries dropped, as for
+// BZ_DISABLE_COMMANDS.
 func ParseFile(kind LayerKind, path string, data []byte, home string) (Layer, error) {
 	var s fileSchema
 	if _, err := toml.Decode(string(data), &s); err != nil {
@@ -48,7 +50,15 @@ func ParseFile(kind LayerKind, path string, data []byte, home string) (Layer, er
 		l.Settings.CacheDir = &dir
 	}
 	l.Settings.CacheTTL = s.Cache.TTL
-	l.Settings.Disabled = s.Commands.Disabled
+	if s.Commands.Disabled != nil {
+		list := make([]string, 0, len(*s.Commands.Disabled))
+		for _, d := range *s.Commands.Disabled {
+			if d = strings.TrimSpace(d); d != "" {
+				list = append(list, d)
+			}
+		}
+		l.Settings.Disabled = &list
+	}
 	return l, nil
 }
 
