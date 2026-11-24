@@ -11,6 +11,8 @@ import (
 	"strings"
 
 	"github.com/bazelbuild/buildtools/build"
+
+	"github.com/albertocavalcante/bz/internal/coord"
 )
 
 // ErrNoVersionArgument indicates that a bazel_dep has no literal version
@@ -19,6 +21,30 @@ var ErrNoVersionArgument = errors.New("bazel_dep has no version argument")
 
 // ErrDepNotFound indicates that no bazel_dep with the requested name exists.
 var ErrDepNotFound = errors.New("bazel_dep not found")
+
+// InvalidDepError reports a module name or version that bz refuses to write
+// into MODULE.bazel.
+type InvalidDepError struct {
+	Module string
+	Err    error
+}
+
+func (e *InvalidDepError) Error() string {
+	return fmt.Sprintf("refusing to write module %q: %v", e.Module, e.Err)
+}
+
+func (e *InvalidDepError) Unwrap() error { return e.Err }
+
+// ValidateDep checks a module name and version before they are written as a
+// bazel_dep. The version syntax is Bazel's Version.PATTERN
+// (src/main/java/com/google/devtools/build/lib/bazel/bzlmod/Version.java);
+// anything else could break out of the string literal it is written into.
+func ValidateDep(name, version string) error {
+	if err := coord.Validate(name, version); err != nil {
+		return &InvalidDepError{Module: name, Err: err}
+	}
+	return nil
+}
 
 // DepSpec describes a bazel_dep statement to append.
 type DepSpec struct {
@@ -199,9 +225,13 @@ func removalSpan(src []byte, start, end int) (s struct{ start, end int }) {
 }
 
 // SetDepVersion replaces the version string literal of every bazel_dep named
-// name. It reports whether the bytes changed. ErrDepNotFound and
-// ErrNoVersionArgument are returned (wrapped) when there is nothing to edit.
+// name. It reports whether the bytes changed. An invalid version is refused
+// with *InvalidDepError; ErrDepNotFound and ErrNoVersionArgument are returned
+// (wrapped) when there is nothing to edit.
 func SetDepVersion(src []byte, name, version string) ([]byte, bool, error) {
+	if err := coord.ValidateVersion(version); err != nil {
+		return nil, false, &InvalidDepError{Module: name, Err: err}
+	}
 	deps, err := findDeps(src)
 	if err != nil {
 		return nil, false, err
@@ -249,6 +279,11 @@ func SetDepVersion(src []byte, name, version string) ([]byte, bool, error) {
 // AppendDeps appends bazel_dep statements to src using src's dominant line
 // ending. A missing final newline stays missing.
 func AppendDeps(src []byte, deps []DepSpec) ([]byte, error) {
+	for _, d := range deps {
+		if err := ValidateDep(d.Name, d.Version); err != nil {
+			return nil, err
+		}
+	}
 	if len(deps) == 0 {
 		return append([]byte(nil), src...), nil
 	}
