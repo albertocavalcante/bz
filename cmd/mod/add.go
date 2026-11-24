@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"slices"
 	"strings"
@@ -61,7 +62,12 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	f, err := module.Load(modulePath)
+	content, err := os.ReadFile(modulePath)
+	if err != nil {
+		return fmt.Errorf("failed to read MODULE.bazel: %w", err)
+	}
+
+	f, err := module.LoadContent(modulePath, content)
 	if err != nil {
 		return err
 	}
@@ -79,8 +85,14 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	}
 	var toAdd []depToAdd
 
+	requested := make(map[string]bool)
 	for _, arg := range args {
 		name, version := parseModuleArg(arg)
+
+		if requested[name] {
+			return fmt.Errorf("module %q specified more than once", name)
+		}
+		requested[name] = true
 
 		if version == "" {
 			return fmt.Errorf("version required: use %s@<version>", name)
@@ -109,7 +121,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		}
 
 		for _, dep := range toAdd {
-			if err := validateModule(ctx, reg, dep.name, dep.version); err != nil {
+			if err := validateModule(ctx, cmd.ErrOrStderr(), reg, dep.name, dep.version); err != nil {
 				return err
 			}
 		}
@@ -123,26 +135,16 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Read current file
-	content, err := os.ReadFile(modulePath)
-	if err != nil {
-		return fmt.Errorf("failed to read MODULE.bazel: %w", err)
-	}
-
-	// Build new bazel_dep lines
-	var newDeps strings.Builder
+	specs := make([]module.DepSpec, 0, len(toAdd))
 	for _, dep := range toAdd {
-		newDeps.WriteString(module.FormatBazelDep(dep.name, dep.version, addDev))
+		specs = append(specs, module.DepSpec{Name: dep.name, Version: dep.version, Dev: addDev})
+	}
+	newContent, err := module.AppendDeps(content, specs)
+	if err != nil {
+		return fmt.Errorf("failed to add to MODULE.bazel: %w", err)
 	}
 
-	// Append to file
-	newContent := string(content)
-	if len(newContent) > 0 && newContent[len(newContent)-1] != '\n' {
-		newContent += "\n"
-	}
-	newContent += newDeps.String()
-
-	if err := os.WriteFile(modulePath, []byte(newContent), 0o644); err != nil {
+	if err := module.WriteFileIfUnchanged(modulePath, content, newContent); err != nil {
 		return fmt.Errorf("failed to write MODULE.bazel: %w", err)
 	}
 
@@ -155,7 +157,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 
 // validateModule checks if a module and version exist in the registry.
 // Returns a helpful error with suggestions if not found.
-func validateModule(ctx context.Context, reg registry.Registry, name, version string) error {
+func validateModule(ctx context.Context, warn io.Writer, reg registry.Registry, name, version string) error {
 	meta, err := reg.GetMetadata(ctx, name)
 	if err != nil {
 		if errors.Is(err, registry.ErrModuleNotFound) {
@@ -169,6 +171,14 @@ func validateModule(ctx context.Context, reg registry.Registry, name, version st
 
 	if !versionExists {
 		return newVersionNotFoundError(name, version, meta.Versions)
+	}
+
+	if reason, yanked := meta.YankedVersions[version]; yanked {
+		if reason != "" {
+			fmt.Fprintf(warn, "Warning: %s@%s is yanked: %s\n", name, version, reason)
+		} else {
+			fmt.Fprintf(warn, "Warning: %s@%s is yanked\n", name, version)
+		}
 	}
 
 	return nil

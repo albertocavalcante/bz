@@ -1,11 +1,10 @@
 package mod
 
 import (
-	"bufio"
+	"errors"
 	"fmt"
+	"io"
 	"os"
-	"regexp"
-	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -50,7 +49,6 @@ type updateInfo struct {
 	current    string
 	latest     string
 	updateType version.UpdateType
-	line       int
 	err        error
 }
 
@@ -66,7 +64,12 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	f, err := module.Load(modulePath)
+	content, err := os.ReadFile(modulePath)
+	if err != nil {
+		return fmt.Errorf("failed to read MODULE.bazel: %w", err)
+	}
+
+	f, err := module.LoadContent(modulePath, content)
 	if err != nil {
 		return err
 	}
@@ -116,10 +119,14 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
+		if current == "" {
+			fmt.Fprintf(out, "Skipping %s: no version argument in bazel_dep (version is managed elsewhere)\n", name)
+			continue
+		}
+
 		info := updateInfo{
 			name:    name,
 			current: current,
-			line:    dep.Pos.Line,
 		}
 
 		// Fetch metadata from registry
@@ -172,13 +179,21 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Apply updates to the file
-	if err := applyUpdates(modulePath, pendingUpdates); err != nil {
+	// Apply updates in memory, then write once.
+	newContent, applied, err := applyVersionUpdates(content, pendingUpdates, out)
+	if err != nil {
 		return err
 	}
 
-	// Print what was updated
-	for _, u := range pendingUpdates {
+	if len(applied) == 0 {
+		return nil
+	}
+
+	if err := module.WriteFileIfUnchanged(modulePath, content, newContent); err != nil {
+		return fmt.Errorf("failed to write MODULE.bazel: %w", err)
+	}
+
+	for _, u := range applied {
 		fmt.Fprintf(out, "Updated %s: %s -> %s (%s)\n",
 			u.name, u.current, u.latest, u.updateType.String())
 	}
@@ -186,53 +201,34 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// applyUpdates modifies the MODULE.bazel file with the version updates.
-func applyUpdates(modulePath string, updates []updateInfo) error {
-	// Build a map of line -> new version for quick lookup
-	lineUpdates := make(map[int]updateInfo)
-	for _, u := range updates {
-		lineUpdates[u.line] = u
-	}
-
-	// Read file and update lines
-	file, err := os.Open(modulePath)
-	if err != nil {
-		return fmt.Errorf("failed to open MODULE.bazel: %w", err)
-	}
-	defer file.Close()
-
-	// Regex to match version in bazel_dep
-	// Matches: version = "x.y.z" or version="x.y.z"
-	versionRegex := regexp.MustCompile(`(version\s*=\s*")([^"]+)(")`)
-
-	var newLines []string
-	scanner := bufio.NewScanner(file)
-	lineNum := 1
-	for scanner.Scan() {
-		line := scanner.Text()
-
-		if update, ok := lineUpdates[lineNum]; ok {
-			// Replace the version in this line
-			newLine := versionRegex.ReplaceAllString(line, "${1}"+update.latest+"${3}")
-			newLines = append(newLines, newLine)
-		} else {
-			newLines = append(newLines, line)
+// applyVersionUpdates edits content in memory, one edit per module name
+// (SetDepVersion rewrites every statement of that name). Deps without a
+// version argument are skipped with a note on out. An edit that changes no
+// bytes is an error, and nothing is returned, so the caller writes all or
+// nothing. content itself is never modified.
+func applyVersionUpdates(content []byte, pending []updateInfo, out io.Writer) ([]byte, []updateInfo, error) {
+	newContent := content
+	var applied []updateInfo
+	seen := make(map[string]bool)
+	for _, u := range pending {
+		if seen[u.name] {
+			continue
 		}
-		lineNum++
-	}
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("failed to read MODULE.bazel: %w", err)
-	}
+		seen[u.name] = true
 
-	// Write updated content
-	newContent := strings.Join(newLines, "\n")
-	if len(newLines) > 0 {
-		newContent += "\n"
+		next, changed, err := module.SetDepVersion(newContent, u.name, u.latest)
+		if err != nil {
+			if errors.Is(err, module.ErrNoVersionArgument) {
+				fmt.Fprintf(out, "Skipping %s: no version argument in bazel_dep (version is managed elsewhere)\n", u.name)
+				continue
+			}
+			return nil, nil, fmt.Errorf("failed to update %s: %w", u.name, err)
+		}
+		if !changed {
+			return nil, nil, fmt.Errorf("failed to update %s: version %s not found in MODULE.bazel text", u.name, u.current)
+		}
+		newContent = next
+		applied = append(applied, u)
 	}
-
-	if err := os.WriteFile(modulePath, []byte(newContent), 0o644); err != nil {
-		return fmt.Errorf("failed to write MODULE.bazel: %w", err)
-	}
-
-	return nil
+	return newContent, applied, nil
 }

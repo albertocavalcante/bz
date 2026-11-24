@@ -1,10 +1,8 @@
 package mod
 
 import (
-	"bufio"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -45,7 +43,12 @@ func runRm(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	f, err := module.Load(modulePath)
+	content, err := os.ReadFile(modulePath)
+	if err != nil {
+		return fmt.Errorf("failed to read MODULE.bazel: %w", err)
+	}
+
+	f, err := module.LoadContent(modulePath, content)
 	if err != nil {
 		return err
 	}
@@ -87,32 +90,6 @@ func runRm(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Build set of lines to remove
-	linesToRemove := make(map[int]bool)
-	for _, dep := range depsToRemove {
-		linesToRemove[dep.line] = true
-	}
-
-	// Read file and filter out the lines
-	file, err := os.Open(modulePath)
-	if err != nil {
-		return fmt.Errorf("failed to open MODULE.bazel: %w", err)
-	}
-	defer file.Close()
-
-	var newLines []string
-	scanner := bufio.NewScanner(file)
-	lineNum := 1
-	for scanner.Scan() {
-		if !linesToRemove[lineNum] {
-			newLines = append(newLines, scanner.Text())
-		}
-		lineNum++
-	}
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("failed to read MODULE.bazel: %w", err)
-	}
-
 	// Handle dry-run
 	if rmDryRun {
 		for _, dep := range depsToRemove {
@@ -121,18 +98,24 @@ func runRm(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Write updated content
-	newContent := strings.Join(newLines, "\n")
-	if len(newLines) > 0 {
-		newContent += "\n"
+	names := make([]string, 0, len(depsToRemove))
+	for _, dep := range depsToRemove {
+		names = append(names, dep.name)
+	}
+	newContent, removed, err := module.RemoveDeps(content, names)
+	if err != nil {
+		return fmt.Errorf("failed to remove from MODULE.bazel: %w", err)
 	}
 
-	if err := os.WriteFile(modulePath, []byte(newContent), 0o644); err != nil {
+	if err := module.WriteFileIfUnchanged(modulePath, content, newContent); err != nil {
 		return fmt.Errorf("failed to write MODULE.bazel: %w", err)
 	}
 
-	for _, dep := range depsToRemove {
-		fmt.Fprintf(out, "Removed %s\n", dep.name)
+	for _, name := range removed {
+		fmt.Fprintf(out, "Removed %s\n", name)
+		for _, ov := range f.OverridesFor(name) {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Warning: %s_override for removed module %s is still in MODULE.bazel\n", ov.Type, name)
+		}
 	}
 
 	return nil
