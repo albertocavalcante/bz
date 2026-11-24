@@ -30,77 +30,44 @@ func TestCommandDisabledError_Is(t *testing.T) {
 	assert.True(t, err1.Is(err2))
 }
 
-func TestCheckCommandAllowed_NotDisabled(t *testing.T) {
-	tmpDir := t.TempDir()
-	oldWd, _ := os.Getwd()
-	t.Cleanup(func() { _ = os.Chdir(oldWd) })
-	require.NoError(t, os.Chdir(tmpDir))
-	ResetCachedConfig()
-	t.Cleanup(ResetCachedConfig)
+func TestCheckCommandEnabled(t *testing.T) {
+	commands := []string{"audit", "cache", "cache stats", "mod", "mod info", "mod stats", "registry", "registry ping", "version"}
+	disabled := []string{"registry ping", "info"}
+	eff, err := bzconfig.Merge(bzconfig.Defaults("/c"), bzconfig.Layer{
+		Kind:     bzconfig.LayerProject,
+		Origin:   "/ws/.bz.toml",
+		Settings: bzconfig.Settings{Disabled: &disabled},
+	})
+	require.NoError(t, err)
 
-	// No config file means no disabled commands
-	err := CheckCommandAllowed("info")
-	assert.NoError(t, err)
-}
-
-func TestCheckCommandAllowed_Disabled(t *testing.T) {
-	tmpDir := t.TempDir()
-	oldWd, _ := os.Getwd()
-	t.Cleanup(func() { _ = os.Chdir(oldWd) })
-	require.NoError(t, os.Chdir(tmpDir))
-	ResetCachedConfig()
-	t.Cleanup(ResetCachedConfig)
-
-	configContent := `
-[commands]
-disabled = ["audit", "sync"]
-`
-	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, ".bzconfig.toml"), []byte(configContent), 0o644))
-
-	err := CheckCommandAllowed("audit")
-	require.Error(t, err)
-
+	_, err = CheckCommandEnabled(eff, "registry ping", commands)
 	var cmdErr *CommandDisabledError
-	assert.ErrorAs(t, err, &cmdErr)
-	assert.Equal(t, "audit", cmdErr.Command)
-}
+	require.ErrorAs(t, err, &cmdErr)
+	assert.Equal(t, "registry ping", cmdErr.Command)
+	assert.Contains(t, err.Error(), "/ws/.bz.toml")
 
-func TestCheckCommandAllowed_OtherCommandNotDisabled(t *testing.T) {
-	tmpDir := t.TempDir()
-	oldWd, _ := os.Getwd()
-	t.Cleanup(func() { _ = os.Chdir(oldWd) })
-	require.NoError(t, os.Chdir(tmpDir))
-	ResetCachedConfig()
-	t.Cleanup(ResetCachedConfig)
+	_, err = CheckCommandEnabled(eff, "mod info", commands)
+	require.ErrorAs(t, err, &cmdErr)
+	assert.Contains(t, err.Error(), `listed as "info"`)
 
-	configContent := `
-[commands]
-disabled = ["audit", "sync"]
-`
-	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, ".bzconfig.toml"), []byte(configContent), 0o644))
+	_, err = CheckCommandEnabled(eff, "audit", commands)
+	assert.NoError(t, err)
 
-	// "info" is not in the disabled list
-	err := CheckCommandAllowed("info")
+	_, err = CheckCommandEnabled(eff, "version", commands)
 	assert.NoError(t, err)
 }
 
-func TestCheckCommandAllowed_DisabledViaEnv(t *testing.T) {
-	tmpDir := t.TempDir()
-	oldWd, _ := os.Getwd()
-	t.Cleanup(func() { _ = os.Chdir(oldWd) })
-	require.NoError(t, os.Chdir(tmpDir))
-	ResetCachedConfig()
-	t.Cleanup(ResetCachedConfig)
-
-	// Set environment variable
+func TestCheckCommandEnabled_DisabledViaEnv(t *testing.T) {
+	t.Chdir(t.TempDir())
 	t.Setenv("BZ_DISABLE_COMMANDS", "audit,search")
+	eff, _, err := LoadEffective()
+	require.NoError(t, err)
+	t.Cleanup(ResetCachedConfig)
 
-	err := CheckCommandAllowed("audit")
-	require.Error(t, err)
-
+	_, err = CheckCommandEnabled(eff, "audit", []string{"audit", "mod search"})
 	var cmdErr *CommandDisabledError
-	assert.ErrorAs(t, err, &cmdErr)
-	assert.Equal(t, "audit", cmdErr.Command)
+	require.ErrorAs(t, err, &cmdErr)
+	assert.Contains(t, err.Error(), "environment BZ_DISABLE_COMMANDS")
 }
 
 func TestCheckOfflineAllowed_NotOffline(t *testing.T) {
@@ -205,35 +172,6 @@ mode = "offline"
 	assert.NotContains(t, err.Error(), "bz.star")
 }
 
-// TestCheckCommandAllowed_InvalidConfigFailsClosed: an invalid value must
-// not make the disabled list disappear; the configuration error is returned
-// so the command does not run.
-func TestCheckCommandAllowed_InvalidConfigFailsClosed(t *testing.T) {
-	tmpDir := t.TempDir()
-	t.Chdir(tmpDir)
-	ResetCachedConfig()
-	t.Cleanup(ResetCachedConfig)
-
-	configContent := `
-[network]
-timeout = "30"
-
-[commands]
-disabled = ["audit"]
-`
-	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, ".bzconfig.toml"), []byte(configContent), 0o644))
-
-	err := CheckCommandAllowed("audit")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), `invalid network timeout "30"`)
-
-	t.Setenv("BZ_OFFLINE", "ture")
-	ResetCachedConfig()
-	err = CheckCommandAllowed("audit")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "BZ_OFFLINE")
-}
-
 func TestEffective_FlagBeatsConfigMode(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Chdir(tmpDir)
@@ -299,4 +237,17 @@ func TestLoadEffective_Precedence(t *testing.T) {
 	assert.Equal(t, "https://project.example", eff.Network.Registry)
 	assert.Equal(t, "/from/env", eff.Cache.Dir)
 	assert.Equal(t, "1h", eff.Cache.TTL)
+}
+
+// TestLoadEffective_InvalidConfigFailsClosed: the load error the root
+// command enforces with (see cmd TestRun_ConfigLoadErrorFailsClosed).
+func TestLoadEffective_InvalidConfigFailsClosed(t *testing.T) {
+	t.Chdir(t.TempDir())
+	require.NoError(t, os.WriteFile(".bzconfig.toml", []byte("[network]\ntimeout = \"30\"\n[commands]\ndisabled = [\"audit\"]\n"), 0o644))
+	t.Cleanup(ResetCachedConfig)
+
+	eff, _, err := LoadEffective()
+	require.Error(t, err)
+	assert.Nil(t, eff)
+	assert.Contains(t, err.Error(), `invalid network timeout "30"`)
 }

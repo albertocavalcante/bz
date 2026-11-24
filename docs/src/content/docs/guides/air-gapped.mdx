@@ -309,8 +309,8 @@ registry = "file:///opt/bazel/registry"
 dir = "/opt/bazel/cache"
 
 [commands]
-# Disable commands that require network
-disabled = ["registry ping"]
+# Disable commands that require network (full command paths)
+disabled = ["registry ping", "cache download"]
 ```
 
 bz only reads `/etc/bz/config.toml` if root owns it and it is not writable by

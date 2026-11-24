@@ -8,7 +8,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/albertocavalcante/bz/internal/cli"
 	"github.com/albertocavalcante/bz/internal/cmdutil"
 	"github.com/albertocavalcante/bz/internal/depgraph"
 	"github.com/albertocavalcante/bz/internal/module"
@@ -62,11 +61,6 @@ func (n depNode) String() string {
 }
 
 func runWhy(cmd *cobra.Command, args []string) error {
-	// Check if command is disabled
-	if err := cli.CheckCommandAllowed("why"); err != nil {
-		return err
-	}
-
 	if len(args) == 0 {
 		return fmt.Errorf("module name required")
 	}

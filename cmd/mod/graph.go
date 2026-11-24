@@ -73,11 +73,6 @@ type GraphOutput struct {
 }
 
 func runGraph(cmd *cobra.Command, args []string) error {
-	// Check if command is disabled
-	if err := cli.CheckCommandAllowed("graph"); err != nil {
-		return err
-	}
-
 	f, err := module.FindAndLoad()
 	if err != nil {
 		return err

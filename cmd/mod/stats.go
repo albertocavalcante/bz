@@ -49,11 +49,6 @@ type Stats struct {
 }
 
 func runStats(cmd *cobra.Command, args []string) error {
-	// Check if command is disabled
-	if err := cli.CheckCommandAllowed("stats"); err != nil {
-		return err
-	}
-
 	f, err := module.FindAndLoad()
 	if err != nil {
 		return err

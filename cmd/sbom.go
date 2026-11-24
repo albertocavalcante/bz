@@ -179,10 +179,6 @@ type sbomDependency struct {
 }
 
 func runSBOM(cmd *cobra.Command, args []string) error {
-	if err := cli.CheckCommandAllowed("sbom"); err != nil {
-		return err
-	}
-
 	// Validate format
 	format := strings.ToLower(sbomFormat)
 	if format != sbomFormatSPDX && format != sbomFormatCycloneDX {

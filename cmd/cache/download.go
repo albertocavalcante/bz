@@ -65,10 +65,6 @@ type downloadResult struct {
 
 //nolint:gocyclo // CLI handler coordinates registry resolution, dependency expansion, and download reporting.
 func runDownload(cmd *cobra.Command, args []string) error {
-	if err := cli.CheckCommandAllowed("download"); err != nil {
-		return err
-	}
-
 	ctx := cmdutil.CommandContext(cmd)
 
 	out := cmd.OutOrStdout()

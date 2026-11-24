@@ -75,7 +75,7 @@ ttl = "24h"                       # Cache time-to-live (accepted, not yet applie
 
 # Command settings
 [commands]
-disabled = ["audit"]              # Disable specific commands
+disabled = ["audit", "registry ping"]  # Disable specific commands
 ```
 
 ## Configuration Sections
@@ -140,11 +140,26 @@ Controls command availability.
 
 ```toml
 [commands]
-disabled = ["audit", "sbom"]
+disabled = ["audit", "sbom", "registry ping", "cache download"]
 ```
 
+Each entry is a **command path without `bz`**, as shown by `bz --help`:
+`"registry ping"`, `"cache download"`, `"mod add"`, or a top-level command such as `"audit"`.
+
+- Disabling a parent disables all of its subcommands: `"cache"` disables `cache stats`, `cache download` and the other `cache` subcommands.
+- A single subcommand name works as an alias when exactly one command has that name: `"ping"` means `registry ping` and `"add"` means `mod add`.
+- An ambiguous name is an error that lists the candidates: `"stats"` matches both `cache stats` and `mod stats`. Write the full path instead.
+- An entry that matches no command prints a warning.
+- `help`, `version` and `completion` cannot be disabled. Listing them prints a warning.
+
+A disabled command fails with a single `Error:` line naming the entry and
+the file or variable that disabled it. bz checks this once, before any command runs.
+
 <Aside type="caution">
-Disabled commands will return an error when invoked. This is useful for restricted environments where certain commands should not be available.
+A higher layer replaces the whole list from lower layers. A project file with
+`disabled = []` re-enables commands disabled in the user or system file, and
+`BZ_DISABLE_COMMANDS` replaces the list from every file. Use the system file for
+defaults, not for a security boundary.
 </Aside>
 
 ---
@@ -159,7 +174,7 @@ This is the complete list of variables that affect configuration:
 | `BZ_PREFER_OFFLINE` | `network.mode = "prefer-offline"` | Enable prefer-offline mode |
 | `BZ_REGISTRY` | `network.registry` | Override registry URL |
 | `BZ_CACHE_DIR` | `cache.dir` | Override cache directory (`~` is expanded) |
-| `BZ_DISABLE_COMMANDS` | `commands.disabled` | Disable commands (comma-separated) |
+| `BZ_DISABLE_COMMANDS` | `commands.disabled` | Disable commands (comma-separated, same syntax as the TOML list) |
 | `BZ_TRUSTED_CONFIG_DIRS` | | Directories whose config files skip the ownership and permission checks, separated like `PATH`. See [Project Config and Trust](/bz/configuration/project-config/#trusting-a-directory) |
 | `XDG_CONFIG_HOME` | | Where to look for the user config file (absolute paths only) |
 | `XDG_CACHE_HOME` | | Base directory for the default cache directory, used only when `~/.cache/bz` does not already exist |
@@ -186,7 +201,7 @@ export BZ_OFFLINE=1
 export BZ_REGISTRY="https://internal.registry.com"
 
 # Disable specific commands
-export BZ_DISABLE_COMMANDS="audit,sbom"
+export BZ_DISABLE_COMMANDS="audit,registry ping"
 ```
 
 ---
@@ -235,7 +250,7 @@ registry = "file:///opt/bazel/registry"
 dir = "/opt/bazel/cache"
 
 [commands]
-disabled = ["registry ping"]  # No point in pinging
+disabled = ["registry ping"]  # Full command path; "ping" also works
 ```
 
 ### CI/CD Pipeline
@@ -311,7 +326,7 @@ bz doctor
 ```
 
 Error messages that depend on configuration name the layer that set the value,
-for example `Offline mode is set by user config /home/me/.config/bz/config.toml.`
+for example `listed as "ping" in [commands] disabled (project config /work/.bz.toml)`.
 
 ---
 

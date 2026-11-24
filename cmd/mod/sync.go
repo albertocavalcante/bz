@@ -6,7 +6,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/albertocavalcante/bz/internal/cli"
 	"github.com/albertocavalcante/bz/internal/cmdutil"
 	"github.com/albertocavalcante/bz/internal/config"
 	"github.com/albertocavalcante/bz/internal/modsync"
@@ -61,10 +60,6 @@ func configureSyncCmd() {
 }
 
 func runSync(cmd *cobra.Command, args []string) error {
-	if err := cli.CheckCommandAllowed("sync"); err != nil {
-		return err
-	}
-
 	// Load config
 	loader := config.NewLoader()
 	var cfg *config.Config

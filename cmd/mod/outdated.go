@@ -47,11 +47,6 @@ type OutdatedDep struct {
 }
 
 func runOutdated(cmd *cobra.Command, args []string) error {
-	// Check if command is disabled
-	if err := cli.CheckCommandAllowed("outdated"); err != nil {
-		return err
-	}
-
 	f, err := module.FindAndLoad()
 	if err != nil {
 		return err

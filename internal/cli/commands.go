@@ -2,7 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"slices"
 	"sync"
 
 	"github.com/albertocavalcante/bz/internal/bzconfig"
@@ -116,24 +115,28 @@ func (e *CommandDisabledError) Is(target error) bool {
 	return ok
 }
 
-// CheckCommandAllowed checks if a command is allowed based on configuration.
-// Returns CommandDisabledError if the command is disabled. It fails closed:
-// when the configuration cannot be loaded, the load error is returned and
-// the command must not run.
-func CheckCommandAllowed(cmdName string) error {
-	cfg, err := Effective()
+// CheckCommandEnabled enforces [commands] disabled for the command at path
+// (its command path without the root, e.g. "registry ping"). commands lists
+// every command path in the tree so entries can be resolved and checked.
+// It returns warnings for entries that match nothing, and an error when the
+// command is disabled or an entry is ambiguous. Protected commands (help,
+// version, completion) are never disabled.
+func CheckCommandEnabled(eff *bzconfig.Effective, path string, commands []string) ([]string, error) {
+	source := eff.Source(bzconfig.KeyDisabled)
+	set, warnings, err := bzconfig.ResolveDisabled(eff.Commands.Disabled, commands, source)
 	if err != nil {
-		return err
+		return warnings, err
 	}
-
-	if slices.Contains(cfg.Commands.Disabled, cmdName) {
-		return &CommandDisabledError{
-			Command: cmdName,
-			Reason:  "disabled in configuration",
+	if bzconfig.IsProtectedCommand(path) {
+		return warnings, nil
+	}
+	if entry, ok := set.Match(path); ok {
+		return warnings, &CommandDisabledError{
+			Command: path,
+			Reason:  fmt.Sprintf("listed as %q in [commands] disabled (%s)", entry, source),
 		}
 	}
-
-	return nil
+	return warnings, nil
 }
 
 // OfflineModeError is returned when a command requires network access but offline mode is enabled.

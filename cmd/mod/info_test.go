@@ -154,34 +154,6 @@ func TestInfoCmd_ModuleNotFoundWithoutSuggestions(t *testing.T) {
 	assert.NotContains(t, err.Error(), "Did you mean")
 }
 
-func TestInfoCmd_DisabledViaConfig(t *testing.T) {
-	cli.ResetCachedConfig()
-	t.Cleanup(cli.ResetCachedConfig)
-
-	tmpDir := t.TempDir()
-	t.Chdir(tmpDir)
-
-	// Create config that disables info command
-	configContent := `
-[commands]
-disabled = ["info"]
-`
-	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, ".bzconfig.toml"), []byte(configContent), 0o644))
-
-	infoJSON = false
-
-	var stdout bytes.Buffer
-	infoCmd.SetOut(&stdout)
-
-	err := runInfo(infoCmd, []string{"rules_go"})
-	require.Error(t, err)
-
-	// Error message should indicate command is disabled
-	errMsg := err.Error()
-	assert.Contains(t, errMsg, "info")
-	assert.Contains(t, errMsg, "disabled")
-}
-
 func TestInfoCmd_OfflineMode(t *testing.T) {
 	cli.ResetCachedConfig()
 	t.Cleanup(cli.ResetCachedConfig)

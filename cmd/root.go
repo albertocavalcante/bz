@@ -124,25 +124,34 @@ func formatError(err error) string {
 	return b.String()
 }
 
-// applyConfig loads the effective configuration once for this invocation
-// and prints its warnings once.
-// A configuration that fails to load stops the command (fail closed), so a
+// applyConfig loads the effective configuration once for this invocation,
+// prints its warnings and enforces [commands] disabled for cmd. A
+// configuration that fails to load stops the command (fail closed), so a
 // bad value cannot silently drop settings such as [commands] disabled.
 // Help, version and completion keep working with a broken config file so
 // users can still diagnose it; for them the error is a warning.
 func applyConfig(cmd *cobra.Command) error {
 	errOut := cmd.ErrOrStderr()
-	protected := bzconfig.IsProtectedCommand(commandPathWithoutRoot(cmd))
+	path := commandPathWithoutRoot(cmd)
+	protected := bzconfig.IsProtectedCommand(path)
 
-	_, warnings, err := cli.LoadEffective()
+	eff, warnings, err := cli.LoadEffective()
 	printWarnings(errOut, warnings)
-	switch {
-	case err == nil:
-		return nil
-	case cmd == doctorCmd:
-		return nil // doctor reports it as its "config" check
-	case protected || cmd.HasSubCommands():
-		// Help and bare group commands only print help, so they stay usable.
+	if err != nil {
+		switch {
+		case cmd == doctorCmd:
+			return nil // doctor reports it as its "config" check
+		case protected || cmd.HasSubCommands():
+			// Help and bare group commands only print help, so they stay usable.
+			printWarnings(errOut, []string{err.Error()})
+			return nil
+		}
+		return err
+	}
+
+	warnings, err = cli.CheckCommandEnabled(eff, path, commandPaths(cmd.Root()))
+	printWarnings(errOut, warnings)
+	if err != nil && protected {
 		printWarnings(errOut, []string{err.Error()})
 		return nil
 	}
@@ -162,6 +171,20 @@ func commandPathWithoutRoot(cmd *cobra.Command) string {
 		return ""
 	}
 	return strings.TrimPrefix(cmd.CommandPath(), cmd.Root().Name()+" ")
+}
+
+// commandPaths lists every command path below root.
+func commandPaths(root *cobra.Command) []string {
+	var paths []string
+	var walk func(c *cobra.Command)
+	walk = func(c *cobra.Command) {
+		for _, child := range c.Commands() {
+			paths = append(paths, commandPathWithoutRoot(child))
+			walk(child)
+		}
+	}
+	walk(root)
+	return paths
 }
 
 // Configure wires all root and subcommands once.

@@ -11,7 +11,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/albertocavalcante/bz/internal/cli"
 	"github.com/albertocavalcante/bz/internal/cmdutil"
 	"github.com/albertocavalcante/bz/internal/module"
 	"github.com/albertocavalcante/bz/internal/modulearg"
@@ -52,11 +51,6 @@ func configureAddCmd() {
 }
 
 func runAdd(cmd *cobra.Command, args []string) error {
-	// Check if command is disabled
-	if err := cli.CheckCommandAllowed("add"); err != nil {
-		return err
-	}
-
 	modulePath, err := module.Find()
 	if err != nil {
 		return err

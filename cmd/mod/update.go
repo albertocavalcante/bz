@@ -10,7 +10,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/albertocavalcante/bz/internal/cli"
 	"github.com/albertocavalcante/bz/internal/cmdutil"
 	"github.com/albertocavalcante/bz/internal/coord"
 	"github.com/albertocavalcante/bz/internal/module"
@@ -67,11 +66,6 @@ func (u updateInfo) inFile(root string) string {
 
 //nolint:gocyclo // CLI command handler with sequential steps
 func runUpdate(cmd *cobra.Command, args []string) error {
-	// Check if command is disabled
-	if err := cli.CheckCommandAllowed("update"); err != nil {
-		return err
-	}
-
 	modulePath, err := module.Find()
 	if err != nil {
 		return err

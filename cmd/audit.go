@@ -167,11 +167,6 @@ type AuditSummary struct {
 }
 
 func runAudit(cmd *cobra.Command, args []string) error {
-	// Check if command is disabled
-	if err := cli.CheckCommandAllowed("audit"); err != nil {
-		return err
-	}
-
 	// Check if offline mode is enabled
 	if err := cli.CheckOfflineAllowed("audit"); err != nil {
 		var offlineErr *cli.OfflineModeError

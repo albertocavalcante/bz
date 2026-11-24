@@ -63,10 +63,6 @@ type clearResult struct {
 }
 
 func runClear(cmd *cobra.Command, args []string) error {
-	if err := cli.CheckCommandAllowed("clear"); err != nil {
-		return err
-	}
-
 	out := cmd.OutOrStdout()
 	in := cmd.InOrStdin()
 

@@ -7,7 +7,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/albertocavalcante/bz/internal/cli"
 	"github.com/albertocavalcante/bz/internal/coord"
 	"github.com/albertocavalcante/bz/internal/module"
 )
@@ -43,10 +42,6 @@ func configureInitCmd() {
 }
 
 func runInit(cmd *cobra.Command, args []string) error {
-	if err := cli.CheckCommandAllowed("init"); err != nil {
-		return err
-	}
-
 	wd, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("failed to get working directory: %w", err)

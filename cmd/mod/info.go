@@ -8,7 +8,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/albertocavalcante/bz/internal/cli"
 	"github.com/albertocavalcante/bz/internal/cmdutil"
 	"github.com/albertocavalcante/bz/internal/module"
 	"github.com/albertocavalcante/bz/internal/registry"
@@ -42,11 +41,6 @@ func configureInfoCmd() {
 }
 
 func runInfo(cmd *cobra.Command, args []string) error {
-	// Check if command is disabled
-	if err := cli.CheckCommandAllowed("info"); err != nil {
-		return err
-	}
-
 	if len(args) == 0 {
 		return fmt.Errorf("module argument required")
 	}

@@ -6,7 +6,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/albertocavalcante/bz/internal/cli"
 	"github.com/albertocavalcante/bz/internal/cmdutil"
 	"github.com/albertocavalcante/bz/internal/registry"
 )
@@ -46,11 +45,6 @@ func configureSearchCmd() {
 }
 
 func runSearch(cmd *cobra.Command, args []string) error {
-	// Check if command is disabled
-	if err := cli.CheckCommandAllowed("search"); err != nil {
-		return err
-	}
-
 	query := args[0]
 	ctx := cmdutil.CommandContext(cmd)
 

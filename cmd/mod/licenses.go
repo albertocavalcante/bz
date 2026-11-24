@@ -67,11 +67,6 @@ type LicensesOutput struct {
 }
 
 func runLicenses(cmd *cobra.Command, args []string) error {
-	// Check if command is disabled
-	if err := cli.CheckCommandAllowed("licenses"); err != nil {
-		return err
-	}
-
 	// Validate flags
 	if licensesCheck && licensesAllow == "" && licensesDeny == "" {
 		return fmt.Errorf("--check requires --allow or --deny flag")
