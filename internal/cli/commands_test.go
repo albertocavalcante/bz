@@ -7,6 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/albertocavalcante/bz/internal/bzconfig"
 )
 
 func TestCommandDisabledError_Error(t *testing.T) {
@@ -226,4 +228,33 @@ disabled = ["audit"]
 	err = CheckCommandAllowed("audit")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "BZ_OFFLINE")
+}
+
+func TestEffective_FlagBeatsConfigMode(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Chdir(tmpDir)
+	ResetCachedConfig()
+	t.Cleanup(ResetCachedConfig)
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, ".bz.toml"), []byte("[network]\nmode = \"offline\"\n"), 0o600))
+	Global = Options{PreferOffline: true}
+	t.Cleanup(func() { Global = Options{} })
+
+	eff, err := Effective()
+	require.NoError(t, err)
+	assert.Equal(t, bzconfig.NetworkModePreferOffline, eff.Network.Mode)
+	assert.Equal(t, "flag --prefer-offline", eff.Source(bzconfig.KeyMode).String())
+}
+
+func TestCheckOfflineAllowed_InvalidConfigFailsClosed(t *testing.T) {
+	// The error names the resolved path (/private/var on macOS).
+	tmpDir, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
+	t.Chdir(tmpDir)
+	ResetCachedConfig()
+	t.Cleanup(ResetCachedConfig)
+	Global = Options{}
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, ".bz.toml"), []byte("[network]\nmode = \"ofline\"\n"), 0o600))
+
+	err = CheckOfflineAllowed("audit")
+	require.EqualError(t, err, `invalid network mode "ofline" in project config `+filepath.Join(tmpDir, ".bz.toml")+` (want "online", "prefer-offline" or "offline")`)
 }

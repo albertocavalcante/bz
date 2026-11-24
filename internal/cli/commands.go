@@ -146,11 +146,14 @@ func (e *OfflineModeError) Is(target error) bool {
 	return ok
 }
 
-// CheckOfflineAllowed checks if network access is available for a command.
-// Returns OfflineModeError if offline mode is enabled.
-// This checks both CLI flags and configuration.
+// CheckOfflineAllowed returns OfflineModeError when offline mode is on, and
+// the load error when the configuration is invalid (fail closed).
 func CheckOfflineAllowed(cmdName string) error {
-	if IsEffectivelyOffline() {
+	offline, err := EffectivelyOffline()
+	if err != nil {
+		return err
+	}
+	if offline {
 		return &OfflineModeError{
 			Command: cmdName,
 		}
@@ -158,26 +161,12 @@ func CheckOfflineAllowed(cmdName string) error {
 	return nil
 }
 
-// IsEffectivelyOffline returns true if either CLI flags or config specify offline mode.
-func IsEffectivelyOffline() bool {
-	if IsOffline() {
-		return true
-	}
+// EffectivelyOffline reports whether flags or configuration select offline
+// mode, or the error that keeps the configuration from loading.
+func EffectivelyOffline() (bool, error) {
 	cfg, err := Effective()
 	if err != nil {
-		return false
+		return false, err
 	}
-	return cfg.IsOffline()
-}
-
-// IsEffectivelyPreferOffline returns true if either CLI flags or config specify prefer-offline mode.
-func IsEffectivelyPreferOffline() bool {
-	if IsPreferOffline() {
-		return true
-	}
-	cfg, err := Effective()
-	if err != nil {
-		return false
-	}
-	return cfg.IsPreferOffline()
+	return IsOffline() || cfg.IsOffline(), nil
 }

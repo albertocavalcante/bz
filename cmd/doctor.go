@@ -145,7 +145,7 @@ func checkConfig(out io.Writer) DoctorCheck {
 	check := DoctorCheck{Name: "config"}
 	if _, err := cli.Effective(); err != nil {
 		check.Status = statusFail
-		check.Message = err.Error()
+		check.Message = "configuration: " + formatError(err)
 		if !doctorJSON {
 			printCheckFail(out, check.Message, "")
 		}
@@ -317,8 +317,19 @@ func checkRegistryConnectivity(ctx context.Context, out io.Writer) DoctorCheck {
 		Name: "registry_connectivity",
 	}
 
-	// Check if offline mode is enabled
-	if cli.IsEffectivelyOffline() {
+	// Without a valid configuration the registry and mode are unknown, so
+	// doctor must not reach out to a default one.
+	offline, err := cli.EffectivelyOffline()
+	if err != nil {
+		check.Status = statusSkipped
+		check.Message = "Registry connectivity (skipped: configuration is invalid)"
+		if !doctorJSON {
+			printCheckSkipped(out, check.Message)
+		}
+		return check
+	}
+
+	if offline {
 		check.Status = statusSkipped
 		check.Message = "Registry connectivity (skipped - offline mode)"
 		if !doctorJSON {

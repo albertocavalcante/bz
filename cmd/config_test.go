@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -206,14 +208,25 @@ func TestRun_RegistryCredentialsAreRedacted(t *testing.T) {
 // reports it as a failed "config" check, in text and in --json.
 func TestRun_DoctorReportsBrokenConfig(t *testing.T) {
 	ws, _ := configWorkspace(t, "[network]\nmode = \"ofline\"\n", "")
-	want := `invalid network mode "ofline" in project config ` + filepath.Join(ws, ".bz.toml") + ` (want "online", "prefer-offline" or "offline")`
 	if resolved, err := filepath.EvalSymlinks(ws); err == nil {
-		want = `invalid network mode "ofline" in project config ` + filepath.Join(resolved, ".bz.toml") + ` (want "online", "prefer-offline" or "offline")`
+		ws = resolved
 	}
+	want := `configuration: invalid network mode "ofline" in project config ` + filepath.Join(ws, ".bz.toml") +
+		` (want "online", "prefer-offline" or "offline")`
+
+	// The registry check must do no I/O when the configuration is invalid.
+	registry := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("doctor contacted the registry despite an invalid configuration: %s %s", r.Method, r.URL)
+	}))
+	defer registry.Close()
+	oldURL := defaultDoctorRegistryURL
+	defaultDoctorRegistryURL = registry.URL
+	t.Cleanup(func() { defaultDoctorRegistryURL = oldURL })
 
 	stdout, stderr, code := runCLI(t, "doctor")
 	assert.Equal(t, 1, code)
 	assert.Contains(t, stdout, failSymbol()+" "+want+"\n")
+	assert.Contains(t, stdout, skippedSymbol()+" Registry connectivity (skipped: configuration is invalid)\n")
 	assert.NotContains(t, stderr, "Warning:", "one problem, one message")
 	assert.Zero(t, countErrorLines(stderr))
 
@@ -221,21 +234,48 @@ func TestRun_DoctorReportsBrokenConfig(t *testing.T) {
 	assert.Equal(t, 1, code)
 	var result DoctorResult
 	require.NoError(t, json.Unmarshal([]byte(stdout), &result))
-	var cfg *DoctorCheck
-	for i := range result.Checks {
-		if result.Checks[i].Name == "config" {
-			cfg = &result.Checks[i]
-		}
+	byName := map[string]DoctorCheck{}
+	for _, c := range result.Checks {
+		byName[c.Name] = c
 	}
-	require.NotNil(t, cfg)
-	assert.Equal(t, DoctorCheck{Name: "config", Status: statusFail, Message: want}, *cfg)
+	assert.Equal(t, DoctorCheck{Name: "config", Status: statusFail, Message: want}, byName["config"])
+	assert.Equal(t, DoctorCheck{Name: "registry_connectivity", Status: statusSkipped,
+		Message: "Registry connectivity (skipped: configuration is invalid)"}, byName["registry_connectivity"])
+}
+
+// TestRun_SeveralConfigErrorsAreOneList: one Error: header, then one
+// indented item per problem.
+func TestRun_SeveralConfigErrorsAreOneList(t *testing.T) {
+	ws, _ := configWorkspace(t, "[network]\nmode = \"ofline\"\nregistry = \"foo\"\ntimeout = \"30\"\n", "")
+	if resolved, err := filepath.EvalSymlinks(ws); err == nil {
+		ws = resolved
+	}
+	src := "project config " + filepath.Join(ws, ".bz.toml")
+	stdout, stderr, code := runCLI(t, "mod", "list")
+	assert.Equal(t, 1, code)
+	assert.Empty(t, stdout)
+	assert.Equal(t, "Error: 3 problems:\n"+
+		`  - invalid network mode "ofline" in `+src+` (want "online", "prefer-offline" or "offline")`+"\n"+
+		`  - invalid registry in `+src+`: "foo": want an https://, http:// or file:// URL or an absolute path`+"\n"+
+		`  - invalid network timeout "30" in `+src+` (want a positive Go duration such as "30s")`+"\n", stderr)
+}
+
+func TestRun_FlagLayerApplies(t *testing.T) {
+	t.Run("an invalid --registry stops the command", func(t *testing.T) {
+		configWorkspace(t, "", "")
+		// cache stats has no --registry of its own, so the root flag applies.
+		stdout, stderr, code := runCLI(t, "--registry", "foo", "cache", "stats")
+		assert.Equal(t, 1, code)
+		assert.Empty(t, stdout)
+		assert.Equal(t, `Error: invalid registry in flag --registry: "foo": want an https://, http:// or file:// URL or an absolute path`+"\n", stderr)
+	})
 }
 
 // TestRun_HelpOnlyCommandsRunWithBrokenConfig: bare group commands only
 // print help, so a broken config is a warning there; commands that act on
 // configuration still fail closed.
 func TestRun_HelpOnlyCommandsRunWithBrokenConfig(t *testing.T) {
-	for _, args := range [][]string{{"mod"}, {"cache"}, {"registry"}, {"help"}, {"version"}} {
+	for _, args := range [][]string{{"mod"}, {"cache"}, {"registry"}, {"help"}, {"version"}, {"completion", "bash"}, {"__complete", "mod", ""}} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			configWorkspace(t, "[network\n", "")
 			_, stderr, code := runCLI(t, args...)
