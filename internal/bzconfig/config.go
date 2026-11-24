@@ -103,18 +103,23 @@ const (
 // LayerKind identifies a configuration layer. Higher values take precedence.
 type LayerKind int
 
-// Configuration layers, lowest precedence first. The gaps leave room for
-// layers that are not loaded yet.
+// Configuration layers, lowest precedence first.
 const (
-	LayerDefault LayerKind = 0
-	LayerProject LayerKind = 3
-	LayerEnv     LayerKind = 4
+	LayerDefault LayerKind = iota
+	LayerSystem
+	LayerUser
+	LayerProject
+	LayerEnv
 )
 
 func (k LayerKind) String() string {
 	switch k {
 	case LayerDefault:
 		return "default"
+	case LayerSystem:
+		return "system config"
+	case LayerUser:
+		return "user config"
 	case LayerProject:
 		return "project config"
 	case LayerEnv:

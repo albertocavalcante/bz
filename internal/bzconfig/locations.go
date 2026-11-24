@@ -33,8 +33,11 @@ type Environment struct {
 	LookupEnv   func(string) (string, bool)
 	Getwd       func() (string, error)
 	UserHomeDir func() (string, error)
-	ReadFile    func(string) ([]byte, error)
-	Stat        func(string) (fs.FileInfo, error)
+	// Open opens a file for reading without following a final symbolic
+	// link (and without blocking on a FIFO where the platform allows).
+	// Config files are read only through the handle it returns.
+	Open func(string) (fs.File, error)
+	Stat func(string) (fs.FileInfo, error)
 	// EvalSymlinks resolves symbolic links (filepath.EvalSymlinks); nil
 	// means paths are used as given.
 	EvalSymlinks func(string) (string, error)
@@ -57,7 +60,7 @@ func OSEnvironment() Environment {
 		LookupEnv:   os.LookupEnv,
 		Getwd:       os.Getwd,
 		UserHomeDir: os.UserHomeDir,
-		ReadFile:    os.ReadFile,
+		Open:        openNoFollow,
 		Stat:        os.Stat,
 
 		EvalSymlinks: filepath.EvalSymlinks,
