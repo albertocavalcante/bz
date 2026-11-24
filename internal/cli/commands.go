@@ -51,7 +51,7 @@ type OfflineModeError struct {
 }
 
 func (e *OfflineModeError) Error() string {
-	msg := fmt.Sprintf("Error: 'bz %s' requires network access", e.Command)
+	msg := fmt.Sprintf("'bz %s' requires network access", e.Command)
 	if e.Description != "" {
 		msg += " " + e.Description
 	}

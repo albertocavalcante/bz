@@ -186,7 +186,7 @@ func runDownload(cmd *cobra.Command, args []string) error {
 
 	fmt.Fprintf(out, "\nDownloaded %d module(s) to %s\n", result.Downloaded, cacheDir)
 	if result.Failed > 0 {
-		return fmt.Errorf("%d module(s) failed to download", result.Failed)
+		return cmdutil.AlreadyReported(fmt.Errorf("%d module(s) failed to download", result.Failed))
 	}
 
 	return nil

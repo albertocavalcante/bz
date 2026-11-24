@@ -171,8 +171,9 @@ func (e *ModuleNotFoundError) Unwrap() error {
 // If the error is not ErrModuleNotFound, it returns the original error unchanged.
 // If the registry doesn't support listing or listing fails, it returns a simple ModuleNotFoundError.
 func WrapModuleNotFound(ctx context.Context, reg Registry, moduleName string, err error) error {
-	if !errors.Is(err, ErrModuleNotFound) {
-		return err
+	var netErr *NetworkError
+	if !errors.Is(err, ErrModuleNotFound) || errors.As(err, &netErr) {
+		return err // keep the NetworkError (offline cache miss) and its suggestions
 	}
 
 	result := &ModuleNotFoundError{

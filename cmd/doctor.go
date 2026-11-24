@@ -402,7 +402,7 @@ func printDoctorText(out io.Writer, result DoctorResult) error {
 	} else {
 		fmt.Fprintf(out, "%s\n", cli.Warning(fmt.Sprintf("%d issues found", result.IssueCount)))
 	}
-	return fmt.Errorf("%d issues found", result.IssueCount)
+	return cmdutil.AlreadyReported(fmt.Errorf("%d issues found", result.IssueCount))
 }
 
 func printDoctorJSON(out io.Writer, result DoctorResult) error {
