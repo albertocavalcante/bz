@@ -51,29 +51,29 @@ bz audit
 
 ## Commands
 
-| Command             | Description                             |
-| ------------------- | --------------------------------------- |
-| `bz init`           | Initialize a new MODULE.bazel file      |
-| `bz mod add`        | Add dependencies                        |
-| `bz mod rm`         | Remove dependencies                     |
-| `bz mod list`       | List all dependencies                   |
-| `bz mod info`       | Show module information from registry   |
-| `bz mod update`     | Update dependencies to latest versions  |
-| `bz mod outdated`   | Check for newer versions                |
-| `bz mod search`     | Search for modules in registry          |
-| `bz mod sync`       | Sync modules between registries         |
-| `bz mod graph`      | Display dependency graph                |
-| `bz mod stats`      | Show dependency statistics              |
-| `bz mod why`        | Explain why a module is included        |
-| `bz mod licenses`   | Show license information                |
-| `bz audit`          | Scan via OSV (cannot match modules yet) |
-| `bz sbom`           | Generate SBOM (SPDX/CycloneDX)          |
-| `bz cache download` | Download modules to local cache         |
-| `bz cache verify`   | Verify cache completeness               |
-| `bz cache clear`    | Clear local cache                       |
-| `bz doctor`         | Check Bazel/bzlmod setup                |
-| `bz registry ping`  | Test registry connectivity              |
-| `bz completion`     | Generate shell completions              |
+| Command             | Description                            |
+| ------------------- | -------------------------------------- |
+| `bz init`           | Initialize a new MODULE.bazel file     |
+| `bz mod add`        | Add dependencies                       |
+| `bz mod rm`         | Remove dependencies                    |
+| `bz mod list`       | List all dependencies                  |
+| `bz mod info`       | Show module information from registry  |
+| `bz mod update`     | Update dependencies to latest versions |
+| `bz mod outdated`   | Check for newer versions               |
+| `bz mod search`     | Search for modules in registry         |
+| `bz mod sync`       | Sync modules between registries        |
+| `bz mod graph`      | Display dependency graph               |
+| `bz mod stats`      | Show dependency statistics             |
+| `bz mod why`        | Explain why a module is included       |
+| `bz mod licenses`   | Show license information               |
+| `bz audit`          | Scan via OSV (no module matching yet)  |
+| `bz sbom`           | Generate SBOM (SPDX/CycloneDX)         |
+| `bz cache download` | Download modules to local cache        |
+| `bz cache verify`   | Verify cache completeness              |
+| `bz cache clear`    | Clear local cache                      |
+| `bz doctor`         | Check Bazel/bzlmod setup               |
+| `bz registry ping`  | Test registry connectivity             |
+| `bz completion`     | Generate shell completions             |
 
 Run `bz <command> --help` for usage details, or see the [CLI Reference](https://albertocavalcante.github.io/bz/cli/).
 
