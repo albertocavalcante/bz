@@ -24,6 +24,12 @@ func TestParseFile_ErrorMessages(t *testing.T) {
 		{"trailing text", "[network]\nmode = \"online\" x\n", "invalid TOML at line 2, column 16: expected the end of the line after a value"},
 		{"unclosed table", "[network\n", "invalid TOML at line 1, column 9: invalid table name"},
 		{"defined twice", "[network]\nmode = \"online\"\nmode = \"offline\"\n", "invalid TOML at line 3, column 1: key or table defined twice"},
+		{"duplicate key named UTF-8", "\"UTF-8\" = 1\n\"UTF-8\" = 2\n", "invalid TOML at line 2, column 2: key or table defined twice"},
+		{"duplicate key named after a reason", "\"strings cannot contain newlines\" = 1\n\"strings cannot contain newlines\" = 2\n", "invalid TOML at line 2, column 2: key or table defined twice"},
+		{"NUL at the start", "\x00[network]\n", "invalid TOML at line 1, column 1: NUL byte (TOML files must be UTF-8)"},
+		{"key reused as a table", "[network]\nmode = 1\n[network.mode]\n", "invalid TOML at line 3, column 2: key or table defined twice"},
+		{"dotted key below a value, named like a reason", "\"Key '\" = 1\n[\"Key '\".x]\n", "invalid TOML at line 2, column 3: key or table defined twice"},
+		{"number out of range", "x = 99999999999999999999\n", "invalid TOML at line 1, column 5: number out of range"},
 		{"column counts characters", "[network]\nmode = \"é€\" x\n", "invalid TOML at line 2, column 12: expected the end of the line after a value"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -59,4 +65,19 @@ func TestParseErrorsNeverEchoContent(t *testing.T) {
 		describeTOMLError(errors.New(`toml: line 4 (last key "hunter2_secret_key"): expected table`), nil))
 	assert.Equal(t, "invalid TOML: a value has the wrong type",
 		describeTOMLError(errors.New(`toml: (last key "hunter2_secret_key"): expected table`), nil))
+}
+
+// TestSeveralErrorsAreProblems: the CLI lists Problems item by item.
+func TestSeveralErrorsAreProblems(t *testing.T) {
+	m, timeout := NetworkMode("bogus"), "30"
+	_, err := Merge(Defaults("/c"), Layer{Kind: LayerProject, Origin: "/p/.bz.toml", Settings: Settings{Mode: &m, Timeout: &timeout}})
+	var p Problems
+	require.ErrorAs(t, err, &p)
+	assert.Len(t, p, 2)
+	assert.Equal(t, errors.Join(p...).Error(), err.Error())
+
+	vars := map[string]string{EnvOffline: "ture", EnvPreferOffline: "nah"}
+	_, err = EnvLayer(func(k string) (string, bool) { v, ok := vars[k]; return v, ok }, "/home/u")
+	require.ErrorAs(t, err, &p)
+	assert.Len(t, p, 2)
 }

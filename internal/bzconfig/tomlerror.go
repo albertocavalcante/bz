@@ -62,39 +62,55 @@ func schemaWant(t reflect.Type, path []string) (string, bool) {
 	return "", false
 }
 
-// syntaxReasons maps fragments of the decoder's syntax messages
-// (BurntSushi/toml lex.go, parse.go, error.go) to fixed text; the first
-// match wins.
-var syntaxReasons = []struct{ fragment, reason string }{
+// syntaxReasons maps the fixed leading words of the decoder's syntax
+// messages (BurntSushi/toml lex.go, parse.go, error.go) to fixed text.
+// Only prefixes are matched: the rest of a message can quote the file.
+var syntaxReasons = []struct{ prefix, reason string }{
 	{"strings cannot contain newlines", "unterminated string"},
-	{"UTF-8", "invalid UTF-8"},
-	{"control characters", "control character"},
+	{"invalid UTF-8", "invalid UTF-8"},
+	{"files cannot contain NULL bytes", "NUL byte (TOML files must be UTF-8)"},
+	{"TOML files cannot contain control characters", "control character"},
 	{"invalid escape", "invalid escape in a string"},
+	{"Escaped character", "invalid escape in a string"},
+	{"unexpected EOF; expected value", "expected a value"},
 	{"expected value", "expected a value"},
 	{"unexpected EOF", "unexpected end of file"},
-	{"end with a newline", "expected the end of the line after a value"},
-	{"already been defined", "key or table defined twice"},
-	{"already created", "key or table defined twice"},
-	{"is not a table", "key or table defined twice"},
-	{"table name", "invalid table name"},
-	{"table array name", "invalid table name"},
-	{"inline table", "invalid inline table"},
-	{"comma", "invalid array or inline table"},
-	{"out of", "number out of range"},
-	{"datetime", "invalid date or time"},
-	{"float", "invalid number"},
-	{"digit", "invalid number"},
-	{"number", "invalid number"},
-	{"key", "invalid key"},
-	{"'='", "invalid key"},
-	{"'.'", "invalid key"},
+	{"expected a top-level item to end with a newline", "expected the end of the line after a value"},
+	{"Key '", "key or table defined twice"},
+	{"unexpected end of table name", "invalid table name"},
+	{"unexpected table separator", "invalid table name"},
+	{"expected end of table array name", "invalid table name"},
+	{"expected '.' or ']'", "invalid table name"},
+	{"newlines not allowed within inline tables", "invalid inline table"},
+	{"expected a comma or an inline table terminator", "invalid inline table"},
+	{"unexpected comma", "invalid array or inline table"},
+	{"expected a comma (',') or array terminator", "invalid array"},
+	{"invalid datetime", "invalid date or time"},
+	{"invalid float", "invalid number"},
+	{"Invalid float", "invalid number"},
+	{"Invalid integer", "invalid number"},
+	{"cannot use sign", "invalid number"},
+	{"floats must start", "invalid number"},
+	{"expected a digit", "invalid number"},
+	{"not a binary", "invalid number"},
+	{"not an octal", "invalid number"},
+	{"not a hexadecimal", "invalid number"},
+	{"unexpected '='", "invalid key"},
+	{"unexpected '.'", "invalid key"},
+	{"expected '.' or '='", "invalid key"},
 }
+
+// outOfRange matches the one message that starts with a value, a number.
+var outOfRange = regexp.MustCompile(`^[-+0-9.eE]+ is out of (range|the safe)`)
 
 func syntaxReason(msg string) string {
 	for _, r := range syntaxReasons {
-		if strings.Contains(msg, r.fragment) {
+		if strings.HasPrefix(msg, r.prefix) {
 			return r.reason
 		}
+	}
+	if outOfRange.MatchString(msg) {
+		return "number out of range"
 	}
 	return "syntax error"
 }

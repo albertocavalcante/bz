@@ -13,6 +13,7 @@ import (
 	"github.com/albertocavalcante/bz/cmd/cache"
 	"github.com/albertocavalcante/bz/cmd/mod"
 	"github.com/albertocavalcante/bz/cmd/registry"
+	"github.com/albertocavalcante/bz/internal/bzconfig"
 	"github.com/albertocavalcante/bz/internal/cli"
 	"github.com/albertocavalcante/bz/internal/cmdutil"
 	registrylib "github.com/albertocavalcante/bz/internal/registry"
@@ -95,36 +96,26 @@ func printError(w io.Writer, err error) {
 	}
 }
 
-// formatError renders err for one "Error:" line. An errors.Join of several
-// errors, alone or wrapped with %w, becomes a count and an indented list so
-// no item reads as an unrelated message.
+// formatError renders err for one "Error:" line. Several configuration
+// problems (bzconfig.Problems), alone or wrapped with %w, become a count and
+// an indented list so no item reads as an unrelated message.
 func formatError(err error) string {
 	msg := strings.TrimRight(err.Error(), "\n")
-	for e := err; e != nil; e = errors.Unwrap(e) {
-		joined, ok := e.(interface{ Unwrap() []error })
-		if !ok {
-			continue
-		}
-		errs := joined.Unwrap()
-		texts := make([]string, len(errs))
-		for i, item := range errs {
-			texts[i] = item.Error()
-		}
-		// fmt.Errorf with several %w also has Unwrap() []error; only a join
-		// ends the message with its items separated by newlines.
-		prefix, isJoin := strings.CutSuffix(err.Error(), strings.Join(texts, "\n"))
-		if len(errs) < 2 || !isJoin {
-			return msg
-		}
-		var b strings.Builder
-		fmt.Fprintf(&b, "%s%d problems:", prefix, len(errs))
-		for _, text := range texts {
-			text = strings.TrimRight(text, "\n")
-			b.WriteString("\n  - " + strings.ReplaceAll(text, "\n", "\n    "))
-		}
-		return b.String()
+	var problems bzconfig.Problems
+	if !errors.As(err, &problems) || len(problems) < 2 {
+		return msg
 	}
-	return msg
+	prefix, ok := strings.CutSuffix(err.Error(), problems.Error())
+	if !ok {
+		return msg // a wrapper that adds text after the list
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s%d problems:", prefix, len(problems))
+	for _, p := range problems {
+		text := strings.TrimRight(p.Error(), "\n")
+		b.WriteString("\n  - " + strings.ReplaceAll(text, "\n", "\n    "))
+	}
+	return b.String()
 }
 
 // Configure wires all root and subcommands once.

@@ -220,7 +220,29 @@ func Merge(defaults Config, layers ...Layer) (*Effective, error) {
 	for _, l := range layers {
 		errs = append(errs, eff.apply(l)...)
 	}
-	return eff, errors.Join(errs...)
+	return eff, joinProblems(errs)
+}
+
+// Problems is several configuration errors reported together, so the CLI
+// can list them; its text is that of errors.Join.
+type Problems []error
+
+func (p Problems) Error() string   { return errors.Join(p...).Error() }
+func (p Problems) Unwrap() []error { return p }
+
+// joinProblems is errors.Join returning Problems: nil when errs has no
+// non-nil error.
+func joinProblems(errs []error) error {
+	var p Problems
+	for _, err := range errs {
+		if err != nil {
+			p = append(p, err)
+		}
+	}
+	if p == nil {
+		return nil
+	}
+	return p
 }
 
 func (e *Effective) apply(l Layer) []error {
