@@ -61,7 +61,7 @@ jobs:
   lint:
     runs-on: ubuntu-24.04
     name: Lint (Go)
-    timeout-minutes: 10
+    timeout-minutes: 15
     permissions:
       contents: read
 
@@ -76,16 +76,13 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+          cache-dependency-path: |
+            go.sum
+            tools.go.sum
 
-      - name: Sync tool dependencies
-        run: go mod tidy -modfile=tools.go.mod
-
+      # Same pinned linter as `just lint` (version lives in tools.go.mod).
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 # v9.2.0
-        with:
-          version: v2.9.0
-          install-mode: goinstall
-          args: --config=tools/lint/golangci.toml
+        run: go tool -modfile=tools.go.mod golangci-lint run --config=tools/lint/golangci.toml
 
   dprint:
     runs-on: ubuntu-24.04
@@ -121,30 +118,40 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+          cache-dependency-path: |
+            go.sum
+            tools.go.sum
 
-      - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@latest
-
+      # Pinned in tools.go.mod. Exits non-zero only for vulnerabilities whose
+      # vulnerable symbols are actually called.
       - name: Run govulncheck
-        run: govulncheck ./...
+        run: go tool -modfile=tools.go.mod govulncheck ./...
 
-  actionlint:
+  actions-lint:
     runs-on: ubuntu-24.04
     name: Lint (Actions)
-    timeout-minutes: 5
+    timeout-minutes: 10
     permissions:
       contents: read
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
         with:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Run actionlint
-        uses: reviewdog/action-actionlint@e58ee9d111489c31395fbe4857b0be6e7635dbda # v1.70.0
+      - name: Setup Go
+        uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
         with:
-          fail_level: error
-          filter_mode: nofilter
-          reporter: github-pr-review
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: |
+            go.sum
+            tools.go.sum
+
+      # actionlint runs the runner's preinstalled shellcheck on run: scripts.
+      - name: Run actionlint
+        run: go tool -modfile=tools.go.mod actionlint
+
+      - name: Run ghalint
+        run: go tool -modfile=tools.go.mod ghalint run -c tools/lint/ghalint.yaml
