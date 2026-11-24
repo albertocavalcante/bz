@@ -166,9 +166,8 @@ func TestRootCmd_TypoSuggestions(t *testing.T) {
 	// Should return an error
 	assert.Error(t, err)
 
-	// Error message should suggest the correct command
-	errOutput := errBuf.String()
-	assert.Contains(t, errOutput, "version", "Should suggest 'version' for typo 'versoin'")
+	// Cobra errors are printed by run(), so the suggestion lives in the error.
+	assert.Contains(t, err.Error()+errBuf.String(), "version", "Should suggest 'version' for typo 'versoin'")
 }
 
 func TestRootCmd_OfflineFlag(t *testing.T) {

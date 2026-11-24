@@ -1,7 +1,11 @@
 package cmd
 
 import (
+	"errors"
+	"fmt"
+	"io"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/spf13/cobra"
@@ -10,6 +14,8 @@ import (
 	"github.com/albertocavalcante/bz/cmd/mod"
 	"github.com/albertocavalcante/bz/cmd/registry"
 	"github.com/albertocavalcante/bz/internal/cli"
+	"github.com/albertocavalcante/bz/internal/cmdutil"
+	registrylib "github.com/albertocavalcante/bz/internal/registry"
 )
 
 var showVersion bool
@@ -52,11 +58,40 @@ Environment Variables:
 	},
 }
 
-// Execute runs the root command.
+// Execute runs the root command and exits non-zero on failure.
 func Execute() {
+	if code := run(os.Args[1:], os.Stdout, os.Stderr); code != 0 {
+		os.Exit(code)
+	}
+}
+
+// run executes the CLI with the given arguments and returns the exit status.
+// Errors are written to stderr exactly once; stdout is left untouched so
+// machine-readable output stays parseable.
+func run(args []string, stdout, stderr io.Writer) int {
 	Configure()
-	if err := rootCmd.Execute(); err != nil {
-		os.Exit(1)
+	rootCmd.SetArgs(args)
+	rootCmd.SetOut(stdout)
+	rootCmd.SetErr(stderr)
+
+	err := rootCmd.Execute()
+	if err == nil {
+		return 0
+	}
+	if !cmdutil.IsAlreadyReported(err) {
+		printError(stderr, err)
+	}
+	return 1
+}
+
+// printError writes err to w as an "Error: ..." line, followed by any
+// suggestions carried by the error type.
+func printError(w io.Writer, err error) {
+	fmt.Fprintf(w, "Error: %s\n", strings.TrimRight(err.Error(), "\n"))
+
+	var netErr *registrylib.NetworkError
+	if errors.As(err, &netErr) {
+		fmt.Fprintf(w, "\n%s", netErr.UserFriendlyError())
 	}
 }
 
@@ -81,6 +116,15 @@ func Configure() {
 
 func configureRootCmd() {
 	rootCmd.CompletionOptions.HiddenDefaultCmd = true
+
+	// Errors are printed once by run(); cobra must neither print them itself
+	// nor append usage text to runtime failures.
+	rootCmd.SilenceErrors = true
+	rootCmd.SilenceUsage = true
+	rootCmd.SetFlagErrorFunc(func(c *cobra.Command, err error) error {
+		hint := fmt.Sprintf("Run '%s --help' for usage.", c.CommandPath())
+		return fmt.Errorf("%w\n%s", err, hint)
+	})
 
 	// Global flags
 	rootCmd.PersistentFlags().BoolVarP(&cli.Global.Quiet, "quiet", "q", false, "Reduce output, only show errors and essential info")
