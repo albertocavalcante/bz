@@ -32,6 +32,41 @@ func TestIsTruthy(t *testing.T) {
 	}
 }
 
+func TestParseBool(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		in      string
+		want    bool
+		wantErr bool
+	}{
+		{in: "1", want: true},
+		{in: "TRUE", want: true},
+		{in: "yes", want: true},
+		{in: " On ", want: true},
+		{in: "", want: false},
+		{in: "0", want: false},
+		{in: "False", want: false},
+		{in: "no", want: false},
+		{in: "off", want: false},
+		{in: "ture", wantErr: true},
+		{in: "2", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.in, func(t *testing.T) {
+			t.Parallel()
+			got, err := ParseBool(tt.in)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("ParseBool(%q) error = %v, wantErr %v", tt.in, err, tt.wantErr)
+			}
+			if got != tt.want {
+				t.Fatalf("ParseBool(%q) = %v, want %v", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestIsTruthyEnv(t *testing.T) {
 	const envName = "BZ_ENVUTIL_TEST"
 	t.Setenv(envName, "yes")

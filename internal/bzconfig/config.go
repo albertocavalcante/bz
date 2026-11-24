@@ -1,13 +1,25 @@
-// Package bzconfig provides configuration loading and management for bz.
-// It supports TOML configuration files with a layered precedence system.
+// Package bzconfig computes bz's effective configuration.
+//
+// Configuration comes from layers, lowest precedence first:
+//
+//	built-in defaults < system file < user file < project file
+//	< environment variables < command-line flags
+//
+// Each layer records only the settings it sets explicitly (see [Settings]),
+// so a higher layer can set a value back to its default and a lower layer's
+// value survives when a higher layer does not mention it. [Merge] combines
+// the layers once, validates every value and records which layer set each
+// effective value (see [Effective.Source]).
+//
+// The package is free of process-global state: filesystem and environment
+// access goes through an injected [Environment].
 package bzconfig
 
 import (
-	"os"
-	"path/filepath"
+	"fmt"
 	"slices"
-
-	"github.com/BurntSushi/toml"
+	"strings"
+	"time"
 )
 
 // NetworkMode defines how bz handles network access.
@@ -22,6 +34,16 @@ const (
 	NetworkModeOffline NetworkMode = "offline"
 )
 
+// Valid reports whether m is one of the known network modes.
+func (m NetworkMode) Valid() bool {
+	switch m {
+	case NetworkModeOnline, NetworkModePreferOffline, NetworkModeOffline:
+		return true
+	default:
+		return false
+	}
+}
+
 // Default values for configuration.
 const (
 	DefaultRegistry = "https://bcr.bazel.build"
@@ -29,139 +51,34 @@ const (
 	DefaultTTL      = ""
 )
 
-// Config represents the bz configuration.
+// Config is a fully resolved configuration: every field holds its effective
+// value, defaults included.
 type Config struct {
-	Network  NetworkConfig  `toml:"network"`
-	Cache    CacheConfig    `toml:"cache"`
-	Commands CommandsConfig `toml:"commands"`
+	Network  NetworkConfig
+	Cache    CacheConfig
+	Commands CommandsConfig
 }
 
 // NetworkConfig contains network-related settings.
 type NetworkConfig struct {
-	Mode               NetworkMode `toml:"mode"`
-	Registry           string      `toml:"registry"`
-	FallbackRegistries []string    `toml:"fallback_registries"`
-	Timeout            string      `toml:"timeout"`
+	Mode               NetworkMode
+	Registry           string
+	FallbackRegistries []string
+	// Timeout is the request timeout as written in configuration
+	// (Go duration syntax); TimeoutDuration is its parsed value.
+	Timeout         string
+	TimeoutDuration time.Duration
 }
 
 // CacheConfig contains cache-related settings.
 type CacheConfig struct {
-	Dir string `toml:"dir"`
-	TTL string `toml:"ttl"`
+	Dir string
+	TTL string
 }
 
 // CommandsConfig contains command-related settings.
 type CommandsConfig struct {
-	Disabled []string `toml:"disabled"`
-}
-
-// LoadOption configures the Load function.
-type LoadOption func(*loadOptions)
-
-type loadOptions struct {
-	systemConfig  string
-	userConfig    string
-	projectConfig string
-}
-
-// WithSystemConfig sets the system config path (e.g., /etc/bz/config.toml).
-func WithSystemConfig(path string) LoadOption {
-	return func(opts *loadOptions) {
-		opts.systemConfig = path
-	}
-}
-
-// WithUserConfig sets the user config path (e.g., ~/.config/bz/config.toml).
-func WithUserConfig(path string) LoadOption {
-	return func(opts *loadOptions) {
-		opts.userConfig = path
-	}
-}
-
-// WithProjectConfig sets the project config path (e.g., .bzconfig.toml).
-func WithProjectConfig(path string) LoadOption {
-	return func(opts *loadOptions) {
-		opts.projectConfig = path
-	}
-}
-
-// Load loads configuration with precedence:
-// 1. CLI flags (passed as overrides)
-// 2. Environment variables (BZ_OFFLINE, BZ_REGISTRY, etc.)
-// 3. Project config (.bzconfig.toml)
-// 4. User config (~/.config/bz/config.toml)
-// 5. System config (/etc/bz/config.toml)
-// 6. Built-in defaults
-func Load(overrides *Config, opts ...LoadOption) (*Config, error) {
-	options := &loadOptions{}
-	for _, opt := range opts {
-		opt(options)
-	}
-
-	// Start with defaults
-	cfg := &Config{}
-	cfg.applyDefaults()
-
-	// Layer 6 -> 5: Load system config
-	if options.systemConfig != "" {
-		if _, err := os.Stat(options.systemConfig); err == nil {
-			systemCfg, err := LoadFromFile(options.systemConfig)
-			if err != nil {
-				return nil, err
-			}
-			cfg.merge(systemCfg)
-		}
-	}
-
-	// Layer 5 -> 4: Load user config
-	if options.userConfig != "" {
-		if _, err := os.Stat(options.userConfig); err == nil {
-			userCfg, err := LoadFromFile(options.userConfig)
-			if err != nil {
-				return nil, err
-			}
-			cfg.merge(userCfg)
-		}
-	}
-
-	// Layer 4 -> 3: Load project config
-	if options.projectConfig != "" {
-		if _, err := os.Stat(options.projectConfig); err == nil {
-			projectCfg, err := LoadFromFile(options.projectConfig)
-			if err != nil {
-				return nil, err
-			}
-			cfg.merge(projectCfg)
-		}
-	}
-
-	// Layer 3 -> 2: Apply environment variables
-	cfg.applyEnvVars()
-
-	// Layer 2 -> 1: Apply CLI overrides
-	if overrides != nil {
-		cfg.mergeOverrides(overrides)
-	}
-
-	return cfg, nil
-}
-
-// LoadFromFile loads configuration from a TOML file.
-func LoadFromFile(path string) (*Config, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-
-	cfg := &Config{}
-	if err := toml.Unmarshal(data, cfg); err != nil {
-		return nil, err
-	}
-
-	// Apply defaults for missing values
-	cfg.applyDefaults()
-
-	return cfg, nil
+	Disabled []string
 }
 
 // IsOffline returns true if network mode is offline.
@@ -174,108 +91,223 @@ func (c *Config) IsPreferOffline() bool {
 	return c.Network.Mode == NetworkModePreferOffline
 }
 
-// IsCommandDisabled returns true if the command is disabled.
-func (c *Config) IsCommandDisabled(cmd string) bool {
-	return slices.Contains(c.Commands.Disabled, cmd)
+// Key names one setting, spelled as its dotted TOML key.
+type Key string
+
+// Setting keys.
+const (
+	KeyMode               Key = "network.mode"
+	KeyRegistry           Key = "network.registry"
+	KeyFallbackRegistries Key = "network.fallback_registries"
+	KeyTimeout            Key = "network.timeout"
+	KeyCacheDir           Key = "cache.dir"
+	KeyCacheTTL           Key = "cache.ttl"
+	KeyDisabled           Key = "commands.disabled"
+)
+
+// Keys returns every setting key in documentation order.
+func Keys() []Key {
+	return []Key{KeyMode, KeyRegistry, KeyFallbackRegistries, KeyTimeout, KeyCacheDir, KeyCacheTTL, KeyDisabled}
 }
 
-// GetRegistry returns the effective registry URL.
-func (c *Config) GetRegistry() string {
-	if c.Network.Registry == "" {
-		return DefaultRegistry
-	}
-	return c.Network.Registry
-}
+// LayerKind identifies a configuration layer. Higher values take precedence.
+type LayerKind int
 
-// applyDefaults applies default values to empty fields.
-func (c *Config) applyDefaults() {
-	if c.Network.Mode == "" {
-		c.Network.Mode = NetworkModeOnline
-	}
-	if c.Network.Registry == "" {
-		c.Network.Registry = DefaultRegistry
-	}
-	if c.Network.Timeout == "" {
-		c.Network.Timeout = DefaultTimeout
-	}
-	if c.Cache.Dir == "" {
-		c.Cache.Dir = defaultCacheDir()
-	}
-}
+// Configuration layers, lowest precedence first.
+const (
+	LayerDefault LayerKind = iota
+	LayerSystem
+	LayerUser
+	LayerProject
+	LayerEnv
+	LayerFlag
+)
 
-// defaultCacheDir returns the default cache directory.
-func defaultCacheDir() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ".cache/bz"
-	}
-	return filepath.Join(home, ".cache", "bz")
-}
-
-// merge merges values from another config, overwriting non-empty values.
-func (c *Config) merge(other *Config) {
-	if other == nil {
-		return
-	}
-
-	// Network
-	if other.Network.Mode != "" {
-		c.Network.Mode = other.Network.Mode
-	}
-	if other.Network.Registry != "" && other.Network.Registry != DefaultRegistry {
-		c.Network.Registry = other.Network.Registry
-	}
-	if len(other.Network.FallbackRegistries) > 0 {
-		c.Network.FallbackRegistries = other.Network.FallbackRegistries
-	}
-	if other.Network.Timeout != "" && other.Network.Timeout != DefaultTimeout {
-		c.Network.Timeout = other.Network.Timeout
-	}
-
-	// Cache
-	if other.Cache.Dir != "" && other.Cache.Dir != defaultCacheDir() {
-		c.Cache.Dir = other.Cache.Dir
-	}
-	if other.Cache.TTL != "" {
-		c.Cache.TTL = other.Cache.TTL
-	}
-
-	// Commands
-	if len(other.Commands.Disabled) > 0 {
-		c.Commands.Disabled = other.Commands.Disabled
+func (k LayerKind) String() string {
+	switch k {
+	case LayerDefault:
+		return "default"
+	case LayerSystem:
+		return "system config"
+	case LayerUser:
+		return "user config"
+	case LayerProject:
+		return "project config"
+	case LayerEnv:
+		return "environment"
+	case LayerFlag:
+		return "flag"
+	default:
+		return fmt.Sprintf("layer(%d)", int(k))
 	}
 }
 
-// mergeOverrides merges CLI overrides, which always take precedence.
-func (c *Config) mergeOverrides(overrides *Config) {
-	if overrides == nil {
-		return
-	}
+// Source says where an effective value came from.
+type Source struct {
+	Layer LayerKind
+	// Origin is the file path, environment variable or flag that set the
+	// value; empty for built-in defaults.
+	Origin string
+}
 
-	// Network - overrides always win if set
-	if overrides.Network.Mode != "" {
-		c.Network.Mode = overrides.Network.Mode
+// String renders the source for messages, e.g. "user config
+// /home/me/.config/bz/config.toml" or "environment BZ_OFFLINE".
+func (s Source) String() string {
+	if s.Origin == "" {
+		return s.Layer.String()
 	}
-	if overrides.Network.Registry != "" {
-		c.Network.Registry = overrides.Network.Registry
-	}
-	if len(overrides.Network.FallbackRegistries) > 0 {
-		c.Network.FallbackRegistries = overrides.Network.FallbackRegistries
-	}
-	if overrides.Network.Timeout != "" {
-		c.Network.Timeout = overrides.Network.Timeout
-	}
+	return s.Layer.String() + " " + s.Origin
+}
 
-	// Cache
-	if overrides.Cache.Dir != "" {
-		c.Cache.Dir = overrides.Cache.Dir
-	}
-	if overrides.Cache.TTL != "" {
-		c.Cache.TTL = overrides.Cache.TTL
-	}
+// Settings holds the values one layer sets explicitly. A nil field means the
+// layer does not mention that setting.
+type Settings struct {
+	Mode               *NetworkMode
+	Registry           *string
+	FallbackRegistries *[]string
+	Timeout            *string
+	CacheDir           *string
+	CacheTTL           *string
+	Disabled           *[]string
+}
 
-	// Commands
-	if len(overrides.Commands.Disabled) > 0 {
-		c.Commands.Disabled = overrides.Commands.Disabled
+// Layer is one configuration source.
+type Layer struct {
+	Kind LayerKind
+	// Origin applies to every key unless KeyOrigins names a more specific
+	// origin (used by the environment and flag layers, where each key has
+	// its own variable or flag name).
+	Origin     string
+	KeyOrigins map[Key]string
+	Settings   Settings
+}
+
+func (l Layer) source(k Key) Source {
+	if o, ok := l.KeyOrigins[k]; ok {
+		return Source{Layer: l.Kind, Origin: o}
 	}
+	return Source{Layer: l.Kind, Origin: l.Origin}
+}
+
+// Effective is the merged configuration plus the source of each value.
+type Effective struct {
+	Config
+	sources map[Key]Source
+	// Files lists the configuration files that were read, lowest
+	// precedence first.
+	Files []string
+}
+
+// Source returns the layer that set key's effective value.
+func (e *Effective) Source(key Key) Source {
+	if s, ok := e.sources[key]; ok {
+		return s
+	}
+	return Source{Layer: LayerDefault}
+}
+
+// Defaults returns the built-in defaults. cacheDir is the platform default
+// cache directory (see [DefaultCacheDir]).
+func Defaults(cacheDir string) Config {
+	timeout, _ := time.ParseDuration(DefaultTimeout)
+	return Config{
+		Network: NetworkConfig{
+			Mode:            NetworkModeOnline,
+			Registry:        DefaultRegistry,
+			Timeout:         DefaultTimeout,
+			TimeoutDuration: timeout,
+		},
+		Cache: CacheConfig{Dir: cacheDir, TTL: DefaultTTL},
+	}
+}
+
+// Merge applies layers over defaults in the order given (callers pass them
+// lowest precedence first) and validates every explicitly set value. An
+// invalid value is an error naming its source even when a higher layer
+// overrides it, because it is still a mistake in that file or variable.
+func Merge(defaults Config, layers ...Layer) (*Effective, error) {
+	eff := &Effective{Config: defaults, sources: map[Key]Source{}}
+	for _, k := range Keys() {
+		eff.sources[k] = Source{Layer: LayerDefault}
+	}
+	eff.Network.FallbackRegistries = slices.Clone(defaults.Network.FallbackRegistries)
+	eff.Commands.Disabled = slices.Clone(defaults.Commands.Disabled)
+
+	for _, l := range layers {
+		if err := eff.apply(l); err != nil {
+			return nil, err
+		}
+	}
+	return eff, nil
+}
+
+func (e *Effective) apply(l Layer) error {
+	s := l.Settings
+	if s.Mode != nil {
+		if !s.Mode.Valid() {
+			return fmt.Errorf("invalid network mode %q in %s (want %q, %q or %q)",
+				*s.Mode, l.source(KeyMode), NetworkModeOnline, NetworkModePreferOffline, NetworkModeOffline)
+		}
+		e.Network.Mode = *s.Mode
+		e.sources[KeyMode] = l.source(KeyMode)
+	}
+	if s.Registry != nil {
+		if strings.TrimSpace(*s.Registry) == "" {
+			return fmt.Errorf("empty registry in %s", l.source(KeyRegistry))
+		}
+		e.Network.Registry = *s.Registry
+		e.sources[KeyRegistry] = l.source(KeyRegistry)
+	}
+	if s.FallbackRegistries != nil {
+		e.Network.FallbackRegistries = slices.Clone(*s.FallbackRegistries)
+		e.sources[KeyFallbackRegistries] = l.source(KeyFallbackRegistries)
+	}
+	if s.Timeout != nil {
+		d, err := time.ParseDuration(*s.Timeout)
+		if err != nil || d <= 0 {
+			return fmt.Errorf("invalid network timeout %q in %s (want a positive Go duration such as \"30s\")",
+				*s.Timeout, l.source(KeyTimeout))
+		}
+		e.Network.Timeout = *s.Timeout
+		e.Network.TimeoutDuration = d
+		e.sources[KeyTimeout] = l.source(KeyTimeout)
+	}
+	if s.CacheDir != nil {
+		if strings.TrimSpace(*s.CacheDir) == "" {
+			return fmt.Errorf("empty cache dir in %s", l.source(KeyCacheDir))
+		}
+		e.Cache.Dir = *s.CacheDir
+		e.sources[KeyCacheDir] = l.source(KeyCacheDir)
+	}
+	if s.CacheTTL != nil {
+		e.Cache.TTL = *s.CacheTTL
+		e.sources[KeyCacheTTL] = l.source(KeyCacheTTL)
+	}
+	if s.Disabled != nil {
+		e.Commands.Disabled = slices.Clone(*s.Disabled)
+		e.sources[KeyDisabled] = l.source(KeyDisabled)
+	}
+	return nil
+}
+
+// FlagLayer builds the command-line flag layer from the global flags.
+// Only flags that are set contribute; --offline and --prefer-offline are
+// mutually exclusive and validated by the caller.
+func FlagLayer(offline, preferOffline bool, registry string) Layer {
+	l := Layer{Kind: LayerFlag, KeyOrigins: map[Key]string{}}
+	switch {
+	case offline:
+		m := NetworkModeOffline
+		l.Settings.Mode = &m
+		l.KeyOrigins[KeyMode] = "--offline"
+	case preferOffline:
+		m := NetworkModePreferOffline
+		l.Settings.Mode = &m
+		l.KeyOrigins[KeyMode] = "--prefer-offline"
+	}
+	if registry != "" {
+		l.Settings.Registry = &registry
+		l.KeyOrigins[KeyRegistry] = "--registry"
+	}
+	return l
 }

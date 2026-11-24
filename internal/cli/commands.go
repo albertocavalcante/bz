@@ -2,20 +2,21 @@ package cli
 
 import (
 	"fmt"
+	"slices"
 	"sync"
 
 	"github.com/albertocavalcante/bz/internal/bzconfig"
 )
 
 var (
-	cachedCfg     *bzconfig.Config
+	cachedCfg     *bzconfig.Effective
 	cachedCfgOnce sync.Once
 	cachedCfgErr  error
 )
 
-func loadCachedConfig() (*bzconfig.Config, error) {
+func loadCachedConfig() (*bzconfig.Effective, error) {
 	cachedCfgOnce.Do(func() {
-		cachedCfg, cachedCfgErr = bzconfig.Load(nil, bzconfig.WithProjectConfig(".bzconfig.toml"))
+		cachedCfg, cachedCfgErr = bzconfig.LoadProjectFile(".bzconfig.toml")
 	})
 	return cachedCfg, cachedCfgErr
 }
@@ -75,7 +76,7 @@ func CheckCommandAllowed(cmdName string) error {
 		return nil //nolint:nilerr // config loading failure is non-fatal; allow command to proceed
 	}
 
-	if cfg.IsCommandDisabled(cmdName) {
+	if slices.Contains(cfg.Commands.Disabled, cmdName) {
 		return &CommandDisabledError{
 			Command: cmdName,
 			Reason:  "disabled in configuration",
