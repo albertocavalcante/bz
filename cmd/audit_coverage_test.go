@@ -96,11 +96,12 @@ func TestAudit_AllQueriesFail(t *testing.T) {
 		stdout, stderr, code := runCLI(t, args...)
 
 		assert.Equal(t, 1, code, "allow-unchecked=%v", allow)
-		assert.Contains(t, stdout, "Queried 0 of 2 direct dependencies as Go packages named after the module.")
-		assert.Contains(t, stdout, "query failed:")
-		assert.NotContains(t, stdout, "No vulnerabilities found")
-		assert.Equal(t, 1, countErrorLines(stderr), stderr)
-		assert.Contains(t, stderr, "OSV queries failed for 2 of 2 direct dependencies")
+		assert.Equal(t, "Queried 0 of 2 direct dependencies as Go packages named after the module.\n"+
+			"Not queried (2):\n"+
+			"  - rules_go@0.50.1: query failed: OSV API returned status 500: boom\n"+
+			"  - gazelle@0.38.0: query failed: OSV API returned status 500: boom\n"+
+			"No direct dependency could be queried; no OSV data was obtained.\n", stdout)
+		assert.Equal(t, "Error: OSV queries failed for 2 of 2 direct dependencies\n", stderr)
 	}
 }
 
@@ -124,8 +125,9 @@ func TestAudit_AllQueriesFailJSON(t *testing.T) {
 	assert.NotNil(t, got.Vulnerabilities)
 }
 
-func TestAudit_PartialFailure(t *testing.T) {
-	auditProject(t, mappedModules)
+// firstQueryOnlyOSV answers the first query with no records and fails the rest.
+func firstQueryOnlyOSV(t *testing.T) {
+	t.Helper()
 	var n atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		if n.Add(1) == 1 {
@@ -138,14 +140,51 @@ func TestAudit_PartialFailure(t *testing.T) {
 	old := osvClient
 	osvClient = osv.NewClient(osv.WithAPIURL(srv.URL))
 	t.Cleanup(func() { osvClient = old })
+}
+
+func TestAudit_PartialFailure(t *testing.T) {
+	auditProject(t, mappedModules)
+	firstQueryOnlyOSV(t)
 
 	stdout, stderr, code := runCLI(t, "audit", "--ecosystem=Go", "--allow-unchecked")
 
 	assert.Equal(t, 1, code)
-	assert.Contains(t, stdout, "Queried 1 of 2 direct dependencies as Go packages named after the module.")
-	assert.NotContains(t, stdout, "No vulnerabilities found\n")
-	assert.Equal(t, 1, countErrorLines(stderr), stderr)
-	assert.Contains(t, stderr, "OSV queries failed for 1 of 2 direct dependencies")
+	assert.Equal(t, "Queried 1 of 2 direct dependencies as Go packages named after the module.\n"+
+		"Not queried (1):\n"+
+		"  - gazelle@0.38.0: query failed: OSV API returned status 502: \n"+
+		"No OSV records found for the 1 direct dependency that could be queried, under its name in Go; this does not show the modules are free of vulnerabilities.\n", stdout)
+	assert.Equal(t, "Error: OSV queries failed for 1 of 2 direct dependencies\n", stderr)
+}
+
+func TestAudit_PartialFailureJSON(t *testing.T) {
+	auditProject(t, mappedModules)
+	firstQueryOnlyOSV(t)
+
+	stdout, stderr, code := runCLI(t, "audit", "--json", "--ecosystem=Go")
+
+	assert.Equal(t, 1, code)
+	assert.Equal(t, "Error: OSV queries failed for 1 of 2 direct dependencies\n", stderr)
+	assert.Equal(t, `{
+  "total": 2,
+  "vulnerable": 0,
+  "vulnerabilities": [],
+  "summary": {
+    "scope": "direct",
+    "ecosystem": "Go",
+    "total": 2,
+    "checked": 1,
+    "unchecked": 1,
+    "failed": 1
+  },
+  "unchecked": [
+    {
+      "module": "gazelle",
+      "version": "0.38.0",
+      "reason": "query failed: OSV API returned status 502: "
+    }
+  ]
+}
+`, stdout)
 }
 
 func TestAudit_UnreachableRegistryDoesNotReportClean(t *testing.T) {

@@ -78,7 +78,7 @@ Suggested fixes:
 There is no automatic mapping from Bazel modules to OSV packages. An earlier version queried `rules_go` as a Go package and `rules_python` as a PyPI package: those names are not upstream package names, so the queries could not match, yet the modules were reported as checked.
 </Aside>
 
-`--ecosystem` queries one OSV ecosystem for every module, using the Bazel module name as the package name. The name must be one of [OSV's ecosystems](https://ossf.github.io/osv-schema/#affectedpackage-field); case is normalised (`go` becomes `Go`), and a near miss is rejected with a suggestion.
+`--ecosystem` queries one OSV ecosystem for every module, using the Bazel module name as the package name. The name must be one of [OSV's ecosystems](https://ossf.github.io/osv-schema/#affectedpackage-field) as bz knew them on 2026-11-24; case is normalised (`go` becomes `Go`), and a near miss is rejected with a suggestion. If OSV has added an ecosystem since, pass `--ecosystem-unverified` to send the name as given; bz warns on stderr, because a misspelling would silently match nothing.
 
 ```bash
 bz audit --ecosystem=Go
@@ -91,7 +91,7 @@ No OSV records found under these names in Go; this does not show the modules are
 
 stderr: `note: --ecosystem=Go queries module names as package names; exit status 0 does not mean the modules were audited`.
 
-This only finds records for modules whose name equals the upstream package name, so bz says "queried", never "checked", and never reports a clean result. Exit status is 0 when no records come back (with the note above) and 1 when records are found. Do not use `--ecosystem` to make a CI job pass: that exit status 0 audits nothing for the modules whose names are not upstream package names.
+This only finds records for modules whose name equals the upstream package name, so bz says "queried", never "checked", and never reports a clean result. If a query fails, bz says so and does not claim that no records were found for that module. Exit status is 0 when no records come back (with the note above) and 1 when records are found. Do not use `--ecosystem` to make a CI job pass: that exit status 0 audits nothing for the modules whose names are not upstream package names.
 
 ### Exit Codes
 

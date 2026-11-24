@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -381,6 +382,7 @@ func TestHTTPClient_Query_RequiresEcosystem(t *testing.T) {
 
 func TestParseEcosystem(t *testing.T) {
 	t.Parallel()
+	const tail = "bz's list is from the OSV schema of 2026-11-24 (see https://ossf.github.io/osv-schema/#affectedpackage-field); if the spelling is right and OSV added it since, pass --ecosystem-unverified"
 	tests := []struct {
 		name, in, want, wantErr string
 	}{
@@ -389,8 +391,9 @@ func TestParseEcosystem(t *testing.T) {
 		{"mixed case", "PYPI", "PyPI", ""},
 		{"crates", "CRATES.IO", "crates.io", ""},
 		{"release suffix kept", "debian:12", "Debian:12", ""},
-		{"typo", "Mavn", "", `unknown OSV ecosystem "Mavn": did you mean "Maven"? (valid names: https://ossf.github.io/osv-schema/#affectedpackage-field)`},
-		{"unknown", "bazel", "", `unknown OSV ecosystem "bazel" (valid names: https://ossf.github.io/osv-schema/#affectedpackage-field)`},
+		{"typo", "Mavn", "", `unknown OSV ecosystem "Mavn": did you mean "Maven"? ` + tail},
+		{"unknown", "bazel", "", `unknown OSV ecosystem "bazel": ` + tail},
+		{"long value is truncated", strings.Repeat("x", 100), "", `unknown OSV ecosystem "` + strings.Repeat("x", 64) + `…": ` + tail},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

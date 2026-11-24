@@ -16,10 +16,11 @@ import (
 )
 
 var (
-	auditJSON      bool
-	auditSeverity  string
-	auditFix       bool
-	auditEcosystem string
+	auditJSON       bool
+	auditSeverity   string
+	auditFix        bool
+	auditEcosystem  string
+	auditUnverified bool
 
 	auditAllowUnchecked bool
 )
@@ -70,6 +71,7 @@ func configureAuditCmd() {
 	auditCmd.Flags().StringVar(&auditSeverity, "severity", "", "Minimum severity to report (critical, high, medium, low)")
 	auditCmd.Flags().BoolVar(&auditFix, "fix", false, "Show suggested updates to fix vulnerabilities")
 	auditCmd.Flags().StringVar(&auditEcosystem, "ecosystem", "", "OSV ecosystem to query for every module, with the module name as the package name (e.g., Go, PyPI, crates.io, npm, Maven)")
+	auditCmd.Flags().BoolVar(&auditUnverified, "ecosystem-unverified", false, "Accept an --ecosystem name that is not in bz's list of OSV ecosystems (a misspelling then matches nothing)")
 	auditCmd.Flags().BoolVar(&auditAllowUnchecked, "allow-unchecked", false, "Do not fail when modules could not be checked (failed queries and vulnerabilities still fail)")
 	rootCmd.AddCommand(auditCmd)
 }
@@ -184,11 +186,9 @@ func runAudit(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	ecosystem := ""
-	if auditEcosystem != "" {
-		if ecosystem, err = osv.ParseEcosystem(auditEcosystem); err != nil {
-			return fmt.Errorf("invalid --ecosystem: %w", err)
-		}
+	ecosystem, err := resolveEcosystem(cmd.ErrOrStderr())
+	if err != nil {
+		return err
 	}
 
 	f, err := module.FindAndLoad()
@@ -270,6 +270,30 @@ func runAudit(cmd *cobra.Command, args []string) error {
 	return auditVerdict(len(allVulns), summary)
 }
 
+// resolveEcosystem validates --ecosystem. A name outside bz's list is an error
+// unless --ecosystem-unverified opts in, because OSV matches names exactly and
+// a typo would otherwise look like a clean result.
+func resolveEcosystem(stderr io.Writer) (string, error) {
+	if auditEcosystem == "" {
+		if auditUnverified {
+			return "", errors.New("--ecosystem-unverified needs --ecosystem")
+		}
+		return "", nil
+	}
+	eco, err := osv.ParseEcosystem(auditEcosystem)
+	if err == nil {
+		return eco, nil
+	}
+	if !auditUnverified {
+		return "", fmt.Errorf("invalid --ecosystem: %w", err)
+	}
+	if !osv.IsSaneEcosystemName(auditEcosystem) {
+		return "", fmt.Errorf("invalid --ecosystem %q: not a plausible ecosystem name", osv.Truncate(auditEcosystem, 64))
+	}
+	fmt.Fprintf(stderr, "warning: --ecosystem=%s is not in bz's list of OSV ecosystems (2026-11-24); a misspelling would silently match nothing\n", auditEcosystem)
+	return auditEcosystem, nil
+}
+
 // reasonNoMapping explains modules bz cannot query: OSV matches on upstream
 // package name (https://ossf.github.io/osv-schema/#affectedpackage-field).
 const reasonNoMapping = "no package mapping: bz does not know which upstream package this module corresponds to"
@@ -335,11 +359,7 @@ func printAuditCoverage(w io.Writer, vulns []AuditVuln, unchecked []UncheckedMod
 		return
 	}
 	if s.Ecosystem != "" {
-		found := "No OSV records found"
-		if threshold != osv.SeverityUnknown {
-			found = fmt.Sprintf("No OSV records at or above %s found", threshold)
-		}
-		fmt.Fprintf(w, "%s under these names in %s; this does not show the modules are free of vulnerabilities.\n", found, s.Ecosystem)
+		printForcedNoRecords(w, s, threshold)
 		return
 	}
 	// Without an ecosystem nothing is queried, so there is never a clean result to report.
@@ -450,4 +470,27 @@ func colorizeSeverity(severity string) string {
 	default:
 		return severity
 	}
+}
+
+// printForcedNoRecords words the empty result of a forced ecosystem so it only
+// claims what was actually queried; failed queries produced no data at all.
+func printForcedNoRecords(w io.Writer, s AuditSummary, threshold osv.Severity) {
+	if s.Checked == 0 {
+		fmt.Fprintln(w, "No direct dependency could be queried; no OSV data was obtained.")
+		return
+	}
+	found := "No OSV records found"
+	if threshold != osv.SeverityUnknown {
+		found = fmt.Sprintf("No OSV records at or above %s found", threshold)
+	}
+	if s.Checked == s.Total {
+		fmt.Fprintf(w, "%s under these names in %s; this does not show the modules are free of vulnerabilities.\n", found, s.Ecosystem)
+		return
+	}
+	names := "their names"
+	if s.Checked == 1 {
+		names = "its name"
+	}
+	fmt.Fprintf(w, "%s for the %s that could be queried, under %s in %s; this does not show the modules are free of vulnerabilities.\n",
+		found, deps(s.Checked), names, s.Ecosystem)
 }

@@ -1,10 +1,16 @@
 package cmd
 
 import (
+	"fmt"
+	"io"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/albertocavalcante/bz/internal/osv"
 )
 
 const rulesetsOnly = `module(name = "app", version = "1.0.0")
@@ -175,22 +181,25 @@ bazel_dep(name = "rules_go", version = "0.50.1")
 }
 
 func TestAudit_EcosystemValidation(t *testing.T) {
-	const list = "https://ossf.github.io/osv-schema/#affectedpackage-field"
+	const tail = "bz's list is from the OSV schema of 2026-11-24 (see https://ossf.github.io/osv-schema/#affectedpackage-field); if the spelling is right and OSV added it since, pass --ecosystem-unverified\n"
 	tests := []struct {
 		name string
-		flag string
+		args []string
 		want string
 	}{
-		{"typo", "--ecosystem=pypy", `Error: invalid --ecosystem: unknown OSV ecosystem "pypy": did you mean "PyPI"? (valid names: ` + list + ")\n"},
-		{"near miss in case", "--ecosystem=Mavn", `Error: invalid --ecosystem: unknown OSV ecosystem "Mavn": did you mean "Maven"? (valid names: ` + list + ")\n"},
-		{"unknown", "--ecosystem=bazel", `Error: invalid --ecosystem: unknown OSV ecosystem "bazel" (valid names: ` + list + ")\n"},
+		{"typo", []string{"--ecosystem=pypy"}, `Error: invalid --ecosystem: unknown OSV ecosystem "pypy": did you mean "PyPI"? ` + tail},
+		{"near miss", []string{"--ecosystem=Mavn"}, `Error: invalid --ecosystem: unknown OSV ecosystem "Mavn": did you mean "Maven"? ` + tail},
+		{"unknown", []string{"--ecosystem=Brandnew"}, `Error: invalid --ecosystem: unknown OSV ecosystem "Brandnew": ` + tail},
+		{"long value", []string{"--ecosystem=" + strings.Repeat("x", 100)}, `Error: invalid --ecosystem: unknown OSV ecosystem "` + strings.Repeat("x", 64) + `…": ` + tail},
+		{"opt-in without ecosystem", []string{"--ecosystem-unverified"}, "Error: --ecosystem-unverified needs --ecosystem\n"},
+		{"opt-in rejects garbage", []string{"--ecosystem=a/b", "--ecosystem-unverified"}, `Error: invalid --ecosystem "a/b": not a plausible ecosystem name` + "\n"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			auditProject(t, rulesetsOnly)
 			hits := osvServer(t, http.StatusOK, `{}`)
 
-			stdout, stderr, code := runCLI(t, "audit", tt.flag)
+			stdout, stderr, code := runCLI(t, append([]string{"audit"}, tt.args...)...)
 
 			assert.Empty(t, stdout)
 			assert.Equal(t, tt.want, stderr)
@@ -198,4 +207,30 @@ func TestAudit_EcosystemValidation(t *testing.T) {
 			assert.Zero(t, hits.Load())
 		})
 	}
+}
+
+func TestAudit_UnverifiedEcosystemIsSentAsGiven(t *testing.T) {
+	auditProject(t, `module(name = "app", version = "1.0.0")
+
+bazel_dep(name = "rules_go", version = "0.50.1")
+`)
+	var got string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		got = string(b)
+		fmt.Fprint(w, `{}`)
+	}))
+	t.Cleanup(srv.Close)
+	old := osvClient
+	osvClient = osv.NewClient(osv.WithAPIURL(srv.URL))
+	t.Cleanup(func() { osvClient = old })
+
+	stdout, stderr, code := runCLI(t, "audit", "--ecosystem=Brandnew", "--ecosystem-unverified")
+
+	assert.JSONEq(t, `{"package":{"name":"rules_go","ecosystem":"Brandnew"},"version":"0.50.1"}`, got)
+	assert.Equal(t, "Queried 1 of 1 direct dependency as a Brandnew package named after the module.\n"+
+		"No OSV records found under these names in Brandnew; this does not show the modules are free of vulnerabilities.\n", stdout)
+	assert.Equal(t, "warning: --ecosystem=Brandnew is not in bz's list of OSV ecosystems (2026-11-24); a misspelling would silently match nothing\n"+
+		"note: --ecosystem=Brandnew queries module names as package names; exit status 0 does not mean the modules were audited\n", stderr)
+	assert.Equal(t, 0, code)
 }
