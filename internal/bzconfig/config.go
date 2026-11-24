@@ -179,9 +179,6 @@ func (l Layer) source(k Key) Source {
 type Effective struct {
 	Config
 	sources map[Key]Source
-	// Files lists the configuration files that were read, lowest
-	// precedence first.
-	Files []string
 }
 
 // Source returns the layer that set key's effective value.

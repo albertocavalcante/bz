@@ -125,7 +125,7 @@ func TestLoad_RealFilesPrecedence(t *testing.T) {
 	ws := t.TempDir()
 	userPath := filepath.Join(configHome, "bz", "config.toml")
 	require.NoError(t, os.MkdirAll(filepath.Dir(userPath), 0o700))
-	require.NoError(t, os.WriteFile(userPath, []byte("[network]\nmode = \"offline\"\nregistry = \"https://user.example\"\ntimeout = \"5s\"\n"), 0o600))
+	require.NoError(t, os.WriteFile(userPath, []byte("[network]\nmode = \"offline\"\nregistry = \"https://user.example\"\ntimeout = \"5s\"\n[cache]\nttl = \"1h\"\n"), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(ws, "MODULE.bazel"), nil, 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(ws, ".bz.toml"), []byte("[network]\nregistry = \"https://project.example\"\ntimeout = \"30s\"\n"), 0o600))
 	t.Chdir(ws)
@@ -144,12 +144,6 @@ func TestLoad_RealFilesPrecedence(t *testing.T) {
 	assert.Equal(t, LayerProject, eff.Source(KeyTimeout).Layer)
 	assert.Equal(t, "/from/env", eff.Cache.Dir)
 	assert.Equal(t, LayerEnv, eff.Source(KeyCacheDir).Layer)
-	assert.Equal(t, LayerUser, func() LayerKind {
-		for _, f := range eff.Files {
-			if strings.HasSuffix(f, "config.toml") {
-				return LayerUser
-			}
-		}
-		return LayerDefault
-	}())
+	assert.Equal(t, "1h", eff.Cache.TTL)
+	assert.Equal(t, Source{Layer: LayerUser, Origin: userPath}, eff.Source(KeyCacheTTL))
 }

@@ -3,6 +3,7 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -257,4 +258,42 @@ func TestCheckOfflineAllowed_InvalidConfigFailsClosed(t *testing.T) {
 
 	err = CheckOfflineAllowed("audit")
 	require.EqualError(t, err, `invalid network mode "ofline" in project config `+filepath.Join(tmpDir, ".bz.toml")+` (want "online", "prefer-offline" or "offline")`)
+}
+
+// TestLoadEffective_Precedence runs every layer through the path the binary
+// takes: the cached environment, LoadLayers and the flag layer from Global.
+func TestLoadEffective_Precedence(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("ownership rules differ on Windows")
+	}
+	configHome, ws := t.TempDir(), t.TempDir()
+	userPath := filepath.Join(configHome, "bz", "config.toml")
+	require.NoError(t, os.MkdirAll(filepath.Dir(userPath), 0o700))
+	require.NoError(t, os.WriteFile(userPath, []byte("[network]\nmode = \"offline\"\nregistry = \"https://user.example\"\n[cache]\nttl = \"1h\"\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(ws, "MODULE.bazel"), nil, 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(ws, ".bz.toml"), []byte("[network]\nregistry = \"https://project.example\"\ntimeout = \"30s\"\n"), 0o600))
+	t.Chdir(ws)
+	t.Cleanup(SetEnvironment(bzconfig.OSEnvironment().Isolated(configHome).WithEnv(map[string]string{
+		bzconfig.EnvCacheDir: "/from/env", bzconfig.EnvOffline: "", bzconfig.EnvPreferOffline: "", bzconfig.EnvRegistry: "",
+		bzconfig.EnvDisableCommands: "", bzconfig.EnvTrustedConfigDirs: "",
+	})))
+	Global = Options{PreferOffline: true}
+	t.Cleanup(func() { Global = Options{} })
+
+	eff, warnings, err := LoadEffective()
+	require.NoError(t, err)
+	assert.Empty(t, warnings)
+	for key, want := range map[bzconfig.Key]bzconfig.LayerKind{
+		bzconfig.KeyMode:     bzconfig.LayerFlag,
+		bzconfig.KeyRegistry: bzconfig.LayerProject,
+		bzconfig.KeyTimeout:  bzconfig.LayerProject,
+		bzconfig.KeyCacheDir: bzconfig.LayerEnv,
+		bzconfig.KeyCacheTTL: bzconfig.LayerUser,
+	} {
+		assert.Equal(t, want, eff.Source(key).Layer, key)
+	}
+	assert.Equal(t, bzconfig.NetworkModePreferOffline, eff.Network.Mode)
+	assert.Equal(t, "https://project.example", eff.Network.Registry)
+	assert.Equal(t, "/from/env", eff.Cache.Dir)
+	assert.Equal(t, "1h", eff.Cache.TTL)
 }

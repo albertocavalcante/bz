@@ -204,7 +204,6 @@ func TestLoad_LowerLayerSurvivesUnrelatedHigherFile(t *testing.T) {
 	assert.Equal(t, Source{Layer: LayerUser, Origin: userFile}, eff.Source(KeyMode))
 	assert.Equal(t, "/project/cache", eff.Cache.Dir)
 	assert.Equal(t, Source{Layer: LayerProject, Origin: projectFile}, eff.Source(KeyCacheDir))
-	assert.Equal(t, []string{userFile, projectFile}, eff.Files)
 }
 
 // Regression: merge skipped values equal to the default, so a project file

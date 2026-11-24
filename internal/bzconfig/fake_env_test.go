@@ -148,6 +148,17 @@ const (
 	projectFile = "/work/proj/.bz.toml"
 )
 
+// Load is what internal/cli does: LoadLayers, then Resolve with the flags.
+// It lives in the tests so they take the binary's path.
+func Load(e Environment, flags Layer) (*Effective, []string, error) {
+	loaded, err := LoadLayers(e)
+	if err != nil {
+		return nil, loaded.Warnings, err
+	}
+	eff, err := loaded.Resolve(flags)
+	return eff, loaded.Warnings, err
+}
+
 func mustLoad(t *testing.T, f *fakeEnv, flags Layer) *Effective {
 	t.Helper()
 	eff, _, err := Load(f.env(), flags)

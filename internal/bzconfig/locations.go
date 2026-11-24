@@ -387,8 +387,6 @@ func isWorkspaceRoot(e Environment, dir string, trusted []fs.FileInfo) (bool, []
 type Loaded struct {
 	// Layers holds the file and environment layers, lowest precedence first.
 	Layers []Layer
-	// Files lists the files that were read.
-	Files []string
 	// Warnings are non-fatal problems for the caller to print once, such as
 	// skipped workspace markers or unusable BZ_TRUSTED_CONFIG_DIRS entries.
 	Warnings []string
@@ -442,7 +440,6 @@ func LoadLayers(e Environment) (*Loaded, error) {
 			return out, err
 		}
 		out.Layers = append(out.Layers, layer)
-		out.Files = append(out.Files, f.path)
 	}
 
 	lookup := e.LookupEnv
@@ -465,17 +462,5 @@ func (l *Loaded) Resolve(flags Layer) (*Effective, error) {
 	if err != nil {
 		return nil, err
 	}
-	eff.Files = append([]string(nil), l.Files...)
 	return eff, nil
-}
-
-// Load computes the effective configuration for e and the given flags,
-// with the warnings collected while loading.
-func Load(e Environment, flags Layer) (*Effective, []string, error) {
-	loaded, err := LoadLayers(e)
-	if err != nil {
-		return nil, loaded.Warnings, err
-	}
-	eff, err := loaded.Resolve(flags)
-	return eff, loaded.Warnings, err
 }
