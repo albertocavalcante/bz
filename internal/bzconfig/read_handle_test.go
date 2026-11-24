@@ -1,6 +1,7 @@
 package bzconfig
 
 import (
+	"errors"
 	"io/fs"
 	"strings"
 	"testing"
@@ -68,6 +69,41 @@ func TestReadConfigFile(t *testing.T) {
 					return f.openPlain(path)
 				}
 			},
+		},
+		{
+			// The link is resolved, then its target is replaced by a symlink
+			// before the open; O_NOFOLLOW makes that open fail (ELOOP).
+			name: "symlink swapped before the open is refused", kind: LayerProject, path: handleTestFile,
+			setup: func(f *fakeEnv) {
+				f.files[handleTestFile] = ""
+				f.files["/real/conf.toml"] = ""
+				f.links[handleTestFile] = "/real/conf.toml"
+				f.openHook = func(path string) (fs.File, error) {
+					return nil, &fs.PathError{Op: "open", Path: path, Err: errors.New("too many levels of symbolic links")}
+				}
+			},
+			wantErr: "reading project config /work/proj/.bz.toml: open /real/conf.toml: too many levels of symbolic links",
+		},
+		{
+			name: "file at the size limit is read", kind: LayerProject, path: handleTestFile, wantOK: true,
+			want:  strings.Repeat("#", maxConfigSize),
+			setup: func(f *fakeEnv) { f.files[handleTestFile] = strings.Repeat("#", maxConfigSize) },
+		},
+		{
+			name: "project FIFO is refused", kind: LayerProject, path: handleTestFile,
+			setup: func(f *fakeEnv) {
+				f.files[handleTestFile] = ""
+				f.modes[handleTestFile] = fs.ModeNamedPipe | 0o644
+			},
+			wantErr: "untrusted project config /work/proj/.bz.toml: not a regular file; fix: replace it with a regular file, " +
+				"or list /work/proj in BZ_TRUSTED_CONFIG_DIRS if the shared setup is intended",
+		},
+		{
+			name: "user config that is a directory is refused", kind: LayerUser, path: "/u/config.toml",
+			setup: func(f *fakeEnv) {
+				f.files["/u/config.toml/x"] = ""
+			},
+			wantErr: "reading user config /u/config.toml: not a regular file",
 		},
 		{
 			name: "oversized file", kind: LayerProject, path: handleTestFile,
