@@ -5,13 +5,16 @@ pre-commit:
       glob: "*.go"
       run: test -z "$(gofmt -l . | grep -v vendor)" || (gofmt -d . && exit 1)
 
+    # Hooks export GIT_DIR/GIT_INDEX_FILE; tests that run git in temp dirs
+    # would otherwise act on this repository (a linked worktree shares the
+    # main checkout's .git). Unset the repository-selecting variables.
     go-vet:
       glob: "*.go"
-      run: go vet ./...
+      run: env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_OBJECT_DIRECTORY -u GIT_COMMON_DIR -u GIT_PREFIX go vet ./...
 
     go-test:
       glob: "*.go"
-      run: go test ./...
+      run: env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_OBJECT_DIRECTORY -u GIT_COMMON_DIR -u GIT_PREFIX go test ./...
 
     dprint:
       glob: "*.{md,json,toml,yml,yaml}"
