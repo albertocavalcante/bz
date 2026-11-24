@@ -225,8 +225,24 @@ type Info struct {
 // toolchain. A link-time value (-ldflags -X) wins when it differs from its
 // placeholder; otherwise the module version and vcs.* settings from bi are
 // used, which is what `go install module@version` and `go build` in a VCS
-// checkout provide. bi may be nil.
+// checkout provide. A leading "v" is dropped from the version either way.
+// bi may be nil.
 func Resolve(ldVersion, ldCommit, ldDate string, bi *debug.BuildInfo) Info {
+	info := resolve(ldVersion, ldCommit, ldDate, bi)
+	info.Version = trimV(info.Version)
+	return info
+}
+
+// trimV drops the leading "v" of a semver-looking version ("v1.2.3" becomes
+// "1.2.3") so tagged releases and go install builds display the same form.
+func trimV(v string) string {
+	if len(v) > 1 && v[0] == 'v' && v[1] >= '0' && v[1] <= '9' {
+		return v[1:]
+	}
+	return v
+}
+
+func resolve(ldVersion, ldCommit, ldDate string, bi *debug.BuildInfo) Info {
 	info := Info{Version: ldVersion, Commit: ldCommit, Date: ldDate}
 	if bi == nil {
 		return info

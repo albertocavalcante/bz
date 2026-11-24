@@ -28,6 +28,24 @@ func TestResolve(t *testing.T) {
 			want: Info{"1.2.3", "abc1234", "2026-01-01T00:00:00Z"},
 		},
 		{
+			name: "ldflags version with v prefix is normalised",
+			ld:   [3]string{"v1.2.3", UnsetCommit, UnsetDate},
+			bi:   nil,
+			want: Info{"1.2.3", UnsetCommit, UnsetDate},
+		},
+		{
+			name: "version without v prefix is unchanged",
+			ld:   [3]string{"nightly.20260101.abc1234", UnsetCommit, UnsetDate},
+			bi:   nil,
+			want: Info{"nightly.20260101.abc1234", UnsetCommit, UnsetDate},
+		},
+		{
+			name: "non-semver v word is unchanged",
+			ld:   [3]string{"vendor-build", UnsetCommit, UnsetDate},
+			bi:   nil,
+			want: Info{"vendor-build", UnsetCommit, UnsetDate},
+		},
+		{
 			name: "nil build info keeps placeholders",
 			ld:   [3]string{UnsetVersion, UnsetCommit, UnsetDate},
 			bi:   nil,
@@ -37,7 +55,7 @@ func TestResolve(t *testing.T) {
 			name: "go install module version",
 			ld:   [3]string{UnsetVersion, UnsetCommit, UnsetDate},
 			bi:   buildInfo("v0.3.1"),
-			want: Info{"v0.3.1", UnsetCommit, UnsetDate},
+			want: Info{"0.3.1", UnsetCommit, UnsetDate},
 		},
 		{
 			name: "devel module version is ignored",
@@ -49,7 +67,7 @@ func TestResolve(t *testing.T) {
 			name: "modified tree is marked dirty",
 			ld:   [3]string{UnsetVersion, UnsetCommit, UnsetDate},
 			bi:   buildInfo("v0.3.2-0.20260203040506-0123456789ab+dirty", "vcs.revision", rev, "vcs.modified", "true"),
-			want: Info{"v0.3.2-0.20260203040506-0123456789ab+dirty", "0123456-dirty", UnsetDate},
+			want: Info{"0.3.2-0.20260203040506-0123456789ab+dirty", "0123456-dirty", UnsetDate},
 		},
 		{
 			name: "fields fall back independently",
@@ -61,7 +79,7 @@ func TestResolve(t *testing.T) {
 			name: "empty ldflags values count as unset",
 			ld:   [3]string{"", "", ""},
 			bi:   buildInfo("v1.0.0", "vcs.revision", rev, "vcs.time", "2026-02-03T04:05:06Z"),
-			want: Info{"v1.0.0", "0123456", "2026-02-03T04:05:06Z"},
+			want: Info{"1.0.0", "0123456", "2026-02-03T04:05:06Z"},
 		},
 	}
 	for _, tt := range tests {
