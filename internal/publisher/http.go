@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	neturl "net/url"
 	"os"
@@ -90,7 +91,7 @@ func NewHTTPPublisher(baseURL string, auth *Auth) (*HTTPPublisher, error) {
 	// process can flush with CloseIdleConnections (httptest.Server.Close
 	// does), failing in-flight requests with "http: CloseIdleConnections
 	// called". Cloning keeps the default dialer, proxy and TLS settings.
-	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport := newTransport()
 
 	return &HTTPPublisher{
 		base:     u,
@@ -102,6 +103,28 @@ func NewHTTPPublisher(baseURL string, auth *Auth) (*HTTPPublisher, error) {
 		transport: transport,
 		auth:      auth,
 	}, nil
+}
+
+// newTransport returns a private transport configured like
+// http.DefaultTransport. If the default was replaced by another RoundTripper
+// (instrumentation, a test double) it cannot be cloned, so build one with the
+// same settings net/http uses for its default.
+func newTransport() *http.Transport {
+	if t, ok := http.DefaultTransport.(*http.Transport); ok {
+		return t.Clone()
+	}
+	return &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          100,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
 }
 
 // Put sends an HTTP PUT request to write content.

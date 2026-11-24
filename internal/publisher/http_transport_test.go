@@ -1,7 +1,10 @@
 package publisher
 
 import (
+	"context"
+	"errors"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 )
 
@@ -50,5 +53,40 @@ func TestHTTPPublisher_OwnsItsTransport(t *testing.T) {
 	}
 	if a.httpClient.CheckRedirect != nil {
 		t.Error("redirect policy changed; it must stay the net/http default")
+	}
+}
+
+// failingRoundTripper stands in for an instrumented default transport.
+type failingRoundTripper struct{}
+
+func (failingRoundTripper) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, errors.New("the replaced default transport must not be used")
+}
+
+// TestHTTPPublisher_NonStandardDefaultTransport checks that a replaced
+// http.DefaultTransport does not make NewHTTPPublisher panic and that the
+// publisher still works.
+//
+// It mutates a global, so it deliberately does not call t.Parallel(). That is
+// safe: the testing package runs sequential tests to completion before it
+// resumes any parallel test (which pauses at its t.Parallel() call), so no
+// other test in this package can observe the swap.
+func TestHTTPPublisher_NonStandardDefaultTransport(t *testing.T) {
+	orig := http.DefaultTransport
+	http.DefaultTransport = failingRoundTripper{}
+	t.Cleanup(func() { http.DefaultTransport = orig })
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer srv.Close()
+
+	pub, err := NewHTTPPublisher(srv.URL, nil)
+	if err != nil {
+		t.Fatalf("NewHTTPPublisher() error = %v", err)
+	}
+	defer pub.Close()
+	if err := pub.Put(context.Background(), "m/a.json", []byte("x")); err != nil {
+		t.Fatalf("Put() error = %v", err)
 	}
 }
