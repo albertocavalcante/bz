@@ -38,23 +38,23 @@ bz audit --severity=critical   # Only critical
 ### Coverage
 
 <Aside type="caution">
-OSV files its records under upstream package names (for example the Go module `github.com/bazelbuild/rules_go`), not under Bazel module names, and bz has no module-to-upstream-package mapping yet. Today **no module can be checked** unless you pass `--ecosystem`. A module that is not checked is different from "no known vulnerabilities". Only the direct dependencies in `MODULE.bazel` are audited; transitive dependencies are not audited (unlike `bz sbom`, which includes them).
+OSV files its records under upstream package names (for example the Go module `github.com/bazelbuild/rules_go`), not under Bazel module names, and bz does not know which upstream package a module corresponds to. Today **no module can be checked**, so `bz audit` fails unless you pass `--allow-unchecked`, which makes it pass while auditing nothing. A module that is not checked is different from "no known vulnerabilities". Only the direct dependencies in `MODULE.bazel` are audited; transitive dependencies are not audited (unlike `bz sbom`, which includes them).
 </Aside>
 
 Every run states how many of your direct dependencies were actually checked, and lists each one that was not, with the reason. The output below is a real run in a project with `rules_go`, `rules_python` and `gazelle`:
 
 ```
 Checked 0 of 3 direct dependencies.
-Not checked (3):
-  - rules_go@0.50.1: no package mapping: OSV has no records under this module name
-  - rules_python@0.34.0: no package mapping: OSV has no records under this module name
-  - gazelle@0.38.0: no package mapping: OSV has no records under this module name
-help: bz has no module-to-upstream-package mapping yet; --ecosystem only finds modules named exactly like their upstream package
+Not checked (3): no package mapping: bz does not know which upstream package this module corresponds to
+  - rules_go@0.50.1
+  - rules_python@0.34.0
+  - gazelle@0.38.0
+help: vulnerability matching for Bazel modules is not available yet; --allow-unchecked accepts that and audits nothing
 No direct dependency could be checked; no vulnerability data was obtained.
 Error: 3 of 3 direct dependencies were not checked (use --allow-unchecked to accept this)
 ```
 
-The plain message `No vulnerabilities found` is printed only when every direct dependency was checked and nothing was hidden by `--severity`. Otherwise the message says what it covers, for example `No vulnerabilities found in the 3 direct dependencies that could be checked; 4 direct dependencies were not checked.` With `--severity`, it reads `No vulnerabilities at or above HIGH found`, followed by how many findings below the threshold were not shown. A dependency is also reported as not checked when its OSV query fails (`query failed: ...`). A finding whose severity could not be determined is shown as `UNKNOWN` and is never hidden by `--severity`.
+A dependency is also reported as not checked when its OSV query fails (`query failed: ...`). A finding whose severity could not be determined is shown as `UNKNOWN` and is never hidden by `--severity`.
 
 ### Show Fix Suggestions
 
@@ -75,33 +75,35 @@ Suggested fixes:
 ### Ecosystem Mapping
 
 <Aside type="note">
-OSV has no "Bazel" ecosystem, and bz does not yet map Bazel modules to upstream packages, so there is no automatic mapping. Earlier versions queried `rules_go` as a Go package and `rules_python` as a PyPI package; no such packages exist in OSV, so those queries could never match and the modules were wrongly reported as checked.
+There is no automatic mapping from Bazel modules to OSV packages. An earlier version queried `rules_go` as a Go package and `rules_python` as a PyPI package: those names are not upstream package names, so the queries could not match, yet the modules were reported as checked.
 </Aside>
 
-`--ecosystem` queries one OSV ecosystem for every module, using the Bazel module name as the package name:
+`--ecosystem` queries one OSV ecosystem for every module, using the Bazel module name as the package name. The name must be one of [OSV's ecosystems](https://ossf.github.io/osv-schema/#affectedpackage-field); case is normalised (`go` becomes `Go`), and a near miss is rejected with a suggestion.
 
 ```bash
 bz audit --ecosystem=Go
 ```
 
 ```
-Checked 3 of 3 direct dependencies as Go packages named after the module.
-No vulnerabilities found
+Queried 3 of 3 direct dependencies as Go packages named after the module.
+No OSV records found under these names in Go; this does not show the modules are free of vulnerabilities.
 ```
 
-This only finds records for modules whose name equals the upstream package name (a module such as `rules_go` does not qualify), so "checked" here means "queried under that name". Using it for a mixed project can report a clean result for modules OSV knows under another name.
+stderr: `note: --ecosystem=Go queries module names as package names; exit status 0 does not mean the modules were audited`.
+
+This only finds records for modules whose name equals the upstream package name, so bz says "queried", never "checked", and never reports a clean result. Exit status is 0 when no records come back (with the note above) and 1 when records are found. Do not use `--ecosystem` to make a CI job pass: that exit status 0 audits nothing for the modules whose names are not upstream package names.
 
 ### Exit Codes
 
 | Situation | Exit code |
 |-----------|-----------|
-| Every direct dependency checked, no vulnerabilities at or above `--severity` | 0 |
+| `--ecosystem` given, no records at or above `--severity` (a note is printed on stderr) | 0 |
 | Vulnerabilities found | 1 |
 | Any OSV query failed | 1 (also with `--allow-unchecked`) |
 | Any direct dependency not checked (no package mapping) | 1, unless `--allow-unchecked` |
-| Invalid `--severity` value | 1 |
+| Invalid `--severity` or `--ecosystem` value | 1 |
 
-To keep an existing CI job passing while coverage is incomplete, add `--allow-unchecked`. It accepts dependencies that have no package mapping: they are still listed, but do not fail the run. A failed lookup is never accepted. A project that passes only with `--allow-unchecked` has been checked only partially: read the `Checked N of M direct dependencies` line, or the `summary` object in the JSON output.
+`--allow-unchecked` keeps a job passing while auditing nothing. It accepts dependencies that have no package mapping: they are still listed, but do not fail the run. A failed lookup is never accepted. A project that passes only with `--allow-unchecked` has not been audited for those dependencies: read the `Checked N of M direct dependencies` line, or the `summary` object in the JSON output.
 
 ### CI/CD Integration
 
@@ -144,9 +146,9 @@ From the same project (`bz audit --json`):
   "vulnerabilities": [],
   "summary": { "scope": "direct", "total": 3, "checked": 0, "unchecked": 3, "failed": 0 },
   "unchecked": [
-    { "module": "rules_go", "version": "0.50.1", "reason": "no package mapping: OSV has no records under this module name" },
-    { "module": "rules_python", "version": "0.34.0", "reason": "no package mapping: OSV has no records under this module name" },
-    { "module": "gazelle", "version": "0.38.0", "reason": "no package mapping: OSV has no records under this module name" }
+    { "module": "rules_go", "version": "0.50.1", "reason": "no package mapping: bz does not know which upstream package this module corresponds to" },
+    { "module": "rules_python", "version": "0.34.0", "reason": "no package mapping: bz does not know which upstream package this module corresponds to" },
+    { "module": "gazelle", "version": "0.38.0", "reason": "no package mapping: bz does not know which upstream package this module corresponds to" }
   ]
 }
 ```

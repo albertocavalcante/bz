@@ -378,3 +378,30 @@ func TestHTTPClient_Query_RequiresEcosystem(t *testing.T) {
 
 	require.EqualError(t, err, "ecosystem is required")
 }
+
+func TestParseEcosystem(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name, in, want, wantErr string
+	}{
+		{"canonical", "Go", "Go", ""},
+		{"lowercase", "go", "Go", ""},
+		{"mixed case", "PYPI", "PyPI", ""},
+		{"crates", "CRATES.IO", "crates.io", ""},
+		{"release suffix kept", "debian:12", "Debian:12", ""},
+		{"typo", "Mavn", "", `unknown OSV ecosystem "Mavn": did you mean "Maven"? (valid names: https://ossf.github.io/osv-schema/#affectedpackage-field)`},
+		{"unknown", "bazel", "", `unknown OSV ecosystem "bazel" (valid names: https://ossf.github.io/osv-schema/#affectedpackage-field)`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := ParseEcosystem(tt.in)
+			if tt.wantErr != "" {
+				require.EqualError(t, err, tt.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}

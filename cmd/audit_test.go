@@ -61,7 +61,7 @@ bazel_dep(name = "rules_go", version = "0.50.1")
 	require.NoError(t, err)
 
 	output := buf.String()
-	assert.Contains(t, output, "No vulnerabilities found")
+	assert.Contains(t, output, "No OSV records found")
 }
 
 func TestAuditCmd_WithVulnerabilities(t *testing.T) {

@@ -326,13 +326,13 @@ bz audit --allow-unchecked       # do not fail on modules with no package mappin
 | `--json` | Output as JSON |
 | `--severity` | Minimum severity to report: `critical`, `high`, `medium`, `low` |
 | `--fix` | Show suggested updates to fix vulnerabilities |
-| `--ecosystem` | OSV ecosystem to query for every module, using the module name as the package name (e.g., `Go`, `PyPI`, `crates.io`, `npm`, `Maven`) |
+| `--ecosystem` | OSV ecosystem to query for every module, using the module name as the package name; validated against OSV's list (e.g., `Go`, `PyPI`, `crates.io`, `npm`, `Maven`) |
 | `--allow-unchecked` | Do not fail when modules could not be checked (no package mapping). Failed queries and vulnerabilities still fail |
 
 No Bazel module can yet be matched to OSV records without `--ecosystem`, and transitive dependencies are not audited. `bz audit` always prints `Checked N of M direct dependencies` and lists every one that was not checked, with the reason. It exits 1 when vulnerabilities are found, when any OSV query fails, or when any direct dependency was not checked (unless `--allow-unchecked`). `--severity` accepts only `critical`, `high`, `medium` or `low`; findings of unknown severity are never filtered out. See the [security guide](/bz/guides/security/) for the exit-code table and JSON schema.
 
 <Aside type="note">
-OSV files records under upstream package names, not Bazel module names, and bz has no module-to-upstream mapping yet. Without `--ecosystem` every module is reported as not checked. With it, bz queries that ecosystem using the module name as the package name, which only finds modules named exactly like their upstream package.
+OSV files records under upstream package names, not Bazel module names, and bz does not know which upstream package a module corresponds to. Without `--ecosystem` every module is reported as not checked and the run fails; `--allow-unchecked` makes it pass while auditing nothing. With `--ecosystem` (a name from [OSV's list](https://ossf.github.io/osv-schema/#affectedpackage-field), case-insensitive), bz queries that ecosystem using the module name as the package name and reports "queried", never "checked"; finding nothing does not show the modules are free of vulnerabilities, and a note is printed on stderr.
 </Aside>
 
 **Example output:**

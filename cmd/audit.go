@@ -29,18 +29,20 @@ var osvClient osv.Client = osv.NewClient()
 
 var auditCmd = &cobra.Command{
 	Use:   "audit",
-	Short: "Scan dependencies for security vulnerabilities",
+	Short: "Scan dependencies for security vulnerabilities (no module can be matched yet)",
 	Long: `Scan all dependencies in MODULE.bazel for known security vulnerabilities
 using the Open Source Vulnerabilities (OSV) database.
 
 OSV files records under upstream package names (for example the Go module
-github.com/bazelbuild/rules_go), not under Bazel module names, and bz cannot
-yet map a module to its upstream package. Without --ecosystem, no module can be
-checked and each is listed as not checked.
+github.com/bazelbuild/rules_go), not under Bazel module names, and bz does not
+know which upstream package a module corresponds to. Without --ecosystem, no
+module can be checked: each is listed as not checked and the run fails.
+--allow-unchecked makes it pass while auditing nothing.
 
---ecosystem makes bz query that OSV ecosystem for every module, using the Bazel
-module name as the package name. That only finds records for modules whose name
-equals the upstream package name; the coverage line says so.
+--ecosystem queries that OSV ecosystem for every module, using the Bazel module
+name as the package name. It only finds modules whose name equals the upstream
+package name, so finding nothing does not show the modules are free of
+vulnerabilities; bz says so and prints a note on stderr.
 
 Only the direct dependencies in MODULE.bazel are audited; transitive
 dependencies are not. Every run reports "Checked N of M direct dependencies"
@@ -182,6 +184,13 @@ func runAudit(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	ecosystem := ""
+	if auditEcosystem != "" {
+		if ecosystem, err = osv.ParseEcosystem(auditEcosystem); err != nil {
+			return fmt.Errorf("invalid --ecosystem: %w", err)
+		}
+	}
+
 	f, err := module.FindAndLoad()
 	if err != nil {
 		return err
@@ -201,18 +210,18 @@ func runAudit(cmd *cobra.Command, args []string) error {
 
 	var allVulns []AuditVuln
 	var unchecked []UncheckedModule
-	summary := AuditSummary{Scope: auditScope, Ecosystem: auditEcosystem, Total: len(f.Deps)}
+	summary := AuditSummary{Scope: auditScope, Ecosystem: ecosystem, Total: len(f.Deps)}
 
 	for _, dep := range f.Deps {
 		name := dep.Name.String()
 		version := dep.Version.String()
 
-		if auditEcosystem == "" {
+		if ecosystem == "" {
 			unchecked = append(unchecked, UncheckedModule{Module: name, Version: version, Reason: reasonNoMapping})
 			continue
 		}
 
-		vulns, err := osvClient.Query(ctx, name, version, auditEcosystem)
+		vulns, err := osvClient.Query(ctx, name, version, ecosystem)
 		if err != nil {
 			unchecked = append(unchecked, UncheckedModule{Module: name, Version: version, Reason: "query failed: " + err.Error()})
 			summary.Failed++
@@ -253,16 +262,21 @@ func runAudit(cmd *cobra.Command, args []string) error {
 		printAuditCoverage(out, allVulns, unchecked, summary, minSeverity)
 	}
 
+	// Exit 0 with a forced ecosystem proves nothing: say so where CI logs show it.
+	if ecosystem != "" && len(allVulns) == 0 && summary.Failed == 0 {
+		fmt.Fprintf(cmd.ErrOrStderr(), "note: --ecosystem=%s queries module names as package names; exit status 0 does not mean the modules were audited\n", ecosystem)
+	}
+
 	return auditVerdict(len(allVulns), summary)
 }
 
 // reasonNoMapping explains modules bz cannot query: OSV matches on upstream
 // package name (https://ossf.github.io/osv-schema/#affectedpackage-field).
-const reasonNoMapping = "no package mapping: OSV has no records under this module name"
+const reasonNoMapping = "no package mapping: bz does not know which upstream package this module corresponds to"
 
 // auditVerdict turns the findings and coverage into the command's exit status.
 // Vulnerabilities and failed queries always fail the run; modules with no
-// ecosystem mapping fail it unless --allow-unchecked is set.
+// package mapping fail it unless --allow-unchecked is set.
 func auditVerdict(vulns int, s AuditSummary) error {
 	var parts []string
 	if vulns > 0 {
@@ -281,24 +295,38 @@ func auditVerdict(vulns int, s AuditSummary) error {
 }
 
 // printAuditCoverage states what was and was not checked, so a clean-looking
-// result can never be mistaken for full coverage.
+// result can never be mistaken for full coverage. With a forced ecosystem the
+// module names are only guesses at package names, so it says "queried" and never
+// claims the absence of records means the modules are clean.
 func printAuditCoverage(w io.Writer, vulns []AuditVuln, unchecked []UncheckedModule, s AuditSummary, threshold osv.Severity) {
 	if len(vulns) > 0 {
 		fmt.Fprintln(w)
 	}
+	verb, not := "Checked", "Not checked"
 	if s.Ecosystem != "" {
-		fmt.Fprintf(w, "Checked %d of %s as %s packages named after the module.\n", s.Checked, deps(s.Total), s.Ecosystem)
+		verb, not = "Queried", "Not queried"
+		as := fmt.Sprintf("as %s packages", s.Ecosystem)
+		if s.Total == 1 {
+			as = fmt.Sprintf("as a %s package", s.Ecosystem)
+		}
+		fmt.Fprintf(w, "%s %d of %s %s named after the module.\n", verb, s.Checked, deps(s.Total), as)
 	} else {
-		fmt.Fprintf(w, "Checked %d of %s.\n", s.Checked, deps(s.Total))
+		fmt.Fprintf(w, "%s %d of %s.\n", verb, s.Checked, deps(s.Total))
 	}
-	if s.Unchecked > 0 {
-		fmt.Fprintf(w, "Not checked (%d):\n", s.Unchecked)
+	switch {
+	case s.Unchecked == 0:
+	case s.Ecosystem == "":
+		// Without an ecosystem every module has the same reason: state it once.
+		fmt.Fprintf(w, "%s (%d): %s\n", not, s.Unchecked, reasonNoMapping)
+		for _, u := range unchecked {
+			fmt.Fprintf(w, "  - %s@%s\n", u.Module, u.Version)
+		}
+		fmt.Fprintln(w, "help: vulnerability matching for Bazel modules is not available yet; --allow-unchecked accepts that and audits nothing")
+	default:
+		fmt.Fprintf(w, "%s (%d):\n", not, s.Unchecked)
 		for _, u := range unchecked {
 			fmt.Fprintf(w, "  - %s@%s: %s\n", u.Module, u.Version, u.Reason)
 		}
-	}
-	if s.Unchecked > s.Failed {
-		fmt.Fprintln(w, "help: bz has no module-to-upstream-package mapping yet; --ecosystem only finds modules named exactly like their upstream package")
 	}
 	if s.Hidden > 0 {
 		fmt.Fprintf(w, "%s below the %s threshold %s not shown.\n", vulnsN(s.Hidden), threshold, wasWere(s.Hidden))
@@ -306,20 +334,16 @@ func printAuditCoverage(w io.Writer, vulns []AuditVuln, unchecked []UncheckedMod
 	if len(vulns) > 0 {
 		return
 	}
-	none := "No vulnerabilities found"
-	if threshold != osv.SeverityUnknown {
-		none = fmt.Sprintf("No vulnerabilities at or above %s found", threshold)
+	if s.Ecosystem != "" {
+		found := "No OSV records found"
+		if threshold != osv.SeverityUnknown {
+			found = fmt.Sprintf("No OSV records at or above %s found", threshold)
+		}
+		fmt.Fprintf(w, "%s under these names in %s; this does not show the modules are free of vulnerabilities.\n", found, s.Ecosystem)
+		return
 	}
-	switch {
-	case s.Unchecked == 0:
-		fmt.Fprintln(w, cli.Success(none))
-	case s.Checked == 0:
-		fmt.Fprintln(w, cli.Warning("No direct dependency could be checked; no vulnerability data was obtained."))
-	default:
-		fmt.Fprintln(w, cli.Warning(fmt.Sprintf(
-			"%s in the %s that could be checked; %s %s not checked.",
-			none, deps(s.Checked), deps(s.Unchecked), wasWere(s.Unchecked))))
-	}
+	// Without an ecosystem nothing is queried, so there is never a clean result to report.
+	fmt.Fprintln(w, cli.Warning("No direct dependency could be checked; no vulnerability data was obtained."))
 }
 
 func printAuditJSON(w io.Writer, vulns []AuditVuln, unchecked []UncheckedModule, summary AuditSummary) error {
