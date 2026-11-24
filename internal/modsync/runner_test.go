@@ -63,56 +63,11 @@ func TestLatestN_EdgeCases(t *testing.T) {
 	}
 }
 
-func TestFilterSince_Passthrough(t *testing.T) {
+func TestFilterSince_NeverSelectsEverything(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name     string
-		versions []string
-		since    string
-		want     []string
-	}{
-		{
-			name:     "returns all versions unchanged",
-			versions: []string{"1.0.0", "1.1.0", "1.2.0"},
-			since:    "1.1.0",
-			want:     []string{"1.0.0", "1.1.0", "1.2.0"},
-		},
-		{
-			name:     "empty slice returns empty slice",
-			versions: []string{},
-			since:    "1.0.0",
-			want:     []string{},
-		},
-		{
-			name:     "nil input returns nil",
-			versions: nil,
-			since:    "1.0.0",
-			want:     nil,
-		},
-		{
-			name:     "empty since string",
-			versions: []string{"1.0.0", "2.0.0"},
-			since:    "",
-			want:     []string{"1.0.0", "2.0.0"},
-		},
-		{
-			name:     "single version",
-			versions: []string{"1.0.0"},
-			since:    "0.5.0",
-			want:     []string{"1.0.0"},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			got := filterSince(tt.versions, tt.since)
-
-			if !stringSliceEqual(got, tt.want) {
-				t.Errorf("filterSince(%v, %q) = %v, want %v", tt.versions, tt.since, got, tt.want)
-			}
-		})
+	if got := filterSince([]string{"1.0.0", "1.1.0"}, "2099-01-01"); len(got) != 0 {
+		t.Errorf("filterSince selected %v, want nothing", got)
 	}
 }
 

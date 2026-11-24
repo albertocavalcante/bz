@@ -160,25 +160,17 @@ sync.workflow(
     destination = mirror,
     modules = ["rules_go"],
     versions = sync.range(
-        min_version = "0.40.0",
-        max_version = "0.50.99",
+        min = "0.40.0",
+        max = "0.50.99",
     ),
 )
 ```
 
 ### Since Date
 
-Sync versions released after a date:
-
-```starlark
-sync.workflow(
-    name = "recent-only",
-    origin = bcr,
-    destination = mirror,
-    modules = ["rules_go"],
-    versions = sync.since("2024-01-01"),
-)
-```
+<Aside type="caution">
+`sync.since(...)` is not supported yet: release dates are not available from the registry. A workflow that uses it fails when the configuration is loaded, with an error naming the workflow. Use `sync.latest`, `sync.range` or `sync.all` instead.
+</Aside>
 
 ## Examples
 

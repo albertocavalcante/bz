@@ -344,6 +344,38 @@ func syncIncludePatches(_ *starlark.Thread, _ *starlark.Builtin, args starlark.T
 	return t, nil
 }
 
+// parseWorkflowVersions validates the versions selector of a workflow and
+// applies the default of latest(1).
+func parseWorkflowVersions(workflow string, versionsVal starlark.Value) (*VersionSelector, error) {
+	if versionsVal == nil || versionsVal == starlark.None {
+		versions := newVersionSelector(VersionSelectorLatest)
+		versions.Count = 1
+		versions.Set("count", starlark.MakeInt(1))
+		return versions, nil
+	}
+	v, ok := versionsVal.(*VersionSelector)
+	if !ok {
+		return nil, fmt.Errorf("sync.workflow: versions must be a version selector, got %s", versionsVal.Type())
+	}
+	if v.Kind == VersionSelectorSince {
+		return nil, fmt.Errorf("sync.workflow %q: sync.since is not supported yet: release dates are not available from the registry; use sync.latest, sync.range or sync.all", workflow)
+	}
+	return v, nil
+}
+
+// mergeTransformsAlias resolves the documented "transforms" keyword and its
+// "transformations" alias; passing both is an error.
+func mergeTransformsAlias(workflow string, transforms, alias starlark.Value) (starlark.Value, error) {
+	hasAlias := alias != nil && alias != starlark.None
+	if !hasAlias {
+		return transforms, nil
+	}
+	if transforms != nil && transforms != starlark.None {
+		return nil, fmt.Errorf("sync.workflow %q: pass either transforms or transformations (an alias), not both", workflow)
+	}
+	return alias, nil
+}
+
 // syncWorkflow creates a sync.workflow configuration and registers it.
 func syncWorkflow(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	u := value.NewUnpacker("sync.workflow", args, kwargs)
@@ -371,10 +403,19 @@ func syncWorkflow(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tu
 	if err := u.Optional("versions", &versionsVal, starlark.None); err != nil {
 		return nil, err
 	}
-	if err := u.Optional("transformations", &transformsVal, starlark.None); err != nil {
+	if err := u.Optional("transforms", &transformsVal, starlark.None); err != nil {
+		return nil, err
+	}
+	// "transformations" is accepted as an alias of the documented "transforms".
+	var aliasVal starlark.Value
+	if err := u.Optional("transformations", &aliasVal, starlark.None); err != nil {
 		return nil, err
 	}
 	if err := u.Validate(); err != nil {
+		return nil, err
+	}
+	transformsVal, err := mergeTransformsAlias(name, transformsVal, aliasVal)
+	if err != nil {
 		return nil, err
 	}
 
@@ -404,19 +445,9 @@ func syncWorkflow(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tu
 		modules[i] = string(s)
 	}
 
-	// Parse versions selector (optional, defaults to latest(1))
-	var versions *VersionSelector
-	if versionsVal != nil && versionsVal != starlark.None {
-		v, ok := versionsVal.(*VersionSelector)
-		if !ok {
-			return nil, fmt.Errorf("sync.workflow: versions must be a version selector, got %s", versionsVal.Type())
-		}
-		versions = v
-	} else {
-		// Default to latest(1)
-		versions = newVersionSelector(VersionSelectorLatest)
-		versions.Count = 1
-		versions.Set("count", starlark.MakeInt(1))
+	versions, err := parseWorkflowVersions(name, versionsVal)
+	if err != nil {
+		return nil, err
 	}
 
 	// Parse transformations (optional)

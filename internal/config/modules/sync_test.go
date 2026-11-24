@@ -450,6 +450,73 @@ sync.workflow(
 	})
 }
 
+func evalWorkflowCode(t *testing.T, code string) ([]*WorkflowValue, error) {
+	t.Helper()
+	thread := &starlark.Thread{Name: "test"}
+	SetWorkflowRegistry(thread)
+	globals := starlark.StringDict{
+		"sync":     starlarkstruct.FromStringDict(starlark.String("sync"), SyncModule()),
+		"registry": starlarkstruct.FromStringDict(starlark.String("registry"), RegistryModule()),
+	}
+	pre := `
+bcr = registry.http("https://bcr.bazel.build")
+dst = registry.file("/path/to/mirror")
+`
+	if _, err := starlark.ExecFile(thread, "test.star", pre+code, globals); err != nil {
+		return nil, err
+	}
+	return GetWorkflows(thread), nil
+}
+
+func TestSyncWorkflowTransformsSpelling(t *testing.T) {
+	t.Parallel()
+	body := func(extra string) string {
+		return `
+sync.workflow(
+    name = "mirror",
+    origin = bcr,
+    destination = dst,
+    modules = ["rules_go"],
+` + extra + `)
+`
+	}
+
+	for _, kw := range []string{"transforms", "transformations"} {
+		t.Run(kw+" accepted", func(t *testing.T) {
+			t.Parallel()
+			ws, err := evalWorkflowCode(t, body(kw+" = [sync.skip_yanked()],\n"))
+			require.NoError(t, err)
+			require.Len(t, ws, 1)
+			require.Len(t, ws[0].Transformations, 1)
+			assert.Equal(t, TransformSkipYanked, ws[0].Transformations[0].Kind)
+		})
+	}
+
+	t.Run("both spellings is an error", func(t *testing.T) {
+		t.Parallel()
+		_, err := evalWorkflowCode(t, body("transforms = [sync.skip_yanked()],\ntransformations = [sync.skip_yanked()],\n"))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not both")
+		assert.Contains(t, err.Error(), "mirror")
+	})
+}
+
+func TestSyncWorkflowRejectsSince(t *testing.T) {
+	t.Parallel()
+	_, err := evalWorkflowCode(t, `
+sync.workflow(
+    name = "recent",
+    origin = bcr,
+    destination = dst,
+    modules = ["rules_go"],
+    versions = sync.since("2024-01-01"),
+)
+`)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not supported yet: release dates are not available from the registry")
+	assert.Contains(t, err.Error(), `"recent"`)
+}
+
 func TestWorkflowRegistry(t *testing.T) {
 	t.Parallel()
 	t.Run("set and get workflows", func(t *testing.T) {

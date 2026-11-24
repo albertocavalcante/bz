@@ -272,13 +272,11 @@ func latestN(versions []string, n int) []string {
 	return versions[len(versions)-n:]
 }
 
-// filterSince filters versions by date (simplified: assumes versions are sorted).
-// In a real implementation, you'd parse the date and compare with version release dates.
-func filterSince(versions []string, since string) []string {
-	// For now, just return all versions as we don't have release date info
-	// A full implementation would need to fetch metadata for each version
-	// or have a separate API to get release dates
-	return versions
+// filterSince selects nothing: release dates are not available from the
+// registry, and sync.since is rejected when the configuration is loaded. It
+// must never fall back to selecting every version.
+func filterSince(_ []string, _ string) []string {
+	return nil
 }
 
 // filterRange filters versions by semver range.

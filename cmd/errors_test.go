@@ -73,13 +73,13 @@ func TestRun_ErrorsArePrintedOnce(t *testing.T) {
 		onceSub string
 	}{
 		{name: "missing MODULE.bazel", args: []string{"mod", "list"}, wantSub: "MODULE.bazel", wantErrLines: 1},
-		{name: "unknown subcommand flag", args: []string{"mod", "sync", "--workflow", "x"}, wantSub: "unknown flag: --workflow", wantErrLines: 1},
+		{name: "unknown subcommand flag", args: []string{"mod", "sync", "--bogus", "x"}, wantSub: "unknown flag: --bogus", wantErrLines: 1},
 		{name: "unknown subcommand", args: []string{"nosuchcmd"}, wantSub: "unknown command", wantErrLines: 1},
 		{name: "disabled command", args: []string{"registry", "ping"}, env: map[string]string{"BZ_DISABLE_COMMANDS": "ping"}, wantSub: "disabled", wantErrLines: 1},
 		{name: "mutually exclusive offline flags", args: []string{"--offline", "--prefer-offline", "mod", "list"}, wantSub: "offline", wantErrLines: 1},
 		{name: "init over existing MODULE.bazel", args: []string{"init"}, module: true, wantSub: "MODULE.bazel", wantErrLines: 1},
 		{name: "sbom invalid format", args: []string{"sbom", "--format=xml"}, module: true, wantSub: "unknown format", wantErrLines: 1},
-		{name: "unknown flag gets a usage hint", args: []string{"mod", "sync", "--workflow", "x"}, wantSub: "Run 'bz mod sync --help' for usage.", wantErrLines: 1},
+		{name: "unknown flag gets a usage hint", args: []string{"mod", "sync", "--bogus", "x"}, wantSub: "Run 'bz mod sync --help' for usage.", wantErrLines: 1},
 		{name: "doctor reports issues once without Error line", args: []string{"--offline", "doctor"}, wantSub: "issue", wantErrLines: 0, onceSub: "issues found"},
 		{name: "cache download failure summary once", args: []string{"cache", "download", "--registry", "http://127.0.0.1:1", "--cache-dir", "CACHEDIR", "rules_go@0.50.1"}, wantSub: "1 of 1 module(s) failed to download", wantErrLines: 0, onceSub: "failed to download"},
 		{name: "offline cache miss", args: []string{"--offline", "mod", "info", "rules_go"}, wantSub: "offline", wantErrLines: 1},
