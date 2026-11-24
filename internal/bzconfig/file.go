@@ -28,28 +28,11 @@ type fileSchema struct {
 
 // ParseFile decodes one configuration file into a layer of the given kind.
 //
-// Unknown keys are returned as warnings (a mistyped security setting must
-// not be silently ignored). A relative [cache] dir is resolved against the
-// file's directory, after "~" expansion against home.
-func ParseFile(kind LayerKind, path string, data []byte, home string) (Layer, []string, error) {
+// A leading "~" in [cache] dir is expanded against home.
+func ParseFile(kind LayerKind, path string, data []byte, home string) (Layer, error) {
 	var s fileSchema
-	md, err := toml.Decode(string(data), &s)
-	if err != nil {
-		return Layer{}, nil, fmt.Errorf("parsing %s %s: %w", kind, path, err)
-	}
-
-	// Report each unknown table or key once: skip keys below an unknown
-	// table ("comands.disabled" when "comands" is reported).
-	var warnings []string
-	unknown := map[string]bool{}
-	for _, k := range md.Undecoded() {
-		unknown[k.String()] = true
-	}
-	for _, k := range md.Undecoded() {
-		if len(k) > 1 && unknown[k[:len(k)-1].String()] {
-			continue
-		}
-		warnings = append(warnings, fmt.Sprintf("%s %s: unknown key %q ignored", kind, path, k.String()))
+	if _, err := toml.Decode(string(data), &s); err != nil {
+		return Layer{}, fmt.Errorf("parsing %s %s: %w", kind, path, err)
 	}
 
 	l := Layer{Kind: kind, Origin: path}
@@ -62,14 +45,11 @@ func ParseFile(kind LayerKind, path string, data []byte, home string) (Layer, []
 	l.Settings.Timeout = s.Network.Timeout
 	if s.Cache.Dir != nil {
 		dir := ExpandHome(*s.Cache.Dir, home)
-		if dir != "" && !filepath.IsAbs(dir) {
-			dir = filepath.Join(filepath.Dir(path), dir)
-		}
 		l.Settings.CacheDir = &dir
 	}
 	l.Settings.CacheTTL = s.Cache.TTL
 	l.Settings.Disabled = s.Commands.Disabled
-	return l, warnings, nil
+	return l, nil
 }
 
 // ExpandHome replaces a leading "~" (alone or followed by a path separator)

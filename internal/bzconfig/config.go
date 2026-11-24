@@ -1,21 +1,15 @@
 // Package bzconfig computes bz's effective configuration.
 //
-// Configuration comes from layers, lowest precedence first:
-//
-//	built-in defaults < system file < user file < project file
-//	< environment variables < command-line flags
-//
-// Each layer records only the settings it sets explicitly (see [Settings]),
-// so a higher layer can set a value back to its default and a lower layer's
-// value survives when a higher layer does not mention it. [Merge] combines
-// the layers once, validates every value and records which layer set each
-// effective value (see [Effective.Source]).
-//
-// The package is free of process-global state: filesystem and environment
-// access goes through an injected [Environment].
+// Configuration comes from layers applied over built-in defaults, lowest
+// precedence first. Each layer records only the settings it sets explicitly
+// (see [Settings]), so a higher layer can set a value back to its default
+// and a lower layer's value survives when a higher layer does not mention
+// it. [Merge] combines the layers once, applies the defaults once and
+// records which layer set each effective value (see [Effective.Source]).
 package bzconfig
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -105,38 +99,25 @@ const (
 	KeyDisabled           Key = "commands.disabled"
 )
 
-// Keys returns every setting key in documentation order.
-func Keys() []Key {
-	return []Key{KeyMode, KeyRegistry, KeyFallbackRegistries, KeyTimeout, KeyCacheDir, KeyCacheTTL, KeyDisabled}
-}
-
 // LayerKind identifies a configuration layer. Higher values take precedence.
 type LayerKind int
 
-// Configuration layers, lowest precedence first.
+// Configuration layers, lowest precedence first. The gaps leave room for
+// layers that are not loaded yet.
 const (
-	LayerDefault LayerKind = iota
-	LayerSystem
-	LayerUser
-	LayerProject
-	LayerEnv
-	LayerFlag
+	LayerDefault LayerKind = 0
+	LayerProject LayerKind = 3
+	LayerEnv     LayerKind = 4
 )
 
 func (k LayerKind) String() string {
 	switch k {
 	case LayerDefault:
 		return "default"
-	case LayerSystem:
-		return "system config"
-	case LayerUser:
-		return "user config"
 	case LayerProject:
 		return "project config"
 	case LayerEnv:
 		return "environment"
-	case LayerFlag:
-		return "flag"
 	default:
 		return fmt.Sprintf("layer(%d)", int(k))
 	}
@@ -150,8 +131,8 @@ type Source struct {
 	Origin string
 }
 
-// String renders the source for messages, e.g. "user config
-// /home/me/.config/bz/config.toml" or "environment BZ_OFFLINE".
+// String renders the source for messages, e.g. "project config
+// /work/.bzconfig.toml" or "environment BZ_OFFLINE".
 func (s Source) String() string {
 	if s.Origin == "" {
 		return s.Layer.String()
@@ -193,9 +174,6 @@ func (l Layer) source(k Key) Source {
 type Effective struct {
 	Config
 	sources map[Key]Source
-	// Files lists the configuration files that were read, lowest
-	// precedence first.
-	Files []string
 }
 
 // Source returns the layer that set key's effective value.
@@ -222,39 +200,36 @@ func Defaults(cacheDir string) Config {
 }
 
 // Merge applies layers over defaults in the order given (callers pass them
-// lowest precedence first) and validates every explicitly set value. An
-// invalid value is an error naming its source even when a higher layer
-// overrides it, because it is still a mistake in that file or variable.
+// lowest precedence first). Each explicitly set value is validated; an
+// invalid value is skipped, so the key keeps the value from the layers
+// below, and reported in the returned error together with its source.
+// The returned configuration is always usable: strict callers treat the
+// error as fatal, tolerant callers may ignore it.
 func Merge(defaults Config, layers ...Layer) (*Effective, error) {
 	eff := &Effective{Config: defaults, sources: map[Key]Source{}}
-	for _, k := range Keys() {
-		eff.sources[k] = Source{Layer: LayerDefault}
-	}
 	eff.Network.FallbackRegistries = slices.Clone(defaults.Network.FallbackRegistries)
 	eff.Commands.Disabled = slices.Clone(defaults.Commands.Disabled)
 
+	errs := make([]error, 0, len(layers))
 	for _, l := range layers {
-		if err := eff.apply(l); err != nil {
-			return nil, err
-		}
+		errs = append(errs, eff.apply(l)...)
 	}
-	return eff, nil
+	return eff, errors.Join(errs...)
 }
 
-func (e *Effective) apply(l Layer) error {
+func (e *Effective) apply(l Layer) []error {
+	var errs []error
 	s := l.Settings
-	if s.Mode != nil {
-		if !s.Mode.Valid() {
-			return fmt.Errorf("invalid network mode %q in %s (want %q, %q or %q)",
-				*s.Mode, l.source(KeyMode), NetworkModeOnline, NetworkModePreferOffline, NetworkModeOffline)
-		}
+	if s.Mode != nil && !s.Mode.Valid() {
+		errs = append(errs, fmt.Errorf("invalid network mode %q in %s (want %q, %q or %q)",
+			*s.Mode, l.source(KeyMode), NetworkModeOnline, NetworkModePreferOffline, NetworkModeOffline))
+	} else if s.Mode != nil {
 		e.Network.Mode = *s.Mode
 		e.sources[KeyMode] = l.source(KeyMode)
 	}
-	if s.Registry != nil {
-		if strings.TrimSpace(*s.Registry) == "" {
-			return fmt.Errorf("empty registry in %s", l.source(KeyRegistry))
-		}
+	if s.Registry != nil && strings.TrimSpace(*s.Registry) == "" {
+		errs = append(errs, fmt.Errorf("empty registry in %s", l.source(KeyRegistry)))
+	} else if s.Registry != nil {
 		e.Network.Registry = *s.Registry
 		e.sources[KeyRegistry] = l.source(KeyRegistry)
 	}
@@ -265,17 +240,17 @@ func (e *Effective) apply(l Layer) error {
 	if s.Timeout != nil {
 		d, err := time.ParseDuration(*s.Timeout)
 		if err != nil || d <= 0 {
-			return fmt.Errorf("invalid network timeout %q in %s (want a positive Go duration such as \"30s\")",
-				*s.Timeout, l.source(KeyTimeout))
+			errs = append(errs, fmt.Errorf("invalid network timeout %q in %s (want a positive Go duration such as \"30s\")",
+				*s.Timeout, l.source(KeyTimeout)))
+		} else {
+			e.Network.Timeout = *s.Timeout
+			e.Network.TimeoutDuration = d
+			e.sources[KeyTimeout] = l.source(KeyTimeout)
 		}
-		e.Network.Timeout = *s.Timeout
-		e.Network.TimeoutDuration = d
-		e.sources[KeyTimeout] = l.source(KeyTimeout)
 	}
-	if s.CacheDir != nil {
-		if strings.TrimSpace(*s.CacheDir) == "" {
-			return fmt.Errorf("empty cache dir in %s", l.source(KeyCacheDir))
-		}
+	if s.CacheDir != nil && strings.TrimSpace(*s.CacheDir) == "" {
+		errs = append(errs, fmt.Errorf("empty cache dir in %s", l.source(KeyCacheDir)))
+	} else if s.CacheDir != nil {
 		e.Cache.Dir = *s.CacheDir
 		e.sources[KeyCacheDir] = l.source(KeyCacheDir)
 	}
@@ -287,27 +262,5 @@ func (e *Effective) apply(l Layer) error {
 		e.Commands.Disabled = slices.Clone(*s.Disabled)
 		e.sources[KeyDisabled] = l.source(KeyDisabled)
 	}
-	return nil
-}
-
-// FlagLayer builds the command-line flag layer from the global flags.
-// Only flags that are set contribute; --offline and --prefer-offline are
-// mutually exclusive and validated by the caller.
-func FlagLayer(offline, preferOffline bool, registry string) Layer {
-	l := Layer{Kind: LayerFlag, KeyOrigins: map[Key]string{}}
-	switch {
-	case offline:
-		m := NetworkModeOffline
-		l.Settings.Mode = &m
-		l.KeyOrigins[KeyMode] = "--offline"
-	case preferOffline:
-		m := NetworkModePreferOffline
-		l.Settings.Mode = &m
-		l.KeyOrigins[KeyMode] = "--prefer-offline"
-	}
-	if registry != "" {
-		l.Settings.Registry = &registry
-		l.KeyOrigins[KeyRegistry] = "--registry"
-	}
-	return l
+	return errs
 }
