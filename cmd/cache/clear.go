@@ -65,12 +65,8 @@ func runClear(cmd *cobra.Command, args []string) error {
 	out := cmd.OutOrStdout()
 	in := cmd.InOrStdin()
 
-	// Module arguments become path segments under the cache; reject anything
-	// that is not a valid module name before touching the filesystem.
-	for _, arg := range args {
-		if err := coord.ValidateModuleName(arg); err != nil {
-			return fmt.Errorf("refusing to clear %q: %w", arg, err)
-		}
+	if err := validateClearArgs(args); err != nil {
+		return err
 	}
 
 	cacheDir, err := resolveCacheDir(clearCacheDir)
@@ -117,15 +113,9 @@ func runClear(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Calculate size before clearing. Every target must resolve strictly
-	// inside modulesDir.
-	var totalSize int64
-	for _, moduleName := range modulesToClear {
-		moduleDir, err := coord.Join(modulesDir, moduleName)
-		if err != nil {
-			return fmt.Errorf("refusing to clear %q: %w", moduleName, err)
-		}
-		totalSize += calculateDirSize(moduleDir)
+	totalSize, err := targetsSize(modulesDir, modulesToClear)
+	if err != nil {
+		return err
 	}
 
 	// --json cannot prompt, so it never implies consent.
@@ -134,20 +124,8 @@ func runClear(cmd *cobra.Command, args []string) error {
 	}
 
 	// Confirm if not forced
-	if !clearForce {
-		fmt.Fprintf(out, "This will clear %d module(s) (%s) from the cache.\n", len(modulesToClear), formatSize(totalSize))
-		fmt.Fprint(out, "Continue? [y/N] ")
-
-		reader := bufio.NewReader(in)
-		response, err := reader.ReadString('\n')
-		if err != nil {
-			return nil //nolint:nilerr // abort on read error (e.g. stdin closed); treat as user declining
-		}
-		response = strings.TrimSpace(strings.ToLower(response))
-		if response != "y" && response != "yes" {
-			fmt.Fprintln(out, "Aborted.")
-			return nil
-		}
+	if !clearForce && !confirmClear(out, in, len(modulesToClear), totalSize) {
+		return nil
 	}
 
 	// Clear modules
@@ -187,6 +165,50 @@ func runClear(cmd *cobra.Command, args []string) error {
 	fmt.Fprintln(out, cli.Success("Cache cleared."))
 
 	return nil
+}
+
+// validateClearArgs rejects module arguments that are not valid module
+// names. They become path segments under the cache, so this runs before any
+// filesystem access.
+func validateClearArgs(args []string) error {
+	for _, arg := range args {
+		if err := coord.ValidateModuleName(arg); err != nil {
+			return fmt.Errorf("refusing to clear %q: %w", arg, err)
+		}
+	}
+	return nil
+}
+
+// targetsSize returns the total size of the named module directories,
+// refusing any name that does not resolve strictly inside modulesDir.
+func targetsSize(modulesDir string, names []string) (int64, error) {
+	var total int64
+	for _, name := range names {
+		moduleDir, err := coord.Join(modulesDir, name)
+		if err != nil {
+			return 0, fmt.Errorf("refusing to clear %q: %w", name, err)
+		}
+		total += calculateDirSize(moduleDir)
+	}
+	return total, nil
+}
+
+// confirmClear prompts for confirmation. A read error (for example, stdin
+// closed) is treated as the user declining.
+func confirmClear(out io.Writer, in io.Reader, count int, size int64) bool {
+	fmt.Fprintf(out, "This will clear %d module(s) (%s) from the cache.\n", count, formatSize(size))
+	fmt.Fprint(out, "Continue? [y/N] ")
+
+	response, err := bufio.NewReader(in).ReadString('\n')
+	if err != nil {
+		return false
+	}
+	response = strings.TrimSpace(strings.ToLower(response))
+	if response != "y" && response != "yes" {
+		fmt.Fprintln(out, "Aborted.")
+		return false
+	}
+	return true
 }
 
 // calculateDirSize calculates the total size of a directory.
