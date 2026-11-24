@@ -192,64 +192,81 @@ func DefaultCacheDir(e Environment) string {
 	return filepath.Join(".cache", "bz")
 }
 
-// FindProjectConfig searches for the project config file.
-//
-// The search follows the physical path: the working directory is resolved
-// with EvalSymlinks first. The user's home directory and its ancestors are
-// never a workspace root (compared by file identity): reaching one ends the
-// walk as "outside a workspace", so a stray ~/MODULE.bazel or /WORKSPACE
-// cannot widen the search. A file that is found must pass the trust rules
-// of [CheckProjectConfigTrust]; an untrusted file is an error.
+// FindProjectConfig searches for the project config file. It returns the
+// path ("" when there is none), warning-level diagnostics for the caller to
+// print (unusable BZ_TRUSTED_CONFIG_DIRS entries), and an error.
 //
 // When the working directory is inside a Bazel workspace (a directory
-// containing MODULE.bazel, REPO.bazel, WORKSPACE.bazel or WORKSPACE), every
-// directory from the working directory up to and including the workspace
-// root is searched and the nearest file wins. Outside a workspace only the
-// working directory is searched. A marker or config path that exists but
-// cannot be checked is an error naming it, as is a config path that is not
-// a regular file; only a path that does not exist counts as absent. It
-// returns "" when there is no project file.
-func FindProjectConfig(e Environment) (string, error) {
-	if e.Getwd == nil {
-		return "", nil
+// holding a MODULE.bazel, REPO.bazel, WORKSPACE.bazel or WORKSPACE file),
+// every directory from the working directory up to and including the
+// workspace root is searched and the nearest file wins. The innermost
+// marker is the root, so a nested workspace ends the search. Outside a
+// workspace only the working directory is searched.
+//
+// Rules that keep other users from steering the search:
+//
+//   - The search follows the physical path: the working directory is
+//     resolved with EvalSymlinks first.
+//   - The home directory and its ancestors are never a workspace root
+//     (compared by file identity); reaching one ends the walk as "outside
+//     a workspace". A home directory located inside a workspace therefore
+//     makes that workspace's marker ignored. When home is unset or cannot
+//     be resolved, this rule is off.
+//   - On platforms with file ownership (not Windows), a marker not owned by
+//     the current user or root is skipped and the walk continues upward,
+//     so a marker planted in a shared directory cannot cut the search
+//     short or point it at a planted config.
+//   - A file that is found must pass [CheckProjectConfigTrust]; an
+//     untrusted file is an [*UntrustedConfigError].
+//
+// A marker or config path that exists but cannot be checked is an error
+// naming it; only a path that does not exist counts as absent. An
+// environment missing any function the rules need (Getwd, Stat,
+// EvalSymlinks, SameFile, and Getuid and FileOwner outside Windows) is an
+// error, never a silently weaker search.
+func FindProjectConfig(e Environment) (string, []string, error) {
+	if err := e.requireSearchFuncs(); err != nil {
+		return "", nil, err
 	}
 	wd, err := e.Getwd()
 	if err != nil {
-		return "", fmt.Errorf("finding project config: %w", err)
+		return "", nil, fmt.Errorf("finding project config: %w", err)
 	}
 	if wd, err = e.resolve(wd); err != nil {
-		return "", fmt.Errorf("finding project config: %w", err)
+		return "", nil, fmt.Errorf("finding project config: %w", err)
 	}
 	homeDirs, err := e.homeAndAncestors()
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	dirs, err := projectSearchDirs(e, wd, homeDirs)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	for _, dir := range dirs {
 		primary := filepath.Join(dir, ProjectConfigName)
 		legacy := filepath.Join(dir, LegacyProjectConfigName)
 		hasPrimary, err := e.regularFile(primary)
 		if err != nil {
-			return "", err
+			return "", nil, err
 		}
 		hasLegacy, err := e.regularFile(legacy)
 		if err != nil {
-			return "", err
+			return "", nil, err
 		}
 		switch {
 		case hasPrimary && hasLegacy:
-			return "", fmt.Errorf("both %s and %s exist; keep only one (%s is preferred)",
+			return "", nil, fmt.Errorf("both %s and %s exist; keep only one (%s is preferred)",
 				primary, legacy, ProjectConfigName)
 		case hasPrimary:
-			return primary, CheckProjectConfigTrust(e, primary)
+			warnings, err := CheckProjectConfigTrust(e, primary)
+			return primary, warnings, err
 		case hasLegacy:
-			return legacy, CheckProjectConfigTrust(e, legacy)
+			warnings, err := CheckProjectConfigTrust(e, legacy)
+			return legacy, warnings, err
 		}
 	}
-	return "", nil
+	return "", nil, nil
 }
 
 // projectSearchDirs returns the directories to search, nearest first. The
@@ -287,13 +304,26 @@ func projectSearchDirs(e Environment, wd string, homeDirs []fs.FileInfo) ([]stri
 // isWorkspaceRoot reports whether dir holds a workspace marker file. A
 // marker that is a directory is not a marker; one that cannot be checked
 // is an error, so the walk never continues past an unreadable root.
+// Outside Windows, a marker not owned by the current user or root is
+// skipped; one whose owner cannot be determined is an error.
 func isWorkspaceRoot(e Environment, dir string) (bool, error) {
 	for _, m := range workspaceMarkers {
-		fi, ok, err := e.stat(filepath.Join(dir, m))
+		path := filepath.Join(dir, m)
+		fi, ok, err := e.stat(path)
 		if err != nil {
 			return false, err
 		}
-		if ok && !fi.IsDir() {
+		if !ok || fi.IsDir() {
+			continue
+		}
+		if e.GOOS == goosWindows {
+			return true, nil
+		}
+		owner, known := e.FileOwner(fi)
+		if !known {
+			return false, fmt.Errorf("cannot determine the owner of workspace marker %s", path)
+		}
+		if uid := e.Getuid(); owner == uid || owner == 0 {
 			return true, nil
 		}
 	}

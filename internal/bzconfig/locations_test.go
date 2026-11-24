@@ -194,7 +194,7 @@ func TestFindProjectConfig(t *testing.T) {
 			for p, e := range tt.statErrs {
 				f.statErrs[p] = e
 			}
-			got, err := FindProjectConfig(f.env())
+			got, _, err := FindProjectConfig(f.env())
 			if tt.wantErr != "" {
 				require.Error(t, err)
 				if strings.HasPrefix(tt.wantErr, "both ") {
