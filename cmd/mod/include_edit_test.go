@@ -182,3 +182,59 @@ func TestUpdate_DryRunNamesFileAndWritesNothing(t *testing.T) {
 		assert.Equal(t, want, readRel(t, dir, name), name)
 	}
 }
+
+func TestEdit_SymlinkedRootOutsideWorkspace(t *testing.T) {
+	useRegistry(t, map[string]testutil.TestModule{
+		"a": {Versions: []string{"1.0.0", "1.1.0"}},
+		"b": {Versions: []string{"1", "2"}},
+	})
+	base := t.TempDir()
+	target := filepath.Join(base, "real", "MODULE.bazel")
+	require.NoError(t, os.MkdirAll(filepath.Dir(target), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(base, "ws", "d"), 0o755))
+	require.NoError(t, os.WriteFile(target, []byte("module(name = \"m\")\nbazel_dep(name = \"a\", version = \"1.0.0\")\ninclude(\"//d:x.MODULE.bazel\")\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(base, "ws", "d", "x.MODULE.bazel"), []byte("bazel_dep(name = \"b\", version = \"1\")\n"), 0o644))
+	link := filepath.Join(base, "ws", "MODULE.bazel")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	t.Chdir(filepath.Join(base, "ws"))
+	assertLink := func() {
+		info, err := os.Lstat(link)
+		require.NoError(t, err)
+		assert.NotZero(t, info.Mode()&os.ModeSymlink, "root must stay a symlink")
+	}
+
+	require.NoError(t, updateCmd.RunE(updateCmd, nil))
+	got, _ := os.ReadFile(target)
+	assert.Contains(t, string(got), `bazel_dep(name = "a", version = "1.1.0")`)
+	assert.Equal(t, "bazel_dep(name = \"b\", version = \"2\")\n", readRel(t, filepath.Join(base, "ws"), "d/x.MODULE.bazel"))
+	assertLink()
+
+	addNoVerify = true
+	t.Cleanup(func() { addNoVerify = false })
+	require.NoError(t, addCmd.RunE(addCmd, []string{"c@3"}))
+	got, _ = os.ReadFile(target)
+	assert.Contains(t, string(got), `bazel_dep(name = "c", version = "3")`)
+	assertLink()
+
+	require.NoError(t, rmCmd.RunE(rmCmd, []string{"a"}))
+	got, _ = os.ReadFile(target)
+	assert.NotContains(t, string(got), `name = "a"`)
+	assertLink()
+}
+
+func TestUpdate_SkipMessageNamesIncludedFile(t *testing.T) {
+	useRegistry(t, map[string]testutil.TestModule{"b": {Versions: []string{"1", "2"}}})
+	includeWorkspace(t, map[string]string{
+		"MODULE.bazel":     "module(name = \"m\")\ninclude(\"//d:x.MODULE.bazel\")\n",
+		"d/x.MODULE.bazel": "bazel_dep(name = \"b\")\nsingle_version_override(module_name = \"b\", version = \"1\")\n",
+	})
+	var out bytes.Buffer
+	updateCmd.SetOut(&out)
+	t.Cleanup(func() { updateCmd.SetOut(os.Stdout) })
+
+	require.NoError(t, updateCmd.RunE(updateCmd, nil))
+
+	assert.Contains(t, out.String(), "Skipping b: no version argument in bazel_dep (version is managed elsewhere) [d/x.MODULE.bazel]")
+}

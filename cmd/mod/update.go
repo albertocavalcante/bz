@@ -154,7 +154,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		}
 
 		if current == "" {
-			fmt.Fprintf(out, "Skipping %s: no version argument in bazel_dep (version is managed elsewhere)\n", name)
+			fmt.Fprintf(out, "Skipping %s: no version argument in bazel_dep (version is managed elsewhere)%s\n", name, updateInfo{file: ws.RelPath(f.OriginOf(dep))}.inFile(filepath.Base(modulePath)))
 			continue
 		}
 
@@ -275,7 +275,7 @@ func applyVersionUpdates(content []byte, pending []updateInfo, out io.Writer) ([
 		next, changed, err := module.SetDepVersion(newContent, u.name, u.latest)
 		if err != nil {
 			if errors.Is(err, module.ErrNoVersionArgument) {
-				fmt.Fprintf(out, "Skipping %s: no version argument in bazel_dep (version is managed elsewhere)\n", u.name)
+				fmt.Fprintf(out, "Skipping %s: no version argument in bazel_dep (version is managed elsewhere)%s\n", u.name, u.inFile("MODULE.bazel"))
 				continue
 			}
 			return nil, nil, fmt.Errorf("failed to update %s: %w", u.name, err)

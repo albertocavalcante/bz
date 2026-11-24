@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -17,12 +18,19 @@ import (
 // Workspace is a loaded MODULE.bazel together with the directory it lives in.
 // Included files are read and written only through an os.Root on that
 // directory, so an edit can neither leave the workspace nor follow a symlink
-// out of it.
+// out of it. The root MODULE.bazel is the file the user pointed bz at: when it
+// is a symlink, it is read and replaced through its resolved target, and the
+// link itself is preserved.
 type Workspace struct {
 	File *File
 
-	dir  string
-	root *os.Root
+	dir      string
+	root     *os.Root
+	rootRel  string // workspace-relative name of the root MODULE.bazel
+	rootReal string // its path with symlinks resolved
+
+	// writeFile replaces one file; tests replace it to inject failures.
+	writeFile func(rel string, data []byte) error
 }
 
 // OpenWorkspace loads modulePath with its include() calls expanded and opens
@@ -37,7 +45,14 @@ func OpenWorkspace(modulePath string) (*Workspace, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open workspace root: %w", err)
 	}
-	return &Workspace{File: f, dir: dir, root: root}, nil
+	resolved, err := filepath.EvalSymlinks(modulePath)
+	if err != nil {
+		_ = root.Close()
+		return nil, fmt.Errorf("resolve %s: %w", modulePath, err)
+	}
+	w := &Workspace{File: f, dir: dir, root: root, rootRel: filepath.Base(modulePath), rootReal: resolved}
+	w.writeFile = w.replaceFile
+	return w, nil
 }
 
 // Close releases the workspace root.
@@ -54,6 +69,9 @@ func (w *Workspace) RelPath(o Origin) string {
 
 // ReadFile returns the bytes of a workspace-relative file.
 func (w *Workspace) ReadFile(rel string) ([]byte, error) {
+	if rel == w.rootRel {
+		return os.ReadFile(w.rootReal)
+	}
 	return w.root.ReadFile(filepath.FromSlash(rel))
 }
 
@@ -151,20 +169,29 @@ type PartialWriteError struct {
 }
 
 func (e *PartialWriteError) Error() string {
-	return fmt.Sprintf("failed to write %s: %v; files written: %s; files NOT written: %s",
+	return fmt.Sprintf("failed to write %s: %v; files written: %s; files NOT written: %s. "+
+		"Each written file is complete and valid; fix the cause and re-run to finish the remaining files",
 		e.Failed, e.Err, strings.Join(e.Written, ", "), strings.Join(e.NotWritten, ", "))
 }
 
 func (e *PartialWriteError) Unwrap() error { return e.Err }
 
 // WriteAll replaces every edited file. Nothing is written unless every file
-// still has the bytes the edit was computed from and can be written; then each
-// file is replaced atomically, one after the other. A failure in that second
-// phase (disk full, a concurrent change) cannot be rolled back: it returns a
+// still has the bytes the edit was computed from, can be opened for writing and
+// has a directory a temporary file can be created in; then each file is
+// replaced atomically, one after the other. A failure in that second phase
+// (disk full, a concurrent change) cannot be rolled back: it returns a
 // *PartialWriteError naming exactly which files were and were not written.
+// Two edits of the same file are rejected.
 func (w *Workspace) WriteAll(edits []FileEdit) error {
 	todo := make([]FileEdit, 0, len(edits))
+	seen := map[string]bool{}
 	for _, e := range edits {
+		e.Rel = path.Clean(filepath.ToSlash(e.Rel))
+		if seen[e.Rel] {
+			return fmt.Errorf("internal error: %s is edited twice", e.Rel)
+		}
+		seen[e.Rel] = true
 		if !bytes.Equal(e.Original, e.Updated) {
 			todo = append(todo, e)
 		}
@@ -177,15 +204,12 @@ func (w *Workspace) WriteAll(edits []FileEdit) error {
 		if !bytes.Equal(cur, e.Original) {
 			return fmt.Errorf("failed to write %s: %w", e.Rel, ErrFileChanged)
 		}
-		// Replacing a read-only file by rename would bypass its permissions.
-		probe, err := w.root.OpenFile(filepath.FromSlash(e.Rel), os.O_WRONLY, 0)
-		if err != nil {
+		if err := w.preflight(e.Rel); err != nil {
 			return fmt.Errorf("failed to write %s: %w", e.Rel, err)
 		}
-		_ = probe.Close()
 	}
 	for i, e := range todo {
-		if err := w.writeAtomic(e.Rel, e.Updated); err != nil {
+		if err := w.writeFile(e.Rel, e.Updated); err != nil {
 			if i == 0 {
 				return fmt.Errorf("failed to write %s: %w", e.Rel, err)
 			}
@@ -202,23 +226,77 @@ func (w *Workspace) WriteAll(edits []FileEdit) error {
 	return nil
 }
 
-// writeAtomic replaces rel through the workspace root with a temporary file
-// in the same directory, keeping the file mode. A symlink is followed only
-// when it stays inside the workspace.
-func (w *Workspace) writeAtomic(rel string, data []byte) error {
-	rel = filepath.FromSlash(rel)
-	if info, err := w.root.Lstat(rel); err == nil && info.Mode()&fs.ModeSymlink != 0 {
-		resolved, err := w.resolveInside(rel)
+// preflight checks, without changing anything, what the replacement will need:
+// the file can be opened for writing (renaming over a read-only file would
+// bypass its permissions) and a temporary file can be created and removed next
+// to it.
+func (w *Workspace) preflight(rel string) error {
+	if rel == w.rootRel {
+		probe, err := os.OpenFile(w.rootReal, os.O_WRONLY, 0)
 		if err != nil {
 			return err
 		}
-		rel = resolved
+		_ = probe.Close()
+		tmp, err := os.CreateTemp(filepath.Dir(w.rootReal), ".bz-probe-*")
+		if err != nil {
+			return err
+		}
+		_ = tmp.Close()
+		return os.Remove(tmp.Name())
+	}
+	target, err := w.resolveIncluded(rel)
+	if err != nil {
+		return err
+	}
+	probe, err := w.root.OpenFile(target, os.O_WRONLY, 0)
+	if err != nil {
+		return err
+	}
+	_ = probe.Close()
+	tmpRel := w.tempName(target)
+	tmp, err := w.root.OpenFile(tmpRel, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	_ = tmp.Close()
+	return w.root.Remove(tmpRel)
+}
+
+// replaceFile is the production writeFile: the root file goes through the
+// single-file primitive, included files through the workspace root.
+func (w *Workspace) replaceFile(rel string, data []byte) error {
+	if rel == w.rootRel {
+		return WriteFileAtomic(w.rootReal, data)
+	}
+	return w.writeIncluded(rel, data)
+}
+
+func (w *Workspace) tempName(rel string) string {
+	return filepath.Join(filepath.Dir(rel), ".bz-"+filepath.Base(rel)+"."+strconv.Itoa(os.Getpid())+"."+strconv.FormatInt(time.Now().UnixNano(), 36))
+}
+
+// resolveIncluded returns the workspace-relative path to write for an included
+// file, following a symlink only when it stays inside the workspace.
+func (w *Workspace) resolveIncluded(rel string) (string, error) {
+	rel = filepath.FromSlash(rel)
+	if info, err := w.root.Lstat(rel); err == nil && info.Mode()&fs.ModeSymlink != 0 {
+		return w.resolveInside(rel)
+	}
+	return rel, nil
+}
+
+// writeIncluded replaces an included file through the workspace root with a
+// temporary file in the same directory, keeping the file mode.
+func (w *Workspace) writeIncluded(rel string, data []byte) error {
+	rel, err := w.resolveIncluded(rel)
+	if err != nil {
+		return err
 	}
 	info, err := w.root.Stat(rel)
 	if err != nil {
 		return err
 	}
-	tmpRel := filepath.Join(filepath.Dir(rel), ".bz-"+filepath.Base(rel)+"."+strconv.Itoa(os.Getpid())+"."+strconv.FormatInt(time.Now().UnixNano(), 36))
+	tmpRel := w.tempName(rel)
 	tmp, err := w.root.OpenFile(tmpRel, os.O_WRONLY|os.O_CREATE|os.O_EXCL, info.Mode().Perm())
 	if err != nil {
 		return err
