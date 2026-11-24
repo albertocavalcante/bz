@@ -1,11 +1,7 @@
-// Package bzconfig computes bz's effective configuration.
-//
-// Configuration comes from layers applied over built-in defaults, lowest
-// precedence first. Each layer records only the settings it sets explicitly
-// (see [Settings]), so a higher layer can set a value back to its default
-// and a lower layer's value survives when a higher layer does not mention
-// it. [Merge] combines the layers once, applies the defaults once and
-// records which layer set each effective value (see [Effective.Source]).
+// Package bzconfig computes bz's effective configuration from layers
+// (defaults < system file < user file < project file < environment < flags),
+// each recording only the settings it sets, and records which layer set each
+// value.
 package bzconfig
 
 import (
@@ -110,6 +106,7 @@ const (
 	LayerUser
 	LayerProject
 	LayerEnv
+	LayerFlag
 )
 
 func (k LayerKind) String() string {
@@ -124,6 +121,8 @@ func (k LayerKind) String() string {
 		return "project config"
 	case LayerEnv:
 		return "environment"
+	case LayerFlag:
+		return "flag"
 	default:
 		return fmt.Sprintf("layer(%d)", int(k))
 	}
@@ -137,8 +136,8 @@ type Source struct {
 	Origin string
 }
 
-// String renders the source for messages, e.g. "project config
-// /work/.bzconfig.toml" or "environment BZ_OFFLINE".
+// String renders the source for messages, e.g. "user config
+// /home/me/.config/bz/config.toml" or "environment BZ_OFFLINE".
 func (s Source) String() string {
 	if s.Origin == "" {
 		return s.Layer.String()
@@ -180,6 +179,9 @@ func (l Layer) source(k Key) Source {
 type Effective struct {
 	Config
 	sources map[Key]Source
+	// Files lists the configuration files that were read, lowest
+	// precedence first.
+	Files []string
 }
 
 // Source returns the layer that set key's effective value.
@@ -400,4 +402,26 @@ func isWindowsDrivePath(p string) bool {
 	}
 	c := p[0] | 0x20
 	return c >= 'a' && c <= 'z'
+}
+
+// FlagLayer builds the command-line flag layer from the global flags.
+// Only flags that are set contribute; --offline and --prefer-offline are
+// mutually exclusive and validated by the caller.
+func FlagLayer(offline, preferOffline bool, registry string) Layer {
+	l := Layer{Kind: LayerFlag, KeyOrigins: map[Key]string{}}
+	switch {
+	case offline:
+		m := NetworkModeOffline
+		l.Settings.Mode = &m
+		l.KeyOrigins[KeyMode] = "--offline"
+	case preferOffline:
+		m := NetworkModePreferOffline
+		l.Settings.Mode = &m
+		l.KeyOrigins[KeyMode] = "--prefer-offline"
+	}
+	if registry != "" {
+		l.Settings.Registry = &registry
+		l.KeyOrigins[KeyRegistry] = "--registry"
+	}
+	return l
 }

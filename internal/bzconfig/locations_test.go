@@ -113,6 +113,46 @@ func TestDefaultCacheDir(t *testing.T) {
 	}
 }
 
+// TestLoad_CacheDirResolution covers BZ_CACHE_DIR > [cache] dir > default.
+// The per-command --cache-dir flag is tested in cmd/cache.
+func TestLoad_CacheDirResolution(t *testing.T) {
+	tests := []struct {
+		name       string
+		file       string // project file content
+		userFile   string
+		vars       map[string]string
+		want       string
+		wantSource LayerKind
+	}{
+		{name: "default", want: defaultTestCacheDir, wantSource: LayerDefault},
+		{name: "config absolute", file: "[cache]\ndir = \"/var/cache/bz\"\n", want: "/var/cache/bz", wantSource: LayerProject},
+		{name: "config tilde", userFile: "[cache]\ndir = \"~/bzcache\"\n", want: "/home/u/bzcache", wantSource: LayerUser},
+		{name: "config relative to file", file: "[cache]\ndir = \".bzcache\"\n", want: "/work/proj/.bzcache", wantSource: LayerProject},
+		{
+			name: "env beats config", file: "[cache]\ndir = \"/var/cache/bz\"\n",
+			vars: map[string]string{EnvCacheDir: "/env/cache"}, want: "/env/cache", wantSource: LayerEnv,
+		},
+		{name: "env tilde", vars: map[string]string{EnvCacheDir: "~/envcache"}, want: "/home/u/envcache", wantSource: LayerEnv},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newFakeEnv()
+			if tt.file != "" {
+				f.files[projectFile] = tt.file
+			}
+			if tt.userFile != "" {
+				f.files[userFile] = tt.userFile
+			}
+			for k, v := range tt.vars {
+				f.vars[k] = v
+			}
+			eff := mustLoad(t, f, Layer{Kind: LayerFlag})
+			assert.Equal(t, tt.want, eff.Cache.Dir)
+			assert.Equal(t, tt.wantSource, eff.Source(KeyCacheDir).Layer)
+		})
+	}
+}
+
 func TestFindProjectConfig(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -208,4 +248,12 @@ func TestFindProjectConfig(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestLoad_LegacyProjectFileIsRead(t *testing.T) {
+	f := newFakeEnv()
+	f.files["/work/proj/.bzconfig.toml"] = "[network]\nmode = \"offline\"\n"
+	eff := mustLoad(t, f, Layer{Kind: LayerFlag})
+	assert.Equal(t, NetworkModeOffline, eff.Network.Mode)
+	assert.Equal(t, "project config /work/proj/.bzconfig.toml", eff.Source(KeyMode).String())
 }

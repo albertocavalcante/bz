@@ -97,7 +97,7 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 
 	out := cmd.OutOrStdout()
 
-	checks := make([]DoctorCheck, 0, 5)
+	checks := make([]DoctorCheck, 0, 6)
 	var bazelVersion string
 
 	// Print header (non-JSON only)
@@ -110,8 +110,9 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 	check, version := checkBazelInstalled(ctx, out)
 	bazelVersion = version
 
-	// 2-5. Run remaining checks and combine into one append
+	// 2-6. Run remaining checks and combine into one append
 	checks = append(checks, check,
+		checkConfig(out),
 		checkModuleBazel(out),
 		checkBazelVersion(out),
 		checkBzlmodEnabled(out, bazelVersion),
@@ -136,6 +137,26 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 		return printDoctorJSON(out, result)
 	}
 	return printDoctorText(out, result)
+}
+
+// checkConfig reports a configuration that fails to load as a failed check,
+// so doctor can diagnose the problem that stops every other command.
+func checkConfig(out io.Writer) DoctorCheck {
+	check := DoctorCheck{Name: "config"}
+	if _, err := cli.Effective(); err != nil {
+		check.Status = statusFail
+		check.Message = err.Error()
+		if !doctorJSON {
+			printCheckFail(out, check.Message, "")
+		}
+		return check
+	}
+	check.Status = statusPass
+	check.Message = "Configuration loaded"
+	if !doctorJSON {
+		printCheckPass(out, check.Message)
+	}
+	return check
 }
 
 func checkBazelInstalled(ctx context.Context, out io.Writer) (DoctorCheck, string) {

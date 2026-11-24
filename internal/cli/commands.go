@@ -8,25 +8,83 @@ import (
 	"github.com/albertocavalcante/bz/internal/bzconfig"
 )
 
+// The file and environment layers are read once per process (the root
+// command's pre-run calls LoadEffective); the flag layer is overlaid from
+// Global on each access so commands always see the parsed flags.
 var (
-	cachedCfg     *bzconfig.Effective
-	cachedCfgOnce sync.Once
-	cachedCfgErr  error
+	configMu  sync.Mutex
+	configEnv = bzconfig.OSEnvironment()
+	loaded    *bzconfig.Loaded
+	loadErr   error
+	loadDone  bool
 )
 
-func loadCachedConfig() (*bzconfig.Effective, error) {
-	cachedCfgOnce.Do(func() {
-		cachedCfg, cachedCfgErr = bzconfig.LoadProjectFile(".bzconfig.toml")
-	})
-	return cachedCfg, cachedCfgErr
+// SetEnvironment replaces the environment configuration is read from and
+// drops any cached configuration. It returns a function restoring the
+// previous environment. Tests use it to keep the real home directory and
+// /etc out of the picture.
+func SetEnvironment(env bzconfig.Environment) (restore func()) {
+	configMu.Lock()
+	prev := configEnv
+	configEnv = env
+	loaded, loadErr, loadDone = nil, nil, false
+	configMu.Unlock()
+	return func() {
+		configMu.Lock()
+		configEnv = prev
+		loaded, loadErr, loadDone = nil, nil, false
+		configMu.Unlock()
+	}
 }
 
-// ResetCachedConfig resets the cached configuration so it will be reloaded on next access.
-// This is intended for use in tests.
+// ResetCachedConfig drops the cached file and environment layers so they
+// are read again on next access. This is intended for use in tests.
 func ResetCachedConfig() {
-	cachedCfgOnce = sync.Once{}
-	cachedCfg = nil
-	cachedCfgErr = nil
+	configMu.Lock()
+	loaded, loadErr, loadDone = nil, nil, false
+	configMu.Unlock()
+}
+
+func loadLayers() (*bzconfig.Loaded, error) {
+	configMu.Lock()
+	defer configMu.Unlock()
+	if !loadDone {
+		loaded, loadErr = bzconfig.LoadLayers(configEnv)
+		loadDone = true
+	}
+	return loaded, loadErr
+}
+
+func flagLayer() bzconfig.Layer {
+	return bzconfig.FlagLayer(Global.Offline, Global.PreferOffline, Global.Registry)
+}
+
+// LoadEffective reads every configuration layer afresh and returns the
+// effective configuration together with warnings to print once (skipped
+// workspace markers, unusable BZ_TRUSTED_CONFIG_DIRS entries). The root
+// command calls it once per invocation before running a command.
+func LoadEffective() (*bzconfig.Effective, []string, error) {
+	ResetCachedConfig()
+	l, err := loadLayers()
+	var warnings []string
+	if l != nil {
+		warnings = l.Warnings
+	}
+	if err != nil {
+		return nil, warnings, err
+	}
+	eff, err := l.Resolve(flagLayer())
+	return eff, warnings, err
+}
+
+// Effective returns the effective configuration: defaults < system file <
+// user file < project file < environment < global flags.
+func Effective() (*bzconfig.Effective, error) {
+	l, err := loadLayers()
+	if err != nil {
+		return nil, err
+	}
+	return l.Resolve(flagLayer())
 }
 
 // CommandDisabledError is returned when a command is disabled in configuration.
@@ -43,6 +101,26 @@ func (e *CommandDisabledError) Error() string {
 func (e *CommandDisabledError) Is(target error) bool {
 	_, ok := target.(*CommandDisabledError)
 	return ok
+}
+
+// CheckCommandAllowed checks if a command is allowed based on configuration.
+// Returns CommandDisabledError if the command is disabled. It fails closed:
+// when the configuration cannot be loaded, the load error is returned and
+// the command must not run.
+func CheckCommandAllowed(cmdName string) error {
+	cfg, err := Effective()
+	if err != nil {
+		return err
+	}
+
+	if slices.Contains(cfg.Commands.Disabled, cmdName) {
+		return &CommandDisabledError{
+			Command: cmdName,
+			Reason:  "disabled in configuration",
+		}
+	}
+
+	return nil
 }
 
 // OfflineModeError is returned when a command requires network access but offline mode is enabled.
@@ -68,47 +146,15 @@ func (e *OfflineModeError) Is(target error) bool {
 	return ok
 }
 
-// CheckCommandAllowed checks if a command is allowed based on configuration.
-// Returns CommandDisabledError if the command is disabled.
-func CheckCommandAllowed(cmdName string) error {
-	cfg, err := loadCachedConfig()
-	if err != nil {
-		return nil //nolint:nilerr // config loading failure is non-fatal; allow command to proceed
-	}
-
-	if slices.Contains(cfg.Commands.Disabled, cmdName) {
-		return &CommandDisabledError{
-			Command: cmdName,
-			Reason:  "disabled in configuration",
-		}
-	}
-
-	return nil
-}
-
 // CheckOfflineAllowed checks if network access is available for a command.
 // Returns OfflineModeError if offline mode is enabled.
 // This checks both CLI flags and configuration.
 func CheckOfflineAllowed(cmdName string) error {
-	// Check CLI flag first
-	if IsOffline() {
+	if IsEffectivelyOffline() {
 		return &OfflineModeError{
 			Command: cmdName,
 		}
 	}
-
-	// Also check config file
-	cfg, err := loadCachedConfig()
-	if err != nil {
-		return nil //nolint:nilerr // config loading failure is non-fatal; allow command to proceed
-	}
-
-	if cfg.IsOffline() {
-		return &OfflineModeError{
-			Command: cmdName,
-		}
-	}
-
 	return nil
 }
 
@@ -117,12 +163,10 @@ func IsEffectivelyOffline() bool {
 	if IsOffline() {
 		return true
 	}
-
-	cfg, err := loadCachedConfig()
+	cfg, err := Effective()
 	if err != nil {
 		return false
 	}
-
 	return cfg.IsOffline()
 }
 
@@ -131,11 +175,9 @@ func IsEffectivelyPreferOffline() bool {
 	if IsPreferOffline() {
 		return true
 	}
-
-	cfg, err := loadCachedConfig()
+	cfg, err := Effective()
 	if err != nil {
 		return false
 	}
-
 	return cfg.IsPreferOffline()
 }

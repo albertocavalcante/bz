@@ -72,6 +72,31 @@ func OSEnvironment() Environment {
 	return env
 }
 
+// WithEnv returns a copy of e whose LookupEnv reports overrides first and
+// falls back to e's own lookup for other names.
+func (e Environment) WithEnv(overrides map[string]string) Environment {
+	inner := e.LookupEnv
+	e.LookupEnv = func(name string) (string, bool) {
+		if v, ok := overrides[name]; ok {
+			return v, true
+		}
+		if inner == nil {
+			return "", false
+		}
+		return inner(name)
+	}
+	return e
+}
+
+// Isolated returns a copy of e that reads no system file and looks for the
+// user file under configHome (via XDG_CONFIG_HOME). Tests use it so the
+// machine's real configuration cannot leak in.
+func (e Environment) Isolated(configHome string) Environment {
+	e = e.WithEnv(map[string]string{"XDG_CONFIG_HOME": configHome})
+	e.SystemConfigPath = ""
+	return e
+}
+
 func (e Environment) getenv(name string) string {
 	if e.LookupEnv == nil {
 		return ""
@@ -356,4 +381,101 @@ func isWorkspaceRoot(e Environment, dir string, trusted []fs.FileInfo) (bool, []
 			DisplayPath(path), owner, DisplayPath(dir), EnvTrustedConfigDirs))
 	}
 	return false, warnings, nil
+}
+
+// Loaded is the result of reading the file and environment layers.
+type Loaded struct {
+	// Layers holds the file and environment layers, lowest precedence first.
+	Layers []Layer
+	// Files lists the files that were read.
+	Files []string
+	// Warnings are non-fatal problems for the caller to print once, such as
+	// skipped workspace markers or unusable BZ_TRUSTED_CONFIG_DIRS entries.
+	Warnings []string
+	// DefaultCacheDir is the platform default cache directory.
+	DefaultCacheDir string
+}
+
+// LoadLayers reads the system, user and project files and the environment.
+// A missing file is skipped. Everything else that goes wrong is an error,
+// so a command never runs under a configuration bz could not fully apply:
+// a location error (including a stat error on a workspace marker above
+// the working directory), a file that fails its trust rules, an
+// unreadable or malformed file, or an invalid BZ_* boolean. Each file is
+// opened once and read through the handle its checks were made on.
+func LoadLayers(e Environment) (*Loaded, error) {
+	home := e.home()
+	out := &Loaded{DefaultCacheDir: DefaultCacheDir(e)}
+
+	// The error comes first: FindProjectConfig can return a path together
+	// with an error (an untrusted file), and that path must not be used.
+	project, warnings, err := FindProjectConfig(e)
+	out.Warnings = append(out.Warnings, warnings...)
+	if err != nil {
+		return out, err
+	}
+	trusted, _, err := e.trustedDirs() // warnings already reported by FindProjectConfig
+	if err != nil {
+		return out, err
+	}
+	files := []struct {
+		kind LayerKind
+		path string
+	}{
+		{LayerSystem, e.SystemConfigPath},
+		{LayerUser, UserConfigPath(e)},
+		{LayerProject, project},
+	}
+	for _, f := range files {
+		if f.path == "" {
+			continue
+		}
+		data, ok, err := e.readConfigFile(f.kind, f.path, trusted)
+		if err != nil {
+			return out, err
+		}
+		if !ok {
+			continue
+		}
+		layer, err := ParseFile(f.kind, f.path, data, home)
+		if err != nil {
+			return out, err
+		}
+		out.Layers = append(out.Layers, layer)
+		out.Files = append(out.Files, f.path)
+	}
+
+	lookup := e.LookupEnv
+	if lookup == nil {
+		lookup = func(string) (string, bool) { return "", false }
+	}
+	envLayer, err := EnvLayer(lookup, home)
+	if err != nil {
+		return out, err
+	}
+	out.Layers = append(out.Layers, envLayer)
+	return out, nil
+}
+
+// Resolve merges loaded layers with defaults and the flag layer. Unlike
+// [Merge], it is strict: any invalid value is an error.
+func (l *Loaded) Resolve(flags Layer) (*Effective, error) {
+	layers := append(append([]Layer(nil), l.Layers...), flags)
+	eff, err := Merge(Defaults(l.DefaultCacheDir), layers...)
+	if err != nil {
+		return nil, err
+	}
+	eff.Files = append([]string(nil), l.Files...)
+	return eff, nil
+}
+
+// Load computes the effective configuration for e and the given flags,
+// with the warnings collected while loading.
+func Load(e Environment, flags Layer) (*Effective, []string, error) {
+	loaded, err := LoadLayers(e)
+	if err != nil {
+		return nil, loaded.Warnings, err
+	}
+	eff, err := loaded.Resolve(flags)
+	return eff, loaded.Warnings, err
 }

@@ -48,7 +48,7 @@ Environment Variables:
 		}
 		// Configure lipgloss color profile based on --no-color flag
 		cli.ConfigureLipgloss()
-		return nil
+		return applyConfig(cmd)
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		if showVersion {
@@ -116,6 +116,46 @@ func formatError(err error) string {
 		b.WriteString("\n  - " + strings.ReplaceAll(text, "\n", "\n    "))
 	}
 	return b.String()
+}
+
+// applyConfig loads the effective configuration once for this invocation
+// and prints its warnings once.
+// A configuration that fails to load stops the command (fail closed), so a
+// bad value cannot silently drop settings such as [commands] disabled.
+// Help, version and completion keep working with a broken config file so
+// users can still diagnose it; for them the error is a warning.
+func applyConfig(cmd *cobra.Command) error {
+	errOut := cmd.ErrOrStderr()
+	protected := bzconfig.IsProtectedCommand(commandPathWithoutRoot(cmd))
+
+	_, warnings, err := cli.LoadEffective()
+	printWarnings(errOut, warnings)
+	switch {
+	case err == nil:
+		return nil
+	case cmd == doctorCmd:
+		return nil // doctor reports it as its "config" check
+	case protected || cmd.HasSubCommands():
+		// Help and bare group commands only print help, so they stay usable.
+		printWarnings(errOut, []string{err.Error()})
+		return nil
+	}
+	return err
+}
+
+func printWarnings(w io.Writer, warnings []string) {
+	for _, msg := range warnings {
+		fmt.Fprintf(w, "Warning: %s\n", msg)
+	}
+}
+
+// commandPathWithoutRoot returns cmd's path below the root, e.g.
+// "registry ping" for "bz registry ping", and "" for the root itself.
+func commandPathWithoutRoot(cmd *cobra.Command) string {
+	if !cmd.HasParent() {
+		return ""
+	}
+	return strings.TrimPrefix(cmd.CommandPath(), cmd.Root().Name()+" ")
 }
 
 // Configure wires all root and subcommands once.

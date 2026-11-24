@@ -593,7 +593,7 @@ func TestDoctorCmd_JSONOutput(t *testing.T) {
 	err = json.Unmarshal(buf.Bytes(), &result)
 	require.NoError(t, err)
 
-	assert.Len(t, result.Checks, 5)
+	assert.Len(t, result.Checks, 6)
 	assert.Equal(t, 0, result.IssueCount)
 }
 
