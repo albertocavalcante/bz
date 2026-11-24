@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/albertocavalcante/go-bzlmod/ast"
-	"github.com/albertocavalcante/go-bzlmod/label"
+	ast "github.com/albertocavalcante/go-bzlmod-ast"
+	"github.com/albertocavalcante/go-bzlmod-ast/label"
 	listpkg "github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 

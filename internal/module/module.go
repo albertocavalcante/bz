@@ -1,5 +1,5 @@
 // Package module provides a unified data layer for MODULE.bazel files.
-// It wraps go-bzlmod's ast package with convenient accessors.
+// It wraps the go-bzlmod-ast package with convenient accessors.
 package module
 
 import (
@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/albertocavalcante/go-bzlmod/ast"
+	ast "github.com/albertocavalcante/go-bzlmod-ast"
 )
 
 const moduleFileName = "MODULE.bazel"

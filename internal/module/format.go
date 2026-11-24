@@ -7,7 +7,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/albertocavalcante/go-bzlmod/ast"
+	ast "github.com/albertocavalcante/go-bzlmod-ast"
 
 	"github.com/albertocavalcante/bz/internal/cli"
 )

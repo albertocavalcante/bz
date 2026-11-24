@@ -205,6 +205,18 @@ func TestLoadContent_ParseErrorIncludesPosition(t *testing.T) {
 	}
 }
 
+func TestLoadContent_MalformedIncludeIsReported(t *testing.T) {
+	t.Parallel()
+
+	_, err := LoadContent("MODULE.bazel", []byte("module(name = \"m\")\ninclude(\"//a\" + \"b\")\n"))
+	if err == nil {
+		t.Fatal("expected malformed include() to be reported, got nil")
+	}
+	if !strings.Contains(err.Error(), "include:") || !strings.Contains(err.Error(), "MODULE.bazel:2") {
+		t.Fatalf("expected include error with position, got: %q", err)
+	}
+}
+
 func TestFindAndLoad(t *testing.T) {
 	t.Parallel()
 

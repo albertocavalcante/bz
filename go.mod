@@ -1,13 +1,13 @@
 module github.com/albertocavalcante/bz
 
-go 1.25.0
+go 1.26.0
 
 toolchain go1.26.11
 
 require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/albertocavalcante/go-bcr v0.0.0-20260204171121-c5dcf4fa037f
-	github.com/albertocavalcante/go-bzlmod v0.0.0-20260123084147-305cb93e8bab
+	github.com/albertocavalcante/go-bzlmod-ast v0.0.0-20261124042307-d6523571459d
 	github.com/bazelbuild/buildtools v0.0.0-20250602201422-b1e23f1025b8
 	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/charmbracelet/bubbles v1.0.0

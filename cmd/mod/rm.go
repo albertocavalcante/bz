@@ -72,7 +72,7 @@ func runRm(cmd *cobra.Command, args []string) error {
 		if toRemove[name] {
 			depsToRemove = append(depsToRemove, depInfo{
 				name: name,
-				line: dep.Pos.Line,
+				line: dep.Pos.Start.Line,
 			})
 			found[name] = true
 		}

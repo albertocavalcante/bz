@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/albertocavalcante/go-bzlmod/ast"
-	"github.com/albertocavalcante/go-bzlmod/label"
+	ast "github.com/albertocavalcante/go-bzlmod-ast"
+	"github.com/albertocavalcante/go-bzlmod-ast/label"
 )
 
 func TestToSummary_IncludesOverridesAndExtensions(t *testing.T) {
