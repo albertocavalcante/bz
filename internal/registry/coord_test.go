@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -115,5 +116,72 @@ func writeTestFile(t *testing.T, path, content string) {
 	}
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestFileRegistry_SymlinksCannotEscape plants symlinks inside a registry
+// (as a cloned hostile registry could) and checks that reads which would
+// leave the modules directory fail, while internal links keep working.
+func TestFileRegistry_SymlinksCannotEscape(t *testing.T) {
+	t.Parallel()
+
+	parent := t.TempDir()
+	root := filepath.Join(parent, "reg")
+	modules := filepath.Join(root, "modules")
+	secret := "SECRET-CONTENT"
+	writeTestFile(t, filepath.Join(parent, "outside", "secret"), secret)
+	writeTestFile(t, filepath.Join(parent, "outside", "mod", "metadata.json"), `{"versions":["1.0"]}`)
+	writeTestFile(t, filepath.Join(parent, "outside", "mod", "1.0", "MODULE.bazel"), secret)
+	writeTestFile(t, filepath.Join(modules, "rules_go", "metadata.json"), `{"versions":["1.0"]}`)
+	writeTestFile(t, filepath.Join(modules, "rules_go", "1.0", "MODULE.bazel"), "module()")
+	writeTestFile(t, filepath.Join(modules, "evil", "metadata.json"), `{"versions":["1.0"]}`)
+	if err := os.MkdirAll(filepath.Join(modules, "evil", "1.0"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	links := map[string]string{
+		// File symlink to a file outside the registry.
+		filepath.Join(modules, "evil", "1.0", "MODULE.bazel"): filepath.Join(parent, "outside", "secret"),
+		filepath.Join(modules, "evil", "1.0", "source.json"):  "../../../../outside/secret",
+		// Directory symlink to a directory outside the registry.
+		filepath.Join(modules, "evildir"): filepath.Join(parent, "outside", "mod"),
+		// Internal links that stay inside modules/.
+		filepath.Join(modules, "alias"):                       "rules_go",
+		filepath.Join(modules, "rules_go", "1.0", "link.txt"): "MODULE.bazel",
+	}
+	for link, target := range links {
+		if err := os.Symlink(target, link); err != nil {
+			t.Skipf("symlinks unavailable: %v", err)
+		}
+	}
+
+	reg := NewFileRegistry(root)
+	ctx := context.Background()
+
+	check := func(what string, data []byte, err error) {
+		t.Helper()
+		if err == nil {
+			t.Errorf("%s: read through an escaping symlink succeeded", what)
+		}
+		if strings.Contains(string(data), secret) {
+			t.Errorf("%s: returned content from outside the registry", what)
+		}
+	}
+	data, err := reg.GetModuleBazel(ctx, "evil", "1.0")
+	check("file symlink MODULE.bazel", data, err)
+	data, err = reg.GetSource(ctx, "evil", "1.0")
+	check("relative file symlink source.json", data, err)
+	data, err = reg.GetModuleBazel(ctx, "evildir", "1.0")
+	check("directory symlink MODULE.bazel", data, err)
+	if _, err := reg.GetMetadata(ctx, "evildir"); err == nil {
+		t.Error("directory symlink metadata.json: read succeeded")
+	}
+
+	// Internal symlinks still resolve.
+	if data, err := reg.GetModuleBazel(ctx, "alias", "1.0"); err != nil || string(data) != "module()" {
+		t.Errorf("internal directory symlink: data=%q err=%v", data, err)
+	}
+	if _, err := reg.GetMetadata(ctx, "alias"); err != nil {
+		t.Errorf("internal directory symlink metadata: %v", err)
 	}
 }

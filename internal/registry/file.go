@@ -63,12 +63,7 @@ func (r *FileRegistry) GetMetadata(ctx context.Context, module string) (*Metadat
 	if err := coord.ValidateModuleName(module); err != nil {
 		return nil, err
 	}
-	metaPath, err := r.path(MetadataPath(module))
-	if err != nil {
-		return nil, err
-	}
-
-	data, err := os.ReadFile(metaPath)
+	data, err := r.readFile(MetadataPath(module))
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, ErrModuleNotFound
@@ -91,11 +86,7 @@ func (r *FileRegistry) GetModuleBazel(ctx context.Context, module, version strin
 	}
 
 	// First check if module exists
-	modulePath, err := r.path(ModulePath(module))
-	if err != nil {
-		return nil, err
-	}
-	if _, err := os.Stat(modulePath); err != nil {
+	if err := r.stat(ModulePath(module)); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, ErrModuleNotFound
 		}
@@ -103,11 +94,7 @@ func (r *FileRegistry) GetModuleBazel(ctx context.Context, module, version strin
 	}
 
 	// Then check for version
-	bazelPath, err := r.path(ModuleBazelPath(module, version))
-	if err != nil {
-		return nil, err
-	}
-	data, err := os.ReadFile(bazelPath)
+	data, err := r.readFile(ModuleBazelPath(module, version))
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, ErrVersionNotFound
@@ -125,11 +112,7 @@ func (r *FileRegistry) GetSource(ctx context.Context, module, version string) ([
 	}
 
 	// First check if module exists
-	modulePath, err := r.path(ModulePath(module))
-	if err != nil {
-		return nil, err
-	}
-	if _, err := os.Stat(modulePath); err != nil {
+	if err := r.stat(ModulePath(module)); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, ErrModuleNotFound
 		}
@@ -137,11 +120,7 @@ func (r *FileRegistry) GetSource(ctx context.Context, module, version string) ([
 	}
 
 	// Then check for version
-	sourcePath, err := r.path(SourcePath(module, version))
-	if err != nil {
-		return nil, err
-	}
-	data, err := os.ReadFile(sourcePath)
+	data, err := r.readFile(SourcePath(module, version))
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, ErrVersionNotFound
@@ -152,13 +131,54 @@ func (r *FileRegistry) GetSource(ctx context.Context, module, version string) ([
 	return data, nil
 }
 
-// path joins a slash-separated registry path onto the registry root and
-// verifies that the result stays inside the root's modules directory.
-func (r *FileRegistry) path(rel string) (string, error) {
+// modulesName checks a slash-separated registry path ("modules/...") and
+// returns it relative to the modules directory. This is the lexical first
+// layer; reads then go through os.Root.
+func (r *FileRegistry) modulesName(rel string) (string, error) {
 	if err := checkModulesRel(rel); err != nil {
 		return "", err
 	}
-	return coord.Join(filepath.Join(r.root, ModulesDir), filepath.FromSlash(strings.TrimPrefix(rel, ModulesDir+"/")))
+	name := filepath.FromSlash(strings.TrimPrefix(rel, ModulesDir+"/"))
+	if _, err := coord.Join(filepath.Join(r.root, ModulesDir), name); err != nil {
+		return "", err
+	}
+	return name, nil
+}
+
+// openModules opens the registry's modules directory as an os.Root, so
+// symlinks inside the registry cannot redirect a read outside it. Symlinks
+// whose targets stay inside the modules directory still resolve.
+func (r *FileRegistry) openModules() (*os.Root, error) {
+	return os.OpenRoot(filepath.Join(r.root, ModulesDir))
+}
+
+// readFile reads a registry file confined to the modules directory.
+func (r *FileRegistry) readFile(rel string) ([]byte, error) {
+	name, err := r.modulesName(rel)
+	if err != nil {
+		return nil, err
+	}
+	root, err := r.openModules()
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+	return root.ReadFile(name)
+}
+
+// stat checks that a registry entry exists inside the modules directory.
+func (r *FileRegistry) stat(rel string) error {
+	name, err := r.modulesName(rel)
+	if err != nil {
+		return err
+	}
+	root, err := r.openModules()
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	_, err = root.Stat(name)
+	return err
 }
 
 // checkModulesRel verifies that a registry path built by the path helpers
