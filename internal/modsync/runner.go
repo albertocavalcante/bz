@@ -101,7 +101,10 @@ func (r *runner) syncModule(ctx context.Context, moduleName string, result *Resu
 	}
 
 	// Filter versions based on workflow.Versions
-	versions := r.filterVersions(meta)
+	versions, err := r.selectVersions(meta)
+	if err != nil {
+		return err
+	}
 	if len(versions) == 0 {
 		if r.opts.Verbose {
 			slog.Info("no versions match selector", "module", moduleName)
@@ -236,7 +239,7 @@ func (r *runner) filterVersions(meta *registry.Metadata) []string {
 		return meta.Versions
 
 	case "since":
-		return filterSince(meta.Versions, r.workflow.Versions.Since)
+		return nil // rejected by selectVersions; never select everything
 
 	case "range":
 		return filterRange(meta.Versions, r.workflow.Versions.MinVer, r.workflow.Versions.MaxVer)
@@ -272,11 +275,18 @@ func latestN(versions []string, n int) []string {
 	return versions[len(versions)-n:]
 }
 
-// filterSince selects nothing: release dates are not available from the
-// registry, and sync.since is rejected when the configuration is loaded. It
-// must never fall back to selecting every version.
-func filterSince(_ []string, _ string) []string {
-	return nil
+// errSinceUnsupported is returned for workflows that use sync.since.
+func errSinceUnsupported(workflow string) error {
+	return fmt.Errorf("workflow %q: sync.since is not supported yet: release dates are not available from the registry; use sync.latest, sync.range or sync.all", workflow)
+}
+
+// selectVersions applies the workflow's version selector, failing for
+// selectors that cannot be honored instead of silently selecting nothing.
+func (r *runner) selectVersions(meta *registry.Metadata) ([]string, error) {
+	if r.workflow.Versions != nil && r.workflow.Versions.Type == "since" {
+		return nil, errSinceUnsupported(r.workflow.Name)
+	}
+	return r.filterVersions(meta), nil
 }
 
 // filterRange filters versions by semver range.

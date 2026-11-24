@@ -3,6 +3,7 @@ package modsync
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/albertocavalcante/bz/internal/config"
 )
@@ -44,7 +45,11 @@ func (s *Service) Run(ctx context.Context, workflowName string, opts Options) (*
 	}
 
 	if workflow == nil {
-		return nil, fmt.Errorf("workflow %q not found", workflowName)
+		return nil, fmt.Errorf("workflow %q not found (available: %s)", workflowName, strings.Join(s.ListWorkflows(), ", "))
+	}
+
+	if workflow.Versions != nil && workflow.Versions.Type == "since" {
+		return nil, errSinceUnsupported(workflow.Name)
 	}
 
 	// Create and run the runner

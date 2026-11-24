@@ -346,7 +346,7 @@ func syncIncludePatches(_ *starlark.Thread, _ *starlark.Builtin, args starlark.T
 
 // parseWorkflowVersions validates the versions selector of a workflow and
 // applies the default of latest(1).
-func parseWorkflowVersions(workflow string, versionsVal starlark.Value) (*VersionSelector, error) {
+func parseWorkflowVersions(versionsVal starlark.Value) (*VersionSelector, error) {
 	if versionsVal == nil || versionsVal == starlark.None {
 		versions := newVersionSelector(VersionSelectorLatest)
 		versions.Count = 1
@@ -356,9 +356,6 @@ func parseWorkflowVersions(workflow string, versionsVal starlark.Value) (*Versio
 	v, ok := versionsVal.(*VersionSelector)
 	if !ok {
 		return nil, fmt.Errorf("sync.workflow: versions must be a version selector, got %s", versionsVal.Type())
-	}
-	if v.Kind == VersionSelectorSince {
-		return nil, fmt.Errorf("sync.workflow %q: sync.since is not supported yet: release dates are not available from the registry; use sync.latest, sync.range or sync.all", workflow)
 	}
 	return v, nil
 }
@@ -445,7 +442,7 @@ func syncWorkflow(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tu
 		modules[i] = string(s)
 	}
 
-	versions, err := parseWorkflowVersions(name, versionsVal)
+	versions, err := parseWorkflowVersions(versionsVal)
 	if err != nil {
 		return nil, err
 	}

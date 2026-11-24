@@ -1,7 +1,11 @@
 package modsync
 
 import (
+	"strings"
 	"testing"
+
+	"github.com/albertocavalcante/bz/internal/config"
+	"github.com/albertocavalcante/bz/internal/registry"
 )
 
 func TestLatestN_EdgeCases(t *testing.T) {
@@ -63,11 +67,16 @@ func TestLatestN_EdgeCases(t *testing.T) {
 	}
 }
 
-func TestFilterSince_NeverSelectsEverything(t *testing.T) {
+func TestSelectVersions_SinceIsAnError(t *testing.T) {
 	t.Parallel()
 
-	if got := filterSince([]string{"1.0.0", "1.1.0"}, "2099-01-01"); len(got) != 0 {
-		t.Errorf("filterSince selected %v, want nothing", got)
+	r := &runner{workflow: &config.Workflow{Name: "recent", Versions: &config.VersionSelector{Type: "since", Since: "2099-01-01"}}}
+	got, err := r.selectVersions(&registry.Metadata{Versions: []string{"1.0.0", "1.1.0"}})
+	if err == nil || !strings.Contains(err.Error(), "not supported yet") || !strings.Contains(err.Error(), `"recent"`) {
+		t.Fatalf("err = %v, want not-supported error naming the workflow", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("selected %v, want nothing", got)
 	}
 }
 

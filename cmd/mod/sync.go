@@ -1,6 +1,7 @@
 package mod
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -102,7 +103,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	workflowName, err := resolveWorkflowName(syncWorkflowFlag, args)
+	workflowName, err := resolveWorkflowName(syncWorkflowFlag, cmd.Flags().Changed("workflow"), args)
 	if err != nil {
 		return err
 	}
@@ -143,16 +144,26 @@ func runSync(cmd *cobra.Command, args []string) error {
 }
 
 // resolveWorkflowName combines the --workflow flag with the optional
-// positional argument. Giving both is allowed only when they agree.
-func resolveWorkflowName(flagValue string, args []string) (string, error) {
-	switch {
-	case flagValue != "" && len(args) == 1 && args[0] != flagValue:
-		return "", fmt.Errorf("conflicting workflow names: --workflow %q and positional %q", flagValue, args[0])
-	case flagValue != "":
-		return flagValue, nil
-	case len(args) == 1:
-		return args[0], nil
-	default:
-		return "", fmt.Errorf("workflow name is required (use --workflow NAME, or --list to see available workflows)")
+// positional argument. Giving both is allowed only when they agree; an
+// explicitly empty name from either source is an error.
+func resolveWorkflowName(flagValue string, flagSet bool, args []string) (string, error) {
+	var names []string
+	if flagSet {
+		names = append(names, flagValue)
 	}
+	names = append(names, args...)
+	if len(names) == 0 || names[0] == "" {
+		return "", errWorkflowRequired
+	}
+	for _, n := range names[1:] {
+		if n == "" {
+			return "", errWorkflowRequired
+		}
+		if n != names[0] {
+			return "", fmt.Errorf("conflicting workflow names: --workflow %q and positional %q", names[0], n)
+		}
+	}
+	return names[0], nil
 }
+
+var errWorkflowRequired = errors.New("workflow name is required (use --workflow NAME, or --list to see available workflows)")

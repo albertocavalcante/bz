@@ -169,7 +169,7 @@ sync.workflow(
 ### Since Date
 
 <Aside type="caution">
-`sync.since(...)` is not supported yet: release dates are not available from the registry. A workflow that uses it fails when the configuration is loaded, with an error naming the workflow. Use `sync.latest`, `sync.range` or `sync.all` instead.
+`sync.since(...)` is not supported yet: release dates are not available from the registry. Running a workflow that uses it fails before any sync work, with an error naming the workflow; the configuration still loads and other workflows are unaffected. Use `sync.latest`, `sync.range` or `sync.all` instead.
 </Aside>
 
 ## Examples

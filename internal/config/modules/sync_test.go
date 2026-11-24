@@ -501,9 +501,9 @@ sync.workflow(
 	})
 }
 
-func TestSyncWorkflowRejectsSince(t *testing.T) {
+func TestSyncWorkflowSinceStillLoads(t *testing.T) {
 	t.Parallel()
-	_, err := evalWorkflowCode(t, `
+	ws, err := evalWorkflowCode(t, `
 sync.workflow(
     name = "recent",
     origin = bcr,
@@ -512,9 +512,9 @@ sync.workflow(
     versions = sync.since("2024-01-01"),
 )
 `)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "not supported yet: release dates are not available from the registry")
-	assert.Contains(t, err.Error(), `"recent"`)
+	require.NoError(t, err)
+	require.Len(t, ws, 1)
+	assert.Equal(t, VersionSelectorSince, ws[0].Versions.Kind)
 }
 
 func TestWorkflowRegistry(t *testing.T) {

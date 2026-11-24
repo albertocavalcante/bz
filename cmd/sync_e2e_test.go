@@ -69,16 +69,16 @@ func TestModSync_GuideFlowWithWorkflowFlag(t *testing.T) {
 			if code != 0 {
 				t.Fatalf("exit code = %d\nstdout=%s\nstderr=%s", code, stdout, stderr)
 			}
+			// NOTE: this asserts the layout written today (<dest>/<module>/<version>/...),
+			// which is not yet a Bazel registry layout. The layout change must update
+			// this assertion to modules/<module>/<version>/....
 			for _, rel := range []string{
 				"rules_go/0.50.1/MODULE.bazel",
 				"rules_go/0.49.0/MODULE.bazel",
 				"bazel_skylib/1.7.1/MODULE.bazel",
 			} {
 				if _, err := os.Stat(filepath.Join(dest, rel)); err != nil {
-					// Layout may change; fall back to the registry-style prefix.
-					if _, err2 := os.Stat(filepath.Join(dest, "modules", rel)); err2 != nil {
-						t.Errorf("missing %s under %s: %v", rel, dest, err)
-					}
+					t.Errorf("missing %s under %s: %v", rel, dest, err)
 				}
 			}
 		})
@@ -131,28 +131,49 @@ func TestModSync_FailureExitsNonZeroWithSingleSummary(t *testing.T) {
 	}
 }
 
-func TestModSync_SinceFailsAtConfigLoad(t *testing.T) {
+func TestModSync_SinceFailsOnlyWhenRun(t *testing.T) {
 	syncEnv(t)
-	dir := t.TempDir()
-	cfg := filepath.Join(dir, "bz.star")
-	body := `
-bcr = registry.file("` + dir + `")
+	origin := fixtureOrigin(t)
+	cfg, dest := writeSyncConfig(t, origin, `"rules_go"`, `
 sync.workflow(
     name = "recent",
     origin = bcr,
-    destination = bcr,
+    destination = mirror,
     modules = ["rules_go"],
     versions = sync.since("2099-01-01"),
 )
-`
-	if err := os.WriteFile(cfg, []byte(body), 0o644); err != nil {
-		t.Fatal(err)
+`)
+
+	stdout, stderr, code := runCLI(t, "mod", "sync", "-c", cfg, "--list")
+	if code != 0 || !strings.Contains(stdout, "recent") || !strings.Contains(stdout, "mirror") {
+		t.Fatalf("--list: code=%d stdout=%s stderr=%s", code, stdout, stderr)
 	}
-	_, stderr, code := runCLI(t, "mod", "sync", "-c", cfg, "-w", "recent")
+
+	if _, stderr, code = runCLI(t, "mod", "sync", "-c", cfg, "-w", "mirror"); code != 0 {
+		t.Fatalf("unrelated workflow failed: code=%d stderr=%s", code, stderr)
+	}
+
+	_ = os.RemoveAll(dest)
+	_, stderr, code = runCLI(t, "mod", "sync", "-c", cfg, "-w", "recent")
 	if code == 0 {
 		t.Fatal("exit code = 0, want non-zero")
 	}
 	if !strings.Contains(stderr, "not supported yet: release dates are not available from the registry") || !strings.Contains(stderr, `"recent"`) {
 		t.Errorf("stderr = %q", stderr)
+	}
+	if n := countErrorLines(stderr); n != 1 {
+		t.Errorf("stderr has %d Error: lines, want 1:\n%s", n, stderr)
+	}
+	if _, err := os.Stat(dest); err == nil {
+		t.Error("destination written although the workflow was rejected")
+	}
+}
+
+func TestModSync_UnknownWorkflowListsAvailable(t *testing.T) {
+	syncEnv(t)
+	cfg, _ := writeSyncConfig(t, fixtureOrigin(t), `"rules_go"`, "")
+	_, stderr, code := runCLI(t, "mod", "sync", "-c", cfg, "-w", "nope")
+	if code == 0 || !strings.Contains(stderr, `workflow "nope" not found (available: mirror)`) {
+		t.Errorf("code=%d stderr=%q", code, stderr)
 	}
 }
