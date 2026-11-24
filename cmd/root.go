@@ -122,7 +122,8 @@ func configureRootCmd() {
 	rootCmd.SilenceErrors = true
 	rootCmd.SilenceUsage = true
 	rootCmd.SetFlagErrorFunc(func(c *cobra.Command, err error) error {
-		return fmt.Errorf("%w\nRun '%s --help' for usage.", err, c.CommandPath())
+		hint := fmt.Sprintf("Run '%s --help' for usage.", c.CommandPath())
+		return fmt.Errorf("%w\n%s", err, hint)
 	})
 
 	// Global flags
