@@ -294,9 +294,9 @@ func TestWriteFileAtomic(t *testing.T) {
 	t.Run("follows symlinks", func(t *testing.T) {
 		t.Parallel()
 		dir := t.TempDir()
-		real := filepath.Join(dir, "real.bazel")
+		realPath := filepath.Join(dir, "real.bazel")
 		link := filepath.Join(dir, "MODULE.bazel")
-		require.NoError(t, os.WriteFile(real, []byte("old"), 0o644))
+		require.NoError(t, os.WriteFile(realPath, []byte("old"), 0o644))
 		if err := os.Symlink("real.bazel", link); err != nil {
 			t.Skip("symlinks unavailable")
 		}
@@ -304,7 +304,7 @@ func TestWriteFileAtomic(t *testing.T) {
 		fi, err := os.Lstat(link)
 		require.NoError(t, err)
 		assert.NotZero(t, fi.Mode()&os.ModeSymlink)
-		got, _ := os.ReadFile(real)
+		got, _ := os.ReadFile(realPath)
 		assert.Equal(t, "new", string(got))
 	})
 }

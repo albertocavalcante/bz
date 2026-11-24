@@ -268,13 +268,13 @@ func FormatBazelDepEOL(name, version string, dev bool, eol string) string {
 // same directory, syncing it and renaming it over the target. The existing
 // file mode is preserved (0o644 for a new file); symlinks are followed so the
 // link itself survives. On any failure the original file is left untouched.
-func WriteFileAtomic(path string, data []byte) (err error) {
+func WriteFileAtomic(path string, data []byte) error {
 	target := path
-	if resolved, rerr := filepath.EvalSymlinks(path); rerr == nil {
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
 		target = resolved
 	}
 	mode := os.FileMode(0o644)
-	if info, serr := os.Stat(target); serr == nil {
+	if info, err := os.Stat(target); err == nil {
 		mode = info.Mode().Perm()
 	}
 
@@ -283,24 +283,32 @@ func WriteFileAtomic(path string, data []byte) (err error) {
 		return err
 	}
 	tmpName := tmp.Name()
-	defer func() {
-		if err != nil {
-			_ = tmp.Close()
-			_ = os.Remove(tmpName)
-		}
-	}()
 
-	if _, err = tmp.Write(data); err != nil {
+	if err := writeAndClose(tmp, data, mode); err != nil {
+		_ = os.Remove(tmpName)
 		return err
 	}
-	if err = tmp.Chmod(mode); err != nil {
+	if err := os.Rename(tmpName, target); err != nil {
+		_ = os.Remove(tmpName)
 		return err
 	}
-	if err = tmp.Sync(); err != nil {
+	return nil
+}
+
+// writeAndClose writes data to f, applies mode, syncs and closes it. The file
+// is closed even when an earlier step fails.
+func writeAndClose(f *os.File, data []byte, mode os.FileMode) error {
+	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
 		return err
 	}
-	if err = tmp.Close(); err != nil {
+	if err := f.Chmod(mode); err != nil {
+		_ = f.Close()
 		return err
 	}
-	return os.Rename(tmpName, target)
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		return err
+	}
+	return f.Close()
 }
