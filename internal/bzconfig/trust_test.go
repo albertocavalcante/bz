@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -516,4 +517,125 @@ func TestFindProjectConfig_SkippedMarkersWarnAndTrustedDirsCount(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "/srv/repo/.bz.toml", got, "a trusted directory's marker counts and its config is trusted")
 	assert.Empty(t, warnings)
+}
+
+// assertNoControlBytes fails if s holds any byte below 0x20 (newline
+// included), DEL, or invalid UTF-8.
+func assertNoControlBytes(t *testing.T, s string) {
+	t.Helper()
+	assert.True(t, utf8.ValidString(s), "invalid UTF-8 in %q", s)
+	for i := 0; i < len(s); i++ {
+		if s[i] < 0x20 || s[i] == 0x7f {
+			t.Fatalf("control byte %#x at %d in %q", s[i], i, s)
+		}
+	}
+}
+
+func TestMessagesNeverEmitControlBytes(t *testing.T) {
+	const dir = "/w'q\nz\x1b[31m\x07\xff"
+	cfg := dir + "/.bz.toml"
+
+	t.Run("untrusted config error and its fix", func(t *testing.T) {
+		f := newFakeEnv()
+		f.files = map[string]string{cfg: ""}
+		f.modes[cfg] = 0o664
+		f.modes[dir] = fs.ModeDir | 0o775
+		_, err := CheckProjectConfigTrust(f.env(), cfg)
+		require.Error(t, err)
+		msg := err.Error()
+		assertNoControlBytes(t, msg)
+		assert.Contains(t, msg, `"/w'q\nz\x1b[31m\a\xff/.bz.toml"`, "Go-quoted path")
+		assert.NotContains(t, msg, "chmod", "no copyable command for such a path")
+		assert.Contains(t, msg, "rename the file or directory to remove control or non-printable characters")
+	})
+
+	t.Run("other refusal reasons", func(t *testing.T) {
+		for _, owners := range []map[string]int{{cfg: 2000}, {dir: 2000}} {
+			f := newFakeEnv()
+			f.files = map[string]string{cfg: ""}
+			for k, v := range owners {
+				f.owners[k] = v
+			}
+			_, err := CheckProjectConfigTrust(f.env(), cfg)
+			require.Error(t, err)
+			assertNoControlBytes(t, err.Error())
+		}
+	})
+
+	t.Run("symlink target", func(t *testing.T) {
+		f := newFakeEnv()
+		f.files = map[string]string{"/ws/.bz.toml": "", cfg: ""}
+		f.links["/ws/.bz.toml"] = cfg
+		f.owners[cfg] = 2000
+		_, err := CheckProjectConfigTrust(f.env(), "/ws/.bz.toml")
+		require.Error(t, err)
+		assertNoControlBytes(t, err.Error())
+	})
+
+	t.Run("skipped marker warning", func(t *testing.T) {
+		f := newFakeEnv()
+		f.wd = dir + "/pkg"
+		f.files = map[string]string{dir + "/MODULE.bazel": ""}
+		f.owners[dir+"/MODULE.bazel"] = 2000
+		_, warnings, err := FindProjectConfig(f.env())
+		require.NoError(t, err)
+		require.Len(t, warnings, 1)
+		assertNoControlBytes(t, warnings[0])
+	})
+
+	t.Run("stat, both-names and marker-owner errors", func(t *testing.T) {
+		f := newFakeEnv()
+		f.wd = dir
+		f.files = map[string]string{dir + "/MODULE.bazel": ""}
+		f.statErrs[cfg] = &fs.PathError{Op: "stat", Path: cfg, Err: fs.ErrPermission}
+		_, _, err := FindProjectConfig(f.env())
+		require.Error(t, err)
+		assertNoControlBytes(t, err.Error())
+		assert.ErrorIs(t, err, fs.ErrPermission)
+
+		f = newFakeEnv()
+		f.wd = dir
+		f.files = map[string]string{dir + "/MODULE.bazel": "", cfg: "", dir + "/.bzconfig.toml": ""}
+		_, _, err = FindProjectConfig(f.env())
+		require.Error(t, err)
+		assertNoControlBytes(t, err.Error())
+
+		env := newFakeEnv()
+		env.wd = dir
+		env.files = map[string]string{dir + "/MODULE.bazel": ""}
+		e := env.env()
+		e.FileOwner = func(fs.FileInfo) (int, bool) { return 0, false }
+		_, _, err = FindProjectConfig(e)
+		require.Error(t, err)
+		assertNoControlBytes(t, err.Error())
+	})
+
+	t.Run("trusted-dirs entries", func(t *testing.T) {
+		f := newFakeEnv()
+		f.files = map[string]string{"/ws/.bz.toml": ""}
+		f.vars[EnvTrustedConfigDirs] = "/missing\x1b[2J"
+		warnings, err := CheckProjectConfigTrust(f.env(), "/ws/.bz.toml")
+		require.NoError(t, err)
+		require.Len(t, warnings, 1)
+		assertNoControlBytes(t, warnings[0])
+
+		f.vars[EnvTrustedConfigDirs] = "rel\nfake line"
+		_, err = CheckProjectConfigTrust(f.env(), "/ws/.bz.toml")
+		require.Error(t, err)
+		assertNoControlBytes(t, err.Error())
+	})
+}
+
+func TestDisplayPath(t *testing.T) {
+	for in, want := range map[string]string{
+		"/plain/path":     "/plain/path",
+		"/with space/ünï": "/with space/ünï",
+		"/a\nb":           `"/a\nb"`,
+		"/esc\x1b[31m":    `"/esc\x1b[31m"`,
+		"/bad\xff":        `"/bad\xff"`,
+		"/del\x7f":        `"/del\x7f"`,
+		"/nbsp\u00a0":     `"/nbsp\u00a0"`,
+	} {
+		assert.Equal(t, want, displayPath(in), "%q", in)
+	}
 }

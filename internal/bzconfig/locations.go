@@ -102,7 +102,7 @@ func (e Environment) stat(path string) (fs.FileInfo, bool, error) {
 	case errors.Is(err, fs.ErrNotExist):
 		return nil, false, nil
 	default:
-		return nil, false, fmt.Errorf("checking %s: %w", path, err)
+		return nil, false, fmt.Errorf("checking %s: %w", displayPath(path), cleanErr(err))
 	}
 }
 
@@ -115,7 +115,7 @@ func (e Environment) regularFile(path string) (bool, error) {
 		return false, err
 	}
 	if !fi.Mode().IsRegular() {
-		return false, fmt.Errorf("%s is not a regular file (%s)", path, fi.Mode().Type())
+		return false, fmt.Errorf("%s is not a regular file (%s)", displayPath(path), fi.Mode().Type())
 	}
 	return true, nil
 }
@@ -238,10 +238,10 @@ func FindProjectConfig(e Environment) (string, []string, error) {
 	}
 	wd, err := e.Getwd()
 	if err != nil {
-		return "", nil, fmt.Errorf("finding project config: %w", err)
+		return "", nil, fmt.Errorf("finding project config: %w", cleanErr(err))
 	}
 	if wd, err = e.resolve(wd); err != nil {
-		return "", nil, fmt.Errorf("finding project config: %w", err)
+		return "", nil, fmt.Errorf("finding project config: %w", cleanErr(err))
 	}
 	homeDirs, err := e.homeAndAncestors()
 	if err != nil {
@@ -270,7 +270,7 @@ func FindProjectConfig(e Environment) (string, []string, error) {
 		switch {
 		case hasPrimary && hasLegacy:
 			return "", warnings, fmt.Errorf("both %s and %s exist; keep only one (%s is preferred)",
-				primary, legacy, ProjectConfigName)
+				displayPath(primary), displayPath(legacy), ProjectConfigName)
 		case hasPrimary:
 			return primary, warnings, e.checkTrust(primary, trusted)
 		case hasLegacy:
@@ -336,7 +336,7 @@ func isWorkspaceRoot(e Environment, dir string, trusted []fs.FileInfo) (bool, []
 		}
 		owner, known := e.FileOwner(fi)
 		if !known {
-			return false, warnings, fmt.Errorf("cannot determine the owner of workspace marker %s", path)
+			return false, warnings, fmt.Errorf("cannot determine the owner of workspace marker %s", displayPath(path))
 		}
 		if uid := e.Getuid(); owner == uid || owner == 0 {
 			return true, warnings, nil
@@ -350,7 +350,7 @@ func isWorkspaceRoot(e Environment, dir string, trusted []fs.FileInfo) (bool, []
 		}
 		warnings = append(warnings, fmt.Sprintf(
 			"workspace marker %s is owned by uid %d, not you or root; ignored, so no project config from that workspace applies (list %s in %s to trust it)",
-			path, owner, dir, EnvTrustedConfigDirs))
+			displayPath(path), owner, displayPath(dir), EnvTrustedConfigDirs))
 	}
 	return false, warnings, nil
 }
