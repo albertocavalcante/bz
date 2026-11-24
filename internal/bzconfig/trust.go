@@ -131,16 +131,29 @@ func (e Environment) checkTrust(path string, trusted []fs.FileInfo) error {
 	if err != nil {
 		return fmt.Errorf("checking project config %s: %w", DisplayPath(path), cleanErr(err))
 	}
-	dir := filepath.Dir(target)
 	refuse := func(reason UntrustedReason, detail, fix string) error {
-		return &UntrustedConfigError{Path: path, Target: target, Dir: dir, Reason: reason, Detail: detail, Fix: fix}
+		return &UntrustedConfigError{Path: path, Target: target, Dir: filepath.Dir(target), Reason: reason, Detail: detail, Fix: fix}
 	}
 
 	fi, ok, err := e.stat(target)
 	if err != nil {
 		return err
 	}
-	if !ok || !fi.Mode().IsRegular() {
+	if !ok {
+		return refuse(ReasonNotRegular, "not a regular file", "replace it with a regular file")
+	}
+	return e.checkTrustInfo(path, target, fi, trusted)
+}
+
+// checkTrustInfo applies the project trust rules to fi, the FileInfo of
+// the file at target (from a stat by path, or from the open handle the
+// file is read through).
+func (e Environment) checkTrustInfo(path, target string, fi fs.FileInfo, trusted []fs.FileInfo) error {
+	dir := filepath.Dir(target)
+	refuse := func(reason UntrustedReason, detail, fix string) error {
+		return &UntrustedConfigError{Path: path, Target: target, Dir: dir, Reason: reason, Detail: detail, Fix: fix}
+	}
+	if !fi.Mode().IsRegular() {
 		return refuse(ReasonNotRegular, "not a regular file", "replace it with a regular file")
 	}
 	if e.GOOS == goosWindows {
@@ -287,6 +300,10 @@ func (e Environment) trustedDirs() ([]fs.FileInfo, []string, error) {
 			return nil, warnings, fmt.Errorf("%s entry %q is not an absolute path; it would trust whatever directory bz runs in", EnvTrustedConfigDirs, entry)
 		}
 		resolved, err := e.resolve(entry)
+		if errors.Is(err, fs.ErrNotExist) {
+			warnings = append(warnings, fmt.Sprintf("%s entry %q does not exist; ignored", EnvTrustedConfigDirs, entry))
+			continue
+		}
 		if err != nil {
 			warnings = append(warnings, fmt.Sprintf("%s entry %q cannot be resolved (%v); ignored", EnvTrustedConfigDirs, entry, cleanErr(err)))
 			continue

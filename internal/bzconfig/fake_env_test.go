@@ -25,6 +25,10 @@ type fakeEnv struct {
 	uid    int
 	owners map[string]int
 	links  map[string]string
+	// openHook, when set, replaces Open (the seam for handle tests).
+	openHook func(string) (fs.File, error)
+	// opens and closes count handles, so tests can catch a leaked one.
+	opens, closes int
 }
 
 func newFakeEnv() *fakeEnv {
@@ -67,14 +71,9 @@ func (f *fakeEnv) env() Environment {
 			v, ok := f.vars[name]
 			return v, ok
 		},
-		Getwd:       func() (string, error) { return f.wd, nil },
-		UserHomeDir: func() (string, error) { return f.home, nil },
-		ReadFile: func(path string) ([]byte, error) {
-			if data, ok := f.files[path]; ok {
-				return []byte(data), nil
-			}
-			return nil, fs.ErrNotExist
-		},
+		Getwd:        func() (string, error) { return f.wd, nil },
+		UserHomeDir:  func() (string, error) { return f.home, nil },
+		Open:         f.open,
 		Stat:         f.stat,
 		EvalSymlinks: f.evalSymlinks,
 		SameFile: func(a, b fs.FileInfo) bool {
@@ -140,4 +139,49 @@ func (f *fakeEnv) evalSymlinks(path string) (string, error) {
 		}
 	}
 	return "", fs.ErrInvalid
+}
+
+// fakeFile is an open handle: its Stat is the FileInfo at open time and
+// its content the data at open time.
+type fakeFile struct {
+	*strings.Reader
+	info fs.FileInfo
+}
+
+func (h fakeFile) Stat() (fs.FileInfo, error) { return h.info, nil }
+func (h fakeFile) Close() error               { return nil }
+
+func (f *fakeEnv) open(path string) (fs.File, error) {
+	var h fs.File
+	var err error
+	if f.openHook != nil {
+		h, err = f.openHook(path)
+	} else {
+		h, err = f.openPlain(path)
+	}
+	if err != nil {
+		return nil, err
+	}
+	f.opens++
+	return countedFile{File: h, closed: &f.closes}, nil
+}
+
+// countedFile counts Close calls on the handle it wraps.
+type countedFile struct {
+	fs.File
+	closed *int
+}
+
+func (c countedFile) Close() error {
+	*c.closed++
+	return c.File.Close()
+}
+
+// openPlain opens without the hook, for hooks that delegate.
+func (f *fakeEnv) openPlain(path string) (fs.File, error) {
+	fi, err := f.stat(path)
+	if err != nil {
+		return nil, err
+	}
+	return fakeFile{Reader: strings.NewReader(f.files[path]), info: fi}, nil
 }
