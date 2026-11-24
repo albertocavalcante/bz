@@ -81,3 +81,17 @@ func TestSeveralErrorsAreProblems(t *testing.T) {
 	require.ErrorAs(t, err, &p)
 	assert.Len(t, p, 2)
 }
+
+// TestSyntaxReason_OutOfRange: only a message that starts with a number
+// is a number out of range; anything else before it is file content.
+func TestSyntaxReason_OutOfRange(t *testing.T) {
+	for msg, want := range map[string]string{
+		"99999999999999999999 is out of range for int64": "number out of range",
+		"1e999 is out of the safe floating-point range":  "number out of range",
+		"-5.5E+3 is out of range for uint8":              "number out of range",
+		"a1 is out of range for int64":                   "syntax error",
+		`"x" is out of range for int64`:                  "syntax error",
+	} {
+		assert.Equal(t, want, syntaxReason(msg), msg)
+	}
+}
