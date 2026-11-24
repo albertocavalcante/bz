@@ -9,6 +9,9 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
+
+	"github.com/albertocavalcante/bz/internal/coord"
 )
 
 // FileRegistry implements Registry for local filesystem registries.
@@ -57,9 +60,10 @@ func (r *FileRegistry) ListModules(ctx context.Context) ([]string, error) {
 
 // GetMetadata fetches the metadata.json for a module.
 func (r *FileRegistry) GetMetadata(ctx context.Context, module string) (*Metadata, error) {
-	metaPath := filepath.Join(r.root, MetadataPath(module))
-
-	data, err := os.ReadFile(metaPath)
+	if err := coord.ValidateModuleName(module); err != nil {
+		return nil, err
+	}
+	data, err := r.readFile(MetadataPath(module))
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, ErrModuleNotFound
@@ -77,9 +81,12 @@ func (r *FileRegistry) GetMetadata(ctx context.Context, module string) (*Metadat
 
 // GetModuleBazel fetches the MODULE.bazel content for a specific version.
 func (r *FileRegistry) GetModuleBazel(ctx context.Context, module, version string) ([]byte, error) {
+	if err := coord.Validate(module, version); err != nil {
+		return nil, err
+	}
+
 	// First check if module exists
-	modulePath := filepath.Join(r.root, ModulePath(module))
-	if _, err := os.Stat(modulePath); err != nil {
+	if err := r.stat(ModulePath(module)); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, ErrModuleNotFound
 		}
@@ -87,8 +94,7 @@ func (r *FileRegistry) GetModuleBazel(ctx context.Context, module, version strin
 	}
 
 	// Then check for version
-	bazelPath := filepath.Join(r.root, ModuleBazelPath(module, version))
-	data, err := os.ReadFile(bazelPath)
+	data, err := r.readFile(ModuleBazelPath(module, version))
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, ErrVersionNotFound
@@ -101,9 +107,12 @@ func (r *FileRegistry) GetModuleBazel(ctx context.Context, module, version strin
 
 // GetSource fetches the source.json content for a specific version.
 func (r *FileRegistry) GetSource(ctx context.Context, module, version string) ([]byte, error) {
+	if err := coord.Validate(module, version); err != nil {
+		return nil, err
+	}
+
 	// First check if module exists
-	modulePath := filepath.Join(r.root, ModulePath(module))
-	if _, err := os.Stat(modulePath); err != nil {
+	if err := r.stat(ModulePath(module)); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, ErrModuleNotFound
 		}
@@ -111,8 +120,7 @@ func (r *FileRegistry) GetSource(ctx context.Context, module, version string) ([
 	}
 
 	// Then check for version
-	sourcePath := filepath.Join(r.root, SourcePath(module, version))
-	data, err := os.ReadFile(sourcePath)
+	data, err := r.readFile(SourcePath(module, version))
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, ErrVersionNotFound
@@ -121,6 +129,80 @@ func (r *FileRegistry) GetSource(ctx context.Context, module, version string) ([
 	}
 
 	return data, nil
+}
+
+// modulesName checks a slash-separated registry path ("modules/...") and
+// returns it relative to the modules directory. This is the lexical first
+// layer; reads then go through os.Root.
+func (r *FileRegistry) modulesName(rel string) (string, error) {
+	if err := checkModulesRel(rel); err != nil {
+		return "", err
+	}
+	name := filepath.FromSlash(strings.TrimPrefix(rel, ModulesDir+"/"))
+	if _, err := coord.Join(filepath.Join(r.root, ModulesDir), name); err != nil {
+		return "", err
+	}
+	return name, nil
+}
+
+// openModules opens the registry root and then descends into its modules
+// directory, both as os.Root, so neither a "modules" entry that is itself a
+// symlink leaving the registry nor symlinks below it can redirect a read
+// outside the registry. Symlinks whose targets stay inside the registry
+// root still resolve. The caller closes the returned root; the registry
+// root handle is closed before returning.
+func (r *FileRegistry) openModules() (*os.Root, error) {
+	base, err := os.OpenRoot(r.root)
+	if err != nil {
+		return nil, err
+	}
+	defer base.Close()
+	return base.OpenRoot(ModulesDir)
+}
+
+// readFile reads a registry file confined to the modules directory.
+func (r *FileRegistry) readFile(rel string) ([]byte, error) {
+	name, err := r.modulesName(rel)
+	if err != nil {
+		return nil, err
+	}
+	root, err := r.openModules()
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+	return root.ReadFile(name)
+}
+
+// stat checks that a registry entry exists inside the modules directory.
+func (r *FileRegistry) stat(rel string) error {
+	name, err := r.modulesName(rel)
+	if err != nil {
+		return err
+	}
+	root, err := r.openModules()
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	_, err = root.Stat(name)
+	return err
+}
+
+// checkModulesRel verifies that a registry path built by the path helpers
+// (which clean their result) still lies under the modules directory and has
+// no empty, "." or ".." segments. It is a second layer behind coordinate
+// validation.
+func checkModulesRel(rel string) error {
+	if !strings.HasPrefix(rel, ModulesDir+"/") {
+		return fmt.Errorf("%w: %q is not under %s/", coord.ErrEscapesBase, rel, ModulesDir)
+	}
+	for seg := range strings.SplitSeq(rel, "/") {
+		if seg == "" || seg == "." || seg == ".." {
+			return fmt.Errorf("%w: %q", coord.ErrEscapesBase, rel)
+		}
+	}
+	return nil
 }
 
 // Verify FileRegistry implements Registry and SourceGetter.
