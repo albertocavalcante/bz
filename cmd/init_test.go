@@ -173,7 +173,7 @@ func TestInitCmd_InvalidModuleName(t *testing.T) {
 			name:        "contains space",
 			moduleName:  "my module",
 			wantErr:     true,
-			errContains: "invalid characters",
+			errContains: "contain only a-z",
 		},
 		{
 			name:       "empty name",
@@ -253,36 +253,6 @@ func TestSanitizeModuleName(t *testing.T) {
 		t.Run(tt.input, func(t *testing.T) {
 			result := module.SanitizeModuleName(tt.input)
 			assert.Equal(t, tt.expected, result)
-		})
-	}
-}
-
-func TestValidateModuleName(t *testing.T) {
-	tests := []struct {
-		name    string
-		wantErr bool
-	}{
-		{"valid", false},
-		{"my_module", false},
-		{"my-module", false},
-		{"my.module", false},
-		{"module123", false},
-		{"a", false},
-		{"", true},          // empty
-		{"1module", true},   // starts with number
-		{"_module", true},   // starts with underscore
-		{"Module", true},    // starts with uppercase
-		{"my Module", true}, // contains space
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := module.ValidateModuleName(tt.name)
-			if tt.wantErr {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-			}
 		})
 	}
 }

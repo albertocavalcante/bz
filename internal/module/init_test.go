@@ -113,27 +113,46 @@ func TestSanitizeModuleName(t *testing.T) {
 	}
 }
 
-func TestValidateModuleName(t *testing.T) {
+func TestInitInDirRejectsInvalidInput(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name    string
-		wantErr bool
-	}{
-		{name: "valid", wantErr: false},
-		{name: "my_module", wantErr: false},
-		{name: "", wantErr: true},
-		{name: "1module", wantErr: true},
-		{name: "my Module", wantErr: true},
-	}
+	const nameRule = `must start with a lowercase letter, end with a lowercase letter or digit, and contain only a-z, 0-9, '.', '-' and '_'`
+	const versionHelp = "help: pass a --version such as 1.0.0 or 1.0.0-rc1, or omit it to use 0.0.0"
+	const dirHelp = " (derived from the directory name)\nhelp: pass --name to choose a valid module name"
+	const nameHelp = "\nhelp: pass a --name such as my_module"
 
+	tests := []struct {
+		desc, dirName, name, version, want string
+	}{
+		{"trailing underscore from directory", "my_app_", "", "", `invalid module name "my_app_": ` + nameRule + dirHelp},
+		{"trailing dash from directory", "proj-", "", "", `invalid module name "proj-": ` + nameRule + dirHelp},
+		{"trailing dot from directory", "v1.", "", "", `invalid module name "v1.": ` + nameRule + dirHelp},
+		{"uppercase name", "d", "MyApp", "", `invalid module name "MyApp": ` + nameRule + nameHelp},
+		{"invalid version", "d", "app", "not a version", `invalid module version "not a version": must match RELEASE[-PRERELEASE][+BUILD] using only A-Z, a-z, 0-9, '.', '-' and '+'` + "\n" + versionHelp},
+		{"version with newline", "d", "app", "1.0\nFAKE", `invalid module version "1.0\nFAKE": must match RELEASE[-PRERELEASE][+BUILD] using only A-Z, a-z, 0-9, '.', '-' and '+'` + "\n" + versionHelp},
+	}
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		t.Run(tt.desc, func(t *testing.T) {
 			t.Parallel()
-			err := ValidateModuleName(tt.name)
-			if (err != nil) != tt.wantErr {
-				t.Fatalf("ValidateModuleName(%q) error = %v, wantErr %v", tt.name, err, tt.wantErr)
+			dir := filepath.Join(t.TempDir(), tt.dirName)
+			if err := os.Mkdir(dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+
+			_, _, err := InitInDir(dir, tt.name, tt.version, false)
+			if err == nil || err.Error() != tt.want {
+				t.Fatalf("InitInDir() error = %v, want %q", err, tt.want)
+			}
+			if _, statErr := os.Stat(filepath.Join(dir, "MODULE.bazel")); !os.IsNotExist(statErr) {
+				t.Fatalf("MODULE.bazel was written on refusal (stat error: %v)", statErr)
 			}
 		})
 	}
+
+	t.Run("valid name and version", func(t *testing.T) {
+		t.Parallel()
+		if _, _, err := InitInDir(t.TempDir(), "app", "1.0.0-rc1+build.5", false); err != nil {
+			t.Fatalf("InitInDir() error = %v", err)
+		}
+	})
 }
