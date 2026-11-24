@@ -13,6 +13,7 @@ import (
 	"github.com/albertocavalcante/bz/cmd/cache"
 	"github.com/albertocavalcante/bz/cmd/mod"
 	"github.com/albertocavalcante/bz/cmd/registry"
+	"github.com/albertocavalcante/bz/internal/bzconfig"
 	"github.com/albertocavalcante/bz/internal/cli"
 	"github.com/albertocavalcante/bz/internal/cmdutil"
 	registrylib "github.com/albertocavalcante/bz/internal/registry"
@@ -87,12 +88,34 @@ func run(args []string, stdout, stderr io.Writer) int {
 // printError writes err to w as an "Error: ..." line, followed by any
 // suggestions carried by the error type.
 func printError(w io.Writer, err error) {
-	fmt.Fprintf(w, "Error: %s\n", strings.TrimRight(err.Error(), "\n"))
+	fmt.Fprintf(w, "Error: %s\n", formatError(err))
 
 	var netErr *registrylib.NetworkError
 	if errors.As(err, &netErr) {
 		fmt.Fprintf(w, "\n%s", netErr.UserFriendlyError())
 	}
+}
+
+// formatError renders err for one "Error:" line. Several configuration
+// problems (bzconfig.Problems), alone or wrapped with %w, become a count and
+// an indented list so no item reads as an unrelated message.
+func formatError(err error) string {
+	msg := strings.TrimRight(err.Error(), "\n")
+	var problems bzconfig.Problems
+	if !errors.As(err, &problems) || len(problems) < 2 {
+		return msg
+	}
+	prefix, ok := strings.CutSuffix(err.Error(), problems.Error())
+	if !ok {
+		return msg // a wrapper that adds text after the list
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s%d problems:", prefix, len(problems))
+	for _, p := range problems {
+		text := strings.TrimRight(p.Error(), "\n")
+		b.WriteString("\n  - " + strings.ReplaceAll(text, "\n", "\n    "))
+	}
+	return b.String()
 }
 
 // Configure wires all root and subcommands once.

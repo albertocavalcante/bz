@@ -10,20 +10,21 @@ import (
 
 // fileSchema is the on-disk TOML shape. Pointer fields record presence so
 // that an absent key is distinguishable from a key set to its default.
+// The want tag is the fixed text shown when a value has the wrong type.
 type fileSchema struct {
 	Network struct {
-		Mode               *string   `toml:"mode"`
-		Registry           *string   `toml:"registry"`
-		FallbackRegistries *[]string `toml:"fallback_registries"`
-		Timeout            *string   `toml:"timeout"`
-	} `toml:"network"`
+		Mode               *string   `toml:"mode" want:"a string such as \"online\""`
+		Registry           *string   `toml:"registry" want:"a string such as \"https://bcr.bazel.build\""`
+		FallbackRegistries *[]string `toml:"fallback_registries" want:"an array of strings such as [\"https://bcr.bazel.build\"]"`
+		Timeout            *string   `toml:"timeout" want:"a string such as \"30s\""`
+	} `toml:"network" want:"a table such as [network]"`
 	Cache struct {
-		Dir *string `toml:"dir"`
-		TTL *string `toml:"ttl"`
-	} `toml:"cache"`
+		Dir *string `toml:"dir" want:"a string such as \"~/.cache/bz\""`
+		TTL *string `toml:"ttl" want:"a string such as \"24h\""`
+	} `toml:"cache" want:"a table such as [cache]"`
 	Commands struct {
-		Disabled *[]string `toml:"disabled"`
-	} `toml:"commands"`
+		Disabled *[]string `toml:"disabled" want:"an array of strings such as [\"audit\"]"`
+	} `toml:"commands" want:"a table such as [commands]"`
 }
 
 // ParseFile decodes one configuration file into a layer of the given kind.
@@ -34,7 +35,7 @@ type fileSchema struct {
 func ParseFile(kind LayerKind, path string, data []byte, home string) (Layer, error) {
 	var s fileSchema
 	if _, err := toml.Decode(string(data), &s); err != nil {
-		return Layer{}, fmt.Errorf("parsing %s %s: %w", kind, DisplayPath(path), err)
+		return Layer{}, fmt.Errorf("parsing %s %s: %s", kind, DisplayPath(path), describeTOMLError(err, data))
 	}
 
 	l := Layer{Kind: kind, Origin: path}

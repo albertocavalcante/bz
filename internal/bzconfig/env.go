@@ -1,7 +1,6 @@
 package bzconfig
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 
@@ -67,7 +66,7 @@ func EnvLayer(lookup func(string) (string, bool), home string) (Layer, error) {
 		l.Settings.Disabled = &list
 		l.KeyOrigins[KeyDisabled] = EnvDisableCommands
 	}
-	return l, errors.Join(errs...)
+	return l, joinProblems(errs)
 }
 
 // parseCommaSeparated parses a comma-separated string into a slice.
