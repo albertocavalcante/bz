@@ -66,7 +66,7 @@ bz audit
 | `bz mod stats`      | Show dependency statistics             |
 | `bz mod why`        | Explain why a module is included       |
 | `bz mod licenses`   | Show license information               |
-| `bz audit`          | Scan for vulnerabilities (via OSV)     |
+| `bz audit`          | Scan via OSV (no module matching yet)  |
 | `bz sbom`           | Generate SBOM (SPDX/CycloneDX)         |
 | `bz cache download` | Download modules to local cache        |
 | `bz cache verify`   | Verify cache completeness              |
