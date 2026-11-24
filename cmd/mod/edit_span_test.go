@@ -241,3 +241,60 @@ func TestRmCmd_ReadOnlyFileIsRefused(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, in, string(got))
 }
+
+func TestUpdateCmd_DuplicateSameNameDeps(t *testing.T) {
+	registryDir := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{
+		"a": {Versions: []string{"1.0.0", "1.1.0"}},
+	})
+	oldRegistry := registryFlag
+	registryFlag = registryDir
+	defer func() { registryFlag = oldRegistry }()
+	updateDryRun = false
+
+	p := writeModule(t, "bazel_dep(name = \"a\", version = \"1.0.0\")\nbazel_dep(name = \"a\", version = \"1.0.0\")\n", 0o644)
+	var out bytes.Buffer
+	updateCmd.SetOut(&out)
+	defer updateCmd.SetOut(os.Stdout)
+
+	require.NoError(t, updateCmd.RunE(updateCmd, nil))
+
+	got, err := os.ReadFile(p)
+	require.NoError(t, err)
+	assert.Equal(t, "bazel_dep(name = \"a\", version = \"1.1.0\")\nbazel_dep(name = \"a\", version = \"1.1.0\")\n", string(got))
+	assert.Equal(t, 1, strings.Count(out.String(), "Updated a:"))
+}
+
+func TestApplyVersionUpdates_UnchangedBytesIsAllOrNothing(t *testing.T) {
+	orig := "bazel_dep(name = \"a\", version = \"1.0.0\")\nbazel_dep(name = \"b\", version = \"2.0.0\")\n"
+	content := []byte(orig)
+
+	// a can be edited; b is already at its target text, so its edit changes
+	// no bytes even though an update was intended.
+	pending := []updateInfo{
+		{name: "a", current: "1.0.0", latest: "1.1.0"},
+		{name: "b", current: "1.9.0", latest: "2.0.0"},
+	}
+	var out bytes.Buffer
+	got, applied, err := applyVersionUpdates(content, pending, &out)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to update b")
+	assert.Nil(t, got)
+	assert.Nil(t, applied)
+	assert.Equal(t, orig, string(content), "input must be untouched")
+
+	// Single intended update that cannot change anything.
+	_, _, err = applyVersionUpdates(content, pending[1:], &out)
+	require.Error(t, err)
+}
+
+func TestApplyVersionUpdates_DedupesByName(t *testing.T) {
+	content := []byte("bazel_dep(name = \"a\", version = \"1.0.0\")\nbazel_dep(name = \"a\", version = \"1.0.0\")\n")
+	pending := []updateInfo{
+		{name: "a", current: "1.0.0", latest: "1.1.0"},
+		{name: "a", current: "1.0.0", latest: "1.1.0"},
+	}
+	got, applied, err := applyVersionUpdates(content, pending, &bytes.Buffer{})
+	require.NoError(t, err)
+	assert.Len(t, applied, 1)
+	assert.Equal(t, "bazel_dep(name = \"a\", version = \"1.1.0\")\nbazel_dep(name = \"a\", version = \"1.1.0\")\n", string(got))
+}

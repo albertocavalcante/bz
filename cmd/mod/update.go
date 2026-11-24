@@ -3,6 +3,7 @@ package mod
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -179,22 +180,9 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	}
 
 	// Apply updates in memory, then write once.
-	newContent := content
-	var applied []updateInfo
-	for _, u := range pendingUpdates {
-		next, changed, err := module.SetDepVersion(newContent, u.name, u.latest)
-		if err != nil {
-			if errors.Is(err, module.ErrNoVersionArgument) {
-				fmt.Fprintf(out, "Skipping %s: no version argument in bazel_dep (version is managed elsewhere)\n", u.name)
-				continue
-			}
-			return fmt.Errorf("failed to update %s: %w", u.name, err)
-		}
-		if !changed {
-			return fmt.Errorf("failed to update %s: version %s not found in MODULE.bazel text", u.name, u.current)
-		}
-		newContent = next
-		applied = append(applied, u)
+	newContent, applied, err := applyVersionUpdates(content, pendingUpdates, out)
+	if err != nil {
+		return err
 	}
 
 	if len(applied) == 0 {
@@ -211,4 +199,36 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+// applyVersionUpdates edits content in memory, one edit per module name
+// (SetDepVersion rewrites every statement of that name). Deps without a
+// version argument are skipped with a note on out. An edit that changes no
+// bytes is an error, and nothing is returned, so the caller writes all or
+// nothing. content itself is never modified.
+func applyVersionUpdates(content []byte, pending []updateInfo, out io.Writer) ([]byte, []updateInfo, error) {
+	newContent := content
+	var applied []updateInfo
+	seen := make(map[string]bool)
+	for _, u := range pending {
+		if seen[u.name] {
+			continue
+		}
+		seen[u.name] = true
+
+		next, changed, err := module.SetDepVersion(newContent, u.name, u.latest)
+		if err != nil {
+			if errors.Is(err, module.ErrNoVersionArgument) {
+				fmt.Fprintf(out, "Skipping %s: no version argument in bazel_dep (version is managed elsewhere)\n", u.name)
+				continue
+			}
+			return nil, nil, fmt.Errorf("failed to update %s: %w", u.name, err)
+		}
+		if !changed {
+			return nil, nil, fmt.Errorf("failed to update %s: version %s not found in MODULE.bazel text", u.name, u.current)
+		}
+		newContent = next
+		applied = append(applied, u)
+	}
+	return newContent, applied, nil
 }
