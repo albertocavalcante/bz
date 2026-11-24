@@ -1,0 +1,306 @@
+package module
+
+import (
+	"bytes"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+
+	"github.com/bazelbuild/buildtools/build"
+)
+
+// ErrNoVersionArgument indicates that a bazel_dep has no literal version
+// argument to edit (for example when an override supplies the version).
+var ErrNoVersionArgument = errors.New("bazel_dep has no version argument")
+
+// ErrDepNotFound indicates that no bazel_dep with the requested name exists.
+var ErrDepNotFound = errors.New("bazel_dep not found")
+
+// DepSpec describes a bazel_dep statement to append.
+type DepSpec struct {
+	Name    string
+	Version string
+	Dev     bool
+}
+
+// depStmt is a top-level bazel_dep() call with its byte span in the source.
+type depStmt struct {
+	name       string
+	start, end int               // byte span of the whole call expression
+	version    *build.StringExpr // nil when there is no literal version argument
+}
+
+// findDeps parses src with buildtools and returns every top-level
+// bazel_dep() call whose name argument is a string literal. Spans come from
+// the real syntax tree, so strings and comments containing parentheses are
+// handled correctly.
+func findDeps(src []byte) ([]depStmt, error) {
+	f, err := build.ParseModule("MODULE.bazel", src)
+	if err != nil {
+		return nil, fmt.Errorf("parse error: %w", err)
+	}
+
+	var deps []depStmt
+	for _, stmt := range f.Stmt {
+		call, ok := stmt.(*build.CallExpr)
+		if !ok {
+			continue
+		}
+		if id, ok := call.X.(*build.Ident); !ok || id.Name != "bazel_dep" {
+			continue
+		}
+		d := depStmt{}
+		haveName := false
+		for _, arg := range call.List {
+			as, ok := arg.(*build.AssignExpr)
+			if !ok {
+				continue
+			}
+			key, ok := as.LHS.(*build.Ident)
+			if !ok {
+				continue
+			}
+			val, ok := as.RHS.(*build.StringExpr)
+			if !ok {
+				continue
+			}
+			switch key.Name {
+			case "name":
+				d.name = val.Value
+				haveName = true
+			case "version":
+				d.version = val
+			}
+		}
+		if !haveName {
+			continue
+		}
+		s, e := call.Span()
+		d.start, d.end = s.Byte, e.Byte
+		deps = append(deps, d)
+	}
+	return deps, nil
+}
+
+// validate checks that src still parses as a MODULE.bazel file.
+func validate(src []byte) error {
+	if _, err := LoadContent("MODULE.bazel", src); err != nil {
+		return fmt.Errorf("edit would produce an invalid MODULE.bazel: %w", err)
+	}
+	return nil
+}
+
+// DetectEOL returns "\r\n" when CRLF is the dominant line ending in src and
+// "\n" otherwise (including when src has no line endings).
+func DetectEOL(src []byte) string {
+	crlf := bytes.Count(src, []byte("\r\n"))
+	lf := bytes.Count(src, []byte("\n")) - crlf
+	if crlf > lf {
+		return "\r\n"
+	}
+	return "\n"
+}
+
+// RemoveDeps removes every bazel_dep statement named in names, including the
+// full multi-line span, the rest of its last line (a trailing comment) and
+// the line terminator. Everything else is preserved byte for byte. The result
+// is re-parsed; an unparsable result is an error.
+func RemoveDeps(src []byte, names []string) ([]byte, error) {
+	want := make(map[string]bool, len(names))
+	for _, n := range names {
+		want[n] = true
+	}
+	deps, err := findDeps(src)
+	if err != nil {
+		return nil, err
+	}
+
+	type span struct{ start, end int }
+	var spans []span
+	for _, d := range deps {
+		if want[d.name] {
+			spans = append(spans, removalSpan(src, d.start, d.end))
+		}
+	}
+	if len(spans) == 0 {
+		return append([]byte(nil), src...), nil
+	}
+	sort.Slice(spans, func(i, j int) bool { return spans[i].start < spans[j].start })
+
+	var out bytes.Buffer
+	pos := 0
+	for _, s := range spans {
+		out.Write(src[pos:s.start])
+		pos = s.end
+	}
+	out.Write(src[pos:])
+	res := out.Bytes()
+
+	// Preserve a missing final newline.
+	if len(src) > 0 && src[len(src)-1] != '\n' {
+		res = bytes.TrimSuffix(bytes.TrimSuffix(res, []byte("\n")), []byte("\r"))
+	}
+	if err := validate(res); err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+// removalSpan widens a statement span to whole lines when the statement is
+// alone on its lines, swallowing a trailing comment and the line terminator.
+func removalSpan(src []byte, start, end int) (s struct{ start, end int }) {
+	s.start, s.end = start, end
+
+	e := end
+	for e < len(src) && (src[e] == ' ' || src[e] == '\t') {
+		e++
+	}
+	if e < len(src) && src[e] == '#' {
+		for e < len(src) && src[e] != '\n' && src[e] != '\r' {
+			e++
+		}
+	}
+	switch {
+	case e >= len(src):
+	case src[e] == '\n':
+		e++
+	case src[e] == '\r' && e+1 < len(src) && src[e+1] == '\n':
+		e += 2
+	default:
+		return s // other code follows on the same line: remove only the call
+	}
+
+	b := start
+	for b > 0 && (src[b-1] == ' ' || src[b-1] == '\t') {
+		b--
+	}
+	if b > 0 && src[b-1] != '\n' {
+		return s // other code precedes on the same line
+	}
+	s.start, s.end = b, e
+	return s
+}
+
+// SetDepVersion replaces the version string literal of every bazel_dep named
+// name. It reports whether the bytes changed. ErrDepNotFound and
+// ErrNoVersionArgument are returned (wrapped) when there is nothing to edit.
+func SetDepVersion(src []byte, name, version string) ([]byte, bool, error) {
+	deps, err := findDeps(src)
+	if err != nil {
+		return nil, false, err
+	}
+
+	var targets []depStmt
+	for _, d := range deps {
+		if d.name == name {
+			targets = append(targets, d)
+		}
+	}
+	if len(targets) == 0 {
+		return nil, false, fmt.Errorf("%w: %s", ErrDepNotFound, name)
+	}
+	for _, d := range targets {
+		if d.version == nil {
+			return nil, false, fmt.Errorf("%w: %s", ErrNoVersionArgument, name)
+		}
+	}
+
+	res := append([]byte(nil), src...)
+	// Apply from the end so earlier offsets stay valid.
+	for i := len(targets) - 1; i >= 0; i-- {
+		lit := targets[i].version
+		s, e := lit.Span()
+		q := byte('"')
+		if s.Byte < len(res) && (res[s.Byte] == '"' || res[s.Byte] == '\'') {
+			q = res[s.Byte]
+		}
+		repl := string(q) + version + string(q)
+		if lit.TripleQuote {
+			repl = string(bytes.Repeat([]byte{q}, 3)) + version + string(bytes.Repeat([]byte{q}, 3))
+		}
+		res = append(res[:s.Byte:s.Byte], append([]byte(repl), res[e.Byte:]...)...)
+	}
+	if bytes.Equal(res, src) {
+		return res, false, nil
+	}
+	if err := validate(res); err != nil {
+		return nil, false, err
+	}
+	return res, true, nil
+}
+
+// AppendDeps appends bazel_dep statements to src using src's dominant line
+// ending. A missing final newline stays missing.
+func AppendDeps(src []byte, deps []DepSpec) ([]byte, error) {
+	if len(deps) == 0 {
+		return append([]byte(nil), src...), nil
+	}
+	eol := DetectEOL(src)
+	hadFinalNewline := len(src) == 0 || src[len(src)-1] == '\n'
+
+	var out bytes.Buffer
+	out.Write(src)
+	if !hadFinalNewline {
+		out.WriteString(eol)
+	}
+	for _, d := range deps {
+		out.WriteString(FormatBazelDepEOL(d.Name, d.Version, d.Dev, eol))
+	}
+	res := out.Bytes()
+	if !hadFinalNewline {
+		res = bytes.TrimSuffix(bytes.TrimSuffix(res, []byte("\n")), []byte("\r"))
+	}
+	if err := validate(res); err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+// FormatBazelDepEOL is FormatBazelDep with an explicit line terminator.
+func FormatBazelDepEOL(name, version string, dev bool, eol string) string {
+	line := FormatBazelDep(name, version, dev)
+	return line[:len(line)-1] + eol
+}
+
+// WriteFileAtomic replaces path with data by writing a temporary file in the
+// same directory, syncing it and renaming it over the target. The existing
+// file mode is preserved (0o644 for a new file); symlinks are followed so the
+// link itself survives. On any failure the original file is left untouched.
+func WriteFileAtomic(path string, data []byte) (err error) {
+	target := path
+	if resolved, rerr := filepath.EvalSymlinks(path); rerr == nil {
+		target = resolved
+	}
+	mode := os.FileMode(0o644)
+	if info, serr := os.Stat(target); serr == nil {
+		mode = info.Mode().Perm()
+	}
+
+	tmp, err := os.CreateTemp(filepath.Dir(target), ".bz-"+filepath.Base(target)+".*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer func() {
+		if err != nil {
+			_ = tmp.Close()
+			_ = os.Remove(tmpName)
+		}
+	}()
+
+	if _, err = tmp.Write(data); err != nil {
+		return err
+	}
+	if err = tmp.Chmod(mode); err != nil {
+		return err
+	}
+	if err = tmp.Sync(); err != nil {
+		return err
+	}
+	if err = tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, target)
+}

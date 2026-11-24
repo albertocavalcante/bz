@@ -8,6 +8,7 @@ require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/albertocavalcante/go-bcr v0.0.0-20260204171121-c5dcf4fa037f
 	github.com/albertocavalcante/go-bzlmod v0.0.0-20260123084147-305cb93e8bab
+	github.com/bazelbuild/buildtools v0.0.0-20250602201422-b1e23f1025b8
 	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/charmbracelet/bubbles v1.0.0
 	github.com/charmbracelet/bubbletea v1.3.10
@@ -22,7 +23,6 @@ require (
 require (
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
-	github.com/bazelbuild/buildtools v0.0.0-20250602201422-b1e23f1025b8 // indirect
 	github.com/charmbracelet/colorprofile v0.4.1 // indirect
 	github.com/charmbracelet/x/ansi v0.11.6 // indirect
 	github.com/charmbracelet/x/cellbuf v0.0.15 // indirect
