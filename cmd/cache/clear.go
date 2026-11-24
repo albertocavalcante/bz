@@ -219,7 +219,7 @@ var lookupHome = func() (string, error) {
 func checkClearDirsSafe(dirs ...string) error {
 	home, err := lookupHome()
 	if err != nil {
-		return fmt.Errorf("refusing to clear the cache: cannot determine the home directory to protect (%v); set HOME", err)
+		return fmt.Errorf("refusing to clear the cache: cannot determine the home directory to protect (%w); set HOME", err)
 	}
 	protected, err := protectedDirs(home)
 	if err != nil {

@@ -193,7 +193,7 @@ func (p *HTTPPublisher) url(filePath string) (*neturl.URL, error) {
 // joinURL appends a slash-separated path to the base URL's path, escaping
 // each segment. Escaping leaves "." and ".." unchanged, so those (and empty
 // segments) are refused outright. Path and RawPath are both set so the
-// escaping survives serialisation.
+// escaping survives serialization.
 func (p *HTTPPublisher) joinURL(rel string) (*neturl.URL, error) {
 	segs := strings.Split(rel, "/")
 	for i, s := range segs {

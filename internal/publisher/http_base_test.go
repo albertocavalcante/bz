@@ -79,7 +79,7 @@ func TestHTTPPublisher_RedactsUserinfo(t *testing.T) {
 
 // A base with trailing slashes and an escaped path segment produces
 // requests directly under that path.
-func TestHTTPPublisher_BasePathNormalisation(t *testing.T) {
+func TestHTTPPublisher_BasePathNormalization(t *testing.T) {
 	t.Parallel()
 
 	var mu sync.Mutex
