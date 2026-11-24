@@ -138,7 +138,7 @@ func (s Source) String() string {
 	if s.Origin == "" {
 		return s.Layer.String()
 	}
-	return s.Layer.String() + " " + s.Origin
+	return s.Layer.String() + " " + DisplayPath(s.Origin)
 }
 
 // Settings holds the values one layer sets explicitly. A nil field means the
@@ -286,6 +286,52 @@ func (e *Effective) apply(l Layer) []error {
 	return errs
 }
 
+// RedactURL masks credentials for messages. A URL that parses with a host
+// keeps everything but its userinfo. Any other value containing "@" prints
+// as its scheme plus "<redacted>", because a "?", "#" or "/" there may belong
+// to a password; messages always name the key and its source, so the value
+// can still be found.
+func RedactURL(raw string) string {
+	v := strings.TrimSpace(raw)
+	if !strings.Contains(v, "@") {
+		return raw
+	}
+	if u, err := url.Parse(v); err == nil && u.Host != "" && u.Opaque == "" {
+		if u.User == nil {
+			return raw // the "@" is in the path, query or fragment
+		}
+		u.User = url.User("xxxxx")
+		return u.String()
+	}
+	if i := strings.Index(v, "://"); i >= 0 {
+		return v[:i+3] + "<redacted>"
+	}
+	return "<redacted>"
+}
+
+// registryHelp follows every malformed-URL message.
+const registryHelp = "help: want https://host[:port]/path, file:///abs/path or an absolute path"
+
+// urlProblem names a url.Parse failure without its message, which quotes
+// the value. It uses typed errors where Go provides them; the port case is
+// matched on the parser's inner cause, never on the full message, and falls
+// back to "not a valid URL" if that wording changes.
+func urlProblem(err error) string {
+	var esc url.EscapeError
+	var host url.InvalidHostError
+	switch {
+	case errors.As(err, &esc):
+		return "bad percent-escape"
+	case errors.As(err, &host):
+		return "invalid character in host"
+	}
+	var uerr *url.Error
+	if errors.As(err, &uerr) && uerr.Err != nil && strings.HasPrefix(uerr.Err.Error(), "invalid port") {
+		return "invalid port"
+	}
+	return "not a valid URL"
+}
+
 // checkRegistryURL validates a registry value and returns it with
 // surrounding whitespace removed, which is the form callers store (the
 // registry client matches URL prefixes on the raw string). It accepts the
@@ -299,25 +345,25 @@ func checkRegistryURL(raw string) (string, error) {
 	case v == "":
 		return "", errors.New("empty registry URL")
 	case !printable(v):
-		return "", fmt.Errorf("%q: contains control or non-printable characters", raw)
+		return "", fmt.Errorf("%q: contains control or non-printable characters", RedactURL(raw))
 	case strings.HasPrefix(v, "https://"), strings.HasPrefix(v, "http://"):
 		u, err := url.Parse(v)
 		if err != nil {
-			return "", fmt.Errorf("%q: %w", raw, err)
+			return "", fmt.Errorf("%q: %s\n%s", RedactURL(raw), urlProblem(err), registryHelp)
 		}
 		if u.Hostname() == "" {
-			return "", fmt.Errorf("%q: missing host", raw)
+			return "", fmt.Errorf("%q: missing host\n%s", RedactURL(raw), registryHelp)
 		}
 		return v, nil
 	case strings.HasPrefix(v, "file://"):
 		if strings.TrimPrefix(v, "file://") == "" {
-			return "", fmt.Errorf("%q: missing path", raw)
+			return "", fmt.Errorf("%q: missing path", RedactURL(raw))
 		}
 		return v, nil
 	case strings.HasPrefix(v, "/"), isWindowsDrivePath(v):
 		return v, nil
 	default:
-		return "", fmt.Errorf("%q: want an https://, http:// or file:// URL or an absolute path", raw)
+		return "", fmt.Errorf("%q: want an https://, http:// or file:// URL or an absolute path", RedactURL(raw))
 	}
 }
 

@@ -24,12 +24,12 @@ func printable(s string) bool {
 	return true
 }
 
-// displayPath renders a path for a message. A printable path is shown as
+// DisplayPath renders a path for a message. A printable path is shown as
 // is. Anything else (control characters such as newline or ESC,
 // non-printable runes, invalid UTF-8) is shown Go-quoted (strconv.Quote),
 // so an attacker-chosen name cannot inject terminal escape sequences or
 // fake lines into bz's output.
-func displayPath(p string) string {
+func DisplayPath(p string) string {
 	if printable(p) {
 		return p
 	}
@@ -37,11 +37,11 @@ func displayPath(p string) string {
 }
 
 // cleanErr re-renders a *fs.PathError, whose message embeds the raw path,
-// with displayPath. The underlying error stays wrapped for errors.Is.
+// with DisplayPath. The underlying error stays wrapped for errors.Is.
 func cleanErr(err error) error {
 	var pe *fs.PathError
 	if errors.As(err, &pe) {
-		return fmt.Errorf("%s %s: %w", pe.Op, displayPath(pe.Path), pe.Err)
+		return fmt.Errorf("%s %s: %w", pe.Op, DisplayPath(pe.Path), pe.Err)
 	}
 	return err
 }

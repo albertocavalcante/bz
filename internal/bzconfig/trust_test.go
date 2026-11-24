@@ -636,6 +636,6 @@ func TestDisplayPath(t *testing.T) {
 		"/del\x7f":        `"/del\x7f"`,
 		"/nbsp\u00a0":     `"/nbsp\u00a0"`,
 	} {
-		assert.Equal(t, want, displayPath(in), "%q", in)
+		assert.Equal(t, want, DisplayPath(in), "%q", in)
 	}
 }
