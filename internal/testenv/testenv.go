@@ -57,9 +57,9 @@ func Isolate() (dir string, restore func(), err error) {
 	}, nil
 }
 
-// Run is a TestMain body (m is the *testing.M): it isolates the environment, applies each setup
-// (given the temporary home directory) and runs the tests. Each setup returns
-// its own undo, run in reverse order.
+// Run is a TestMain body (m is the *testing.M): it isolates the
+// environment, applies each setup to the temporary home directory and runs
+// the tests. Each setup returns its own undo, run in reverse order.
 func Run(m interface{ Run() int }, setups ...func(home string) (undo func())) int {
 	dir, restore, err := Isolate()
 	if err != nil {
@@ -67,14 +67,16 @@ func Run(m interface{ Run() int }, setups ...func(home string) (undo func())) in
 		return 1
 	}
 	defer restore()
-	undos := make([]func(), 0, len(setups))
-	for _, setup := range setups {
-		undos = append(undos, setup(dir))
-	}
+	var undos []func()
+	// Registered before the setups run, so a panicking setup still undoes
+	// the ones before it.
 	defer func() {
 		for i := len(undos) - 1; i >= 0; i-- {
 			undos[i]()
 		}
 	}()
+	for _, setup := range setups {
+		undos = append(undos, setup(dir))
+	}
 	return m.Run()
 }

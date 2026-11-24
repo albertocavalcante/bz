@@ -76,24 +76,48 @@ func TestIsolate_RedirectsEveryDirectoryVariable(t *testing.T) {
 	}
 }
 
-func TestRun_AppliesSetupsWithTheHome(t *testing.T) {
-	var got string
-	undone := false
-	setup := func(home string) func() {
-		got = home
-		if os.Getenv("HOME") != home {
-			t.Errorf("setup ran before isolation: HOME = %q, home = %q", os.Getenv("HOME"), home)
+func TestRun(t *testing.T) {
+	var events []string
+	setup := func(name string) func(string) func() {
+		return func(home string) func() {
+			if os.Getenv("HOME") != home {
+				t.Errorf("setup %s ran before isolation: HOME = %q, home = %q", name, os.Getenv("HOME"), home)
+			}
+			events = append(events, "setup "+name)
+			return func() { events = append(events, "undo "+name) }
 		}
-		return func() { undone = true }
 	}
-	if code := Run(fakeM{}, setup); code != 0 {
-		t.Fatalf("Run = %d", code)
+
+	if code := Run(fakeM{code: 3}, setup("a"), setup("b")); code != 3 {
+		t.Errorf("Run = %d, want the tests' exit code 3", code)
 	}
-	if got == "" || !undone {
-		t.Errorf("setup home %q, undone %v", got, undone)
+	want := []string{"setup a", "setup b", "undo b", "undo a"}
+	if len(events) != len(want) {
+		t.Fatalf("events = %q, want %q", events, want)
+	}
+	for i := range want {
+		if events[i] != want[i] {
+			t.Fatalf("events = %q, want %q", events, want)
+		}
 	}
 }
 
-type fakeM struct{}
+func TestRun_PanickingSetupUndoesEarlierSetups(t *testing.T) {
+	undone := false
+	defer func() {
+		if recover() == nil {
+			t.Error("Run did not propagate the panic")
+		}
+		if !undone {
+			t.Error("the first setup was not undone")
+		}
+	}()
+	Run(fakeM{},
+		func(string) func() { return func() { undone = true } },
+		func(string) func() { panic("setup failed") },
+	)
+}
 
-func (fakeM) Run() int { return 0 }
+type fakeM struct{ code int }
+
+func (m fakeM) Run() int { return m.code }
