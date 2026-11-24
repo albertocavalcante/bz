@@ -3,7 +3,9 @@ package publisher
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	neturl "net/url"
 	"os"
@@ -48,23 +50,43 @@ type Auth struct {
 
 // HTTPPublisher writes module files via HTTP PUT requests.
 type HTTPPublisher struct {
-	baseURL    string
+	base       *neturl.URL // parsed once; no query or fragment
+	basePath   string      // base.EscapedPath() without trailing slashes
 	httpClient *http.Client
 	auth       *Auth
 }
 
 // NewHTTPPublisher creates a new HTTP PUT publisher.
 // The baseURL is the root URL where modules will be written.
+// It must be an absolute http or https URL without a query or fragment;
+// trailing slashes are ignored. Userinfo is allowed (net/http sends it as
+// basic auth) but is redacted from every error message.
 func NewHTTPPublisher(baseURL string, auth *Auth) (*HTTPPublisher, error) {
-	// Normalize URL (remove trailing slash)
-	baseURL = strings.TrimSuffix(baseURL, "/")
-
-	if baseURL == "" {
+	if strings.TrimSpace(baseURL) == "" {
 		return nil, fmt.Errorf("base URL is required")
 	}
 
+	u, err := neturl.Parse(baseURL)
+	if err != nil {
+		var uerr *neturl.Error
+		if errors.As(err, &uerr) {
+			err = uerr.Err // drop the raw URL, which may carry a password
+		}
+		return nil, fmt.Errorf("invalid base URL: %w", err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return nil, fmt.Errorf("invalid base URL %s: scheme must be http or https", u.Redacted())
+	}
+	if u.Host == "" {
+		return nil, fmt.Errorf("invalid base URL %s: missing host", u.Redacted())
+	}
+	if u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || strings.Contains(baseURL, "#") {
+		return nil, fmt.Errorf("invalid base URL %s: it must not contain a query or fragment", redactedBase(u))
+	}
+
 	return &HTTPPublisher{
-		baseURL: baseURL,
+		base:     u,
+		basePath: strings.TrimRight(u.EscapedPath(), "/"),
 		httpClient: &http.Client{
 			Timeout: httpTimeout,
 		},
@@ -76,7 +98,7 @@ func NewHTTPPublisher(baseURL string, auth *Auth) (*HTTPPublisher, error) {
 // The path must be a valid registry path (see coord.ValidateRegistryPath);
 // invalid paths fail before any request is sent.
 func (p *HTTPPublisher) Put(ctx context.Context, filePath string, content []byte) error {
-	url, err := p.url(filePath)
+	u, err := p.url(filePath)
 	if err != nil {
 		return err
 	}
@@ -87,9 +109,9 @@ func (p *HTTPPublisher) Put(ctx context.Context, filePath string, content []byte
 		_ = err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, url, bytes.NewReader(content))
+	req, err := newRequest(ctx, http.MethodPut, u, bytes.NewReader(content))
 	if err != nil {
-		return fmt.Errorf("create request: %w", err)
+		return err
 	}
 
 	// Set content type based on file extension
@@ -100,13 +122,13 @@ func (p *HTTPPublisher) Put(ctx context.Context, filePath string, content []byte
 
 	resp, err := p.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("PUT %s: %w", url, err)
+		return fmt.Errorf("PUT %s: %w", u.Redacted(), err)
 	}
 	defer resp.Body.Close()
 
 	// Accept 2xx status codes
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("PUT %s: HTTP %d", url, resp.StatusCode)
+		return fmt.Errorf("PUT %s: HTTP %d", u.Redacted(), resp.StatusCode)
 	}
 
 	return nil
@@ -114,21 +136,21 @@ func (p *HTTPPublisher) Put(ctx context.Context, filePath string, content []byte
 
 // Exists checks if a path exists via HTTP HEAD request.
 func (p *HTTPPublisher) Exists(ctx context.Context, filePath string) (bool, error) {
-	url, err := p.url(filePath)
+	u, err := p.url(filePath)
 	if err != nil {
 		return false, err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodHead, url, nil)
+	req, err := newRequest(ctx, http.MethodHead, u, nil)
 	if err != nil {
-		return false, fmt.Errorf("create request: %w", err)
+		return false, err
 	}
 
 	p.addAuth(req)
 
 	resp, err := p.httpClient.Do(req)
 	if err != nil {
-		return false, fmt.Errorf("HEAD %s: %w", url, err)
+		return false, fmt.Errorf("HEAD %s: %w", u.Redacted(), err)
 	}
 	defer resp.Body.Close()
 
@@ -139,7 +161,7 @@ func (p *HTTPPublisher) Exists(ctx context.Context, filePath string) (bool, erro
 		return true, nil
 	}
 
-	return false, fmt.Errorf("HEAD %s: HTTP %d", url, resp.StatusCode)
+	return false, fmt.Errorf("HEAD %s: HTTP %d", u.Redacted(), resp.StatusCode)
 }
 
 // Finalize is a no-op for HTTP publisher.
@@ -161,25 +183,56 @@ func (p *HTTPPublisher) Close() error {
 // segment is also escaped with url.PathEscape, so even a segment that slipped
 // past validation is sent as one literal path segment and cannot introduce a
 // query, fragment, or decoded "..".
-func (p *HTTPPublisher) url(filePath string) (string, error) {
+func (p *HTTPPublisher) url(filePath string) (*neturl.URL, error) {
 	if err := coord.ValidateRegistryPath(filePath); err != nil {
-		return "", err
+		return nil, err
 	}
 	return p.joinURL(filePath)
 }
 
-// joinURL appends a slash-separated path to the base URL, escaping each
-// segment. Escaping leaves "." and ".." unchanged, so those (and empty
-// segments) are refused outright.
-func (p *HTTPPublisher) joinURL(rel string) (string, error) {
+// joinURL appends a slash-separated path to the base URL's path, escaping
+// each segment. Escaping leaves "." and ".." unchanged, so those (and empty
+// segments) are refused outright. Path and RawPath are both set so the
+// escaping survives serialisation.
+func (p *HTTPPublisher) joinURL(rel string) (*neturl.URL, error) {
 	segs := strings.Split(rel, "/")
 	for i, s := range segs {
 		if s == "" || s == "." || s == ".." {
-			return "", fmt.Errorf("%w: %q", coord.ErrInvalidPath, rel)
+			return nil, fmt.Errorf("%w: %q", coord.ErrInvalidPath, rel)
 		}
 		segs[i] = neturl.PathEscape(s)
 	}
-	return p.baseURL + "/" + strings.Join(segs, "/"), nil
+	escaped := p.basePath + "/" + strings.Join(segs, "/")
+	decoded, err := neturl.PathUnescape(escaped)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %q", coord.ErrInvalidPath, rel)
+	}
+	u := *p.base
+	u.Path = decoded
+	u.RawPath = escaped
+	return &u, nil
+}
+
+// newRequest builds a request for u. Errors name the redacted URL and never
+// echo the raw one.
+func newRequest(ctx context.Context, method string, u *neturl.URL, body io.Reader) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, method, u.String(), body)
+	if err != nil {
+		var uerr *neturl.Error
+		if errors.As(err, &uerr) {
+			err = uerr.Err
+		}
+		return nil, fmt.Errorf("%s %s: create request: %w", method, u.Redacted(), err)
+	}
+	return req, nil
+}
+
+// redactedBase renders a base URL for error messages without its password,
+// query or fragment.
+func redactedBase(u *neturl.URL) string {
+	c := *u
+	c.RawQuery, c.ForceQuery, c.Fragment, c.RawFragment = "", false, "", ""
+	return c.Redacted()
 }
 
 // addAuth adds authentication headers to a request.
@@ -228,12 +281,12 @@ func (p *HTTPPublisher) ensureDirectories(ctx context.Context, filePath string) 
 	dirs := p.parentDirs(filePath)
 
 	for _, dir := range dirs {
-		url, err := p.joinURL(dir) // dir is a prefix of a path already validated by Put
+		u, err := p.joinURL(dir) // dir is a prefix of a path already validated by Put
 		if err != nil {
 			return err
 		}
 
-		req, err := http.NewRequestWithContext(ctx, "MKCOL", url, nil)
+		req, err := newRequest(ctx, "MKCOL", u, nil)
 		if err != nil {
 			return err
 		}
@@ -242,7 +295,7 @@ func (p *HTTPPublisher) ensureDirectories(ctx context.Context, filePath string) 
 
 		resp, err := p.httpClient.Do(req)
 		if err != nil {
-			return err
+			return fmt.Errorf("MKCOL %s: %w", u.Redacted(), err)
 		}
 		_ = resp.Body.Close()
 

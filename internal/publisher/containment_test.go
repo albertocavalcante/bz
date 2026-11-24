@@ -262,7 +262,7 @@ func TestHTTPPublisher_EscapesSegments(t *testing.T) {
 		if err != nil {
 			t.Fatalf("joinURL(%q): %v", raw, err)
 		}
-		req, err := http.NewRequestWithContext(context.Background(), http.MethodPut, u, strings.NewReader("x"))
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodPut, u.String(), strings.NewReader("x"))
 		if err != nil {
 			t.Fatalf("NewRequest(%q): %v", u, err)
 		}
