@@ -306,6 +306,14 @@ dir = "/opt/bazel/cache"
 disabled = ["registry ping"]
 ```
 
+bz only reads `/etc/bz/config.toml` if root owns it and it is not writable by
+group or others (`sudo chown root /etc/bz/config.toml && sudo chmod 644
+/etc/bz/config.toml`). Otherwise every command stops with an error. The
+system file provides defaults: a user or project file, an environment variable
+or a flag can still override them. Project files on shared machines must pass
+the [trust rules](/bz/configuration/project-config/). In containers that run as
+root over a mounted checkout, set `BZ_TRUSTED_CONFIG_DIRS` to the mount point.
+
 ### Bazel Configuration
 
 ```bash

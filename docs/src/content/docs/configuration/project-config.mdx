@@ -1,0 +1,155 @@
+---
+title: Project Config and Trust
+description: How bz finds the project config file, which files it trusts, and what to do when it refuses one
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+A project config file (`.bz.toml`, or `.bzconfig.toml` from earlier releases) can
+redirect the registry and disable or re-enable commands. bz finds it by walking up
+from the working directory, so it only accepts a file that nobody else could have
+put there or changed. This page describes the search, the trust rules, and how to
+fix a refusal.
+
+## Finding the project file
+
+1. **Physical path.** The working directory is resolved with symbolic links
+   followed first, so the search walks the real directory tree.
+2. **Workspace root.** The root is the innermost directory, from the working
+   directory up, that holds a workspace marker file: `MODULE.bazel`, `REPO.bazel`,
+   `WORKSPACE.bazel` or `WORKSPACE`. A nested `MODULE.bazel`, such as an
+   `examples/` module inside a repository, ends the search there.
+3. **Nearest file wins.** Every directory from the working directory up to and
+   including the root is searched. The first `.bz.toml` or `.bzconfig.toml`
+   found is the project file. Project files do not merge with each other, and
+   both names in one directory is an error.
+4. **Outside a workspace**, only the working directory is searched.
+5. **Home is never a root.** Your home directory and each of its ancestors are
+   never a workspace root, compared by file identity rather than path text.
+   Reaching one ends the walk as "outside a workspace". A stray `~/MODULE.bazel`
+   therefore cannot make every directory under home share `~/.bz.toml`.
+   If your home directory is inside a workspace, that workspace's marker is
+   ignored too. If home is unset or cannot be resolved, this rule is off.
+6. **Markers must be yours.** A marker not owned by you or root is skipped with a
+   warning, and the walk continues upward. A marker someone else planted in a
+   shared directory can neither cut the search short nor point it at a planted
+   config. As a consequence, a checkout owned by another account applies no
+   project config unless you trust its directory with
+   [`BZ_TRUSTED_CONFIG_DIRS`](#trusting-a-directory). That covers a checkout
+   you reach through group access, and any checkout when you run as root.
+
+<Aside type="caution">
+Any problem checking a path other than "it does not exist" stops the search
+with an error that names the path. That includes permission denied on a
+marker in a restricted parent directory or a sandbox. bz cannot tell whether
+the real workspace root lies above such a directory, so it refuses to run
+there rather than guess. Run bz from a directory whose ancestors you can read.
+</Aside>
+
+## Trust rules
+
+The project file must pass these rules. The checks run on the file as opened,
+through one open handle: bz never checks a path and then reads a different
+file. A symbolic link is resolved first and the rules apply to its target.
+
+| Rule | Why |
+|------|-----|
+| The file is a regular file | A FIFO, device or directory cannot stand in for a config file |
+| The file is owned by you or root | Another user's file is never trusted |
+| The file is not writable by group or others | Nobody else can change it |
+| Its directory is owned by you or root | The directory's owner can replace the file |
+| Its directory is not writable by group or others, unless the directory is sticky and the file is yours | Anyone who can write to the directory can replace the file. A sticky directory such as `/tmp` prevents that only for your own files |
+
+System and user files get a lighter check, applied the same way to the open
+file:
+
+| File | Rule |
+|------|------|
+| System (`/etc/bz/config.toml`) | Regular file, owned by root, not writable by group or others |
+| User (`~/.config/bz/config.toml`) | Regular file, owned by you or root, not writable by group or others |
+
+Their directories are not checked. The user file lives in your own config
+directory, and the system file under root-owned `/etc`.
+
+What the checks cannot see:
+- ACLs and extended attributes.
+- Any directory other than the file's own (ancestors further up are not checked).
+- Mount options.
+
+## When bz refuses a file
+
+An untrusted file stops every command before it runs, with one `Error:` line
+naming the file, the reason and a fix. Commands are only suggested for files you
+own, and paths in them are quoted so they are safe to copy:
+
+```text
+Error: untrusted project config /src/app/.bz.toml: the file and its directory /src/app are writable by group or others (modes -rw-rw-r--, -rwxrwxr-x); fix: chmod go-w -- '/src/app/.bz.toml' '/src/app', or list /src/app in BZ_TRUSTED_CONFIG_DIRS if the shared setup is intended
+```
+
+### Group-writable files (umask 002)
+
+With `umask 002`, new files are `0664` and directories `0775`, so both fail the
+mode rules. Remove the group write bit:
+
+```bash
+chmod go-w -- .bz.toml .
+```
+
+If the group-writable checkout is intended, for example a shared team
+directory, trust it instead with `BZ_TRUSTED_CONFIG_DIRS`.
+
+### Running with sudo, or as root in a container
+
+As root (`sudo bz …`, or a container that runs as root over a checkout
+mounted from the host), the checkout's files and markers belong to your
+ordinary user, not to root. The markers are skipped with a warning. A
+`.bz.toml` in the working directory is refused as `owned by uid 1000, not you
+(uid 0) or root`. Either run bz as the checkout's owner (`sudo -u <user> bz …`,
+or `docker run --user "$(id -u):$(id -g)" …`), or trust the mounted directory:
+
+```bash
+docker run --rm -v "$PWD:/src" -w /src \
+  -e BZ_TRUSTED_CONFIG_DIRS=/src \
+  bz-image bz mod list
+```
+
+### NFS with root-squash
+
+On an NFS export with root-squash, files created by root show up owned by the
+anonymous user (often uid 65534), so bz refuses them as owned by another user.
+Recreate the file as your own user, or trust the directory with
+`BZ_TRUSTED_CONFIG_DIRS`.
+
+## Trusting a directory
+
+`BZ_TRUSTED_CONFIG_DIRS` lists directories, separated like `PATH` (`:` on
+Unix), whose config files skip the ownership and permission rules. The
+regular-file rule still applies.
+- A workspace marker in a listed directory counts regardless of its owner.
+- Trust covers exactly the listed directory, compared by identity after
+  resolving symbolic links, never its subdirectories.
+- Every entry must be an absolute path. A relative entry, including `.`, is an
+  error, because it would trust whatever directory bz runs in.
+- An entry that does not exist or cannot be resolved produces a warning and is
+  ignored.
+
+<Aside type="caution">
+Listing a directory that others can write to trusts whatever they put there.
+Only list directories whose writers you trust.
+</Aside>
+
+## Platforms
+
+- **Windows:** ownership and mode bits do not map to these rules. On Windows
+  only the regular-file rule applies, and markers count whoever owns them. The
+  home-directory rule still applies.
+- **Platforms without ownership information** (for example plan9 or js): a
+  marker's owner cannot be determined, which is an error. bz therefore does
+  not run inside a workspace on those platforms.
+
+## Warnings
+
+These do not stop the command. Each is printed once, as a `Warning:` line on
+stderr:
+- a workspace marker skipped because another user owns it
+- a `BZ_TRUSTED_CONFIG_DIRS` entry that does not exist or cannot be resolved

@@ -44,15 +44,17 @@ For registry sync workflows, use Starlark configuration in `bz.star`.
 
 ## TOML Configuration
 
-TOML files configure bz's runtime behavior. Files are loaded from multiple locations with later files overriding earlier ones.
+TOML files configure bz's runtime behavior. All three files are optional. A later file overrides only the keys it sets.
 
 ### File Locations
 
 | Location | Purpose |
 |----------|---------|
-| `/etc/bz/config.toml` | System-wide defaults |
-| `~/.config/bz/config.toml` | User preferences |
-| `.bz.toml` | Project-specific settings |
+| `/etc/bz/config.toml` (Windows: `%ProgramData%\bz\config.toml`) | System-wide defaults |
+| `~/.config/bz/config.toml` (or `$XDG_CONFIG_HOME/bz/config.toml`; Windows: `%AppData%\bz\config.toml`) | User preferences |
+| `.bz.toml` (or legacy `.bzconfig.toml`), nearest from the current directory up to the workspace root | Project-specific settings |
+
+A malformed file, invalid value or untrusted file stops the command with an error naming the file. bz only reads config files nobody else could have changed; see [Project Config and Trust](/bz/configuration/project-config/).
 
 ### Example
 

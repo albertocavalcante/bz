@@ -9,18 +9,48 @@ bz supports configuration via TOML files for persistent settings. This is useful
 
 ## Configuration Files
 
-bz looks for configuration in these locations (in order of precedence):
+bz reads up to three TOML files. Each one is optional.
 
-<FileTree>
-- /etc/bz/
-  - config.toml (system-wide)
-- ~/.config/bz/
-  - config.toml (user-specific)
-- project/
-  - .bz.toml (project-specific)
-</FileTree>
+| Layer | Linux and macOS | Windows |
+|-------|-----------------|---------|
+| System | `/etc/bz/config.toml` | `%ProgramData%\bz\config.toml` |
+| User | `$XDG_CONFIG_HOME/bz/config.toml` if `XDG_CONFIG_HOME` is set, else `~/.config/bz/config.toml` (also on macOS) | `$XDG_CONFIG_HOME\bz\config.toml` if set, else `%AppData%\bz\config.toml` |
+| Project | `.bz.toml` (or `.bzconfig.toml`), see below | same |
 
-Settings in later files override earlier ones. CLI flags and environment variables override all file-based configuration.
+**Project file search.** Inside a Bazel workspace, bz looks for `.bz.toml` in the
+current directory and in each parent directory up to the workspace root. The root
+is the innermost directory with a `MODULE.bazel`, `REPO.bazel`, `WORKSPACE.bazel` or
+`WORKSPACE` file that you or root own, so a nested `MODULE.bazel` ends the search.
+The nearest file wins, and project files do not merge with each other. Outside a
+workspace, bz only checks the current directory. Your home directory and its
+ancestors are never a workspace root. `.bzconfig.toml` is accepted for
+compatibility with earlier releases. If one directory has both `.bz.toml` and
+`.bzconfig.toml`, bz stops with an error.
+
+**Trust.** bz only reads config files nobody else could have changed:
+- A project file must be owned by you or root and not writable by group or others.
+- Its directory must be owned by you or root and not writable by group or others (a sticky directory holding your own file is fine).
+- The system file must be owned by root.
+- The user file must be owned by you or root.
+
+An untrusted file stops the command. See
+[Project Config and Trust](/bz/configuration/project-config/) for the full
+rules, the common refusals and their fixes, and `BZ_TRUSTED_CONFIG_DIRS`.
+
+Settings in later layers override earlier ones; see
+[Configuration Precedence](#configuration-precedence).
+
+<Aside type="caution">
+A malformed file, an invalid value, an untrusted file or a problem locating the
+project file stops the command before it runs, with one `Error:` line that names
+the file or variable. Invalid values include an unknown `mode`, a `timeout` or
+`ttl` that is not a Go duration (`"30s"`, `"24h"`), a `registry` or
+`fallback_registries` entry that is not an `https://`, `http://` or `file://`
+URL or an absolute path, and an unparsable `BZ_OFFLINE`. The command does not
+run, so a typo can never quietly drop the rest of the file, such as
+`[commands] disabled`. `help`, `version` and `completion` still run with a
+broken file and show the error as a warning.
+</Aside>
 
 ## Full Example
 
@@ -80,12 +110,12 @@ Controls the local module cache.
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `dir` | string | `~/.cache/bz` | Cache directory path |
-| `ttl` | string | `""` | Cache entry time-to-live (empty = never expire). Values are Go durations using `h`, `m` and `s` (for example `"168h"` for a week); `"7d"` is not accepted |
+| `ttl` | string | `""` | Cache entry time-to-live (empty = never expire). Values are Go durations using `h`, `m` and `s` (for example `"168h"` for a week); `"7d"` is not accepted. Validated, not yet applied |
 
 ```toml
 [cache]
 dir = "/var/cache/bz"
-ttl = "168h"
+ttl = "168h"                      # Go duration; "7d" is not accepted
 ```
 
 ### `[commands]`
@@ -118,8 +148,15 @@ Environment variables provide another way to configure bz, especially useful in 
 | `BZ_REGISTRY` | `network.registry` | Override registry URL |
 | `BZ_CACHE_DIR` | `cache.dir` | Override cache directory |
 | `BZ_DISABLE_COMMANDS` | `commands.disabled` | Disable commands (comma-separated) |
+| `BZ_TRUSTED_CONFIG_DIRS` | | Directories whose config files skip the ownership and permission checks, separated like `PATH`. See [Project Config and Trust](/bz/configuration/project-config/#trusting-a-directory) |
+| `XDG_CONFIG_HOME` | | Where to look for the user config file (absolute paths only) |
+| `NO_COLOR` | | Disable colored output (same as `--no-color`) |
 
-**Boolean values:** `BZ_OFFLINE` and `BZ_PREFER_OFFLINE` accept `1`, `true`, or `yes` (case-insensitive).
+This is the complete list of variables that affect configuration.
+
+**Boolean values:** `BZ_OFFLINE` and `BZ_PREFER_OFFLINE` accept `1`, `true`, `yes`
+or `on` for true and `0`, `false`, `no`, `off` or an empty value for false
+(case-insensitive). Any other value is an error that stops the command.
 
 ```bash
 # Enable offline mode
@@ -138,14 +175,19 @@ export BZ_DISABLE_COMMANDS="audit,sbom"
 
 Configuration is merged in this order (later overrides earlier):
 
-1. **Built-in defaults**
-2. **System config** (`/etc/bz/config.toml`)
-3. **User config** (`~/.config/bz/config.toml`)
-4. **Project config** (`.bz.toml` in current directory)
-5. **Environment variables**
-6. **CLI flags**
+| # | Layer | Where |
+|---|-------|-------|
+| 1 | Built-in defaults | |
+| 2 | System config | `/etc/bz/config.toml` (Windows: `%ProgramData%\bz\config.toml`) |
+| 3 | User config | `~/.config/bz/config.toml` or `$XDG_CONFIG_HOME/bz/config.toml` (Windows: `%AppData%\bz\config.toml`) |
+| 4 | Project config | `.bz.toml` or `.bzconfig.toml`, nearest from the current directory up to the workspace root |
+| 5 | Environment variables | see above |
+| 6 | Command-line flags | `--offline`, `--prefer-offline`, `--registry` |
 
-This allows you to set organization-wide defaults in system config, user preferences in user config, and project-specific settings in project config.
+Each layer overrides only the keys it sets. A project file that sets only
+`[cache] dir` keeps the user file's `mode`. A higher layer can also set a key back
+to its default. The system file provides defaults that higher layers can
+override; it is not a lock.
 
 ---
 

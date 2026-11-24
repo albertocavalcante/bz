@@ -72,6 +72,7 @@ export default defineConfig({
             { label: 'Publishers', slug: 'configuration/publishers' },
             { label: 'Transforms', slug: 'configuration/transforms' },
             { label: 'TOML Config', slug: 'configuration/toml' },
+            { label: 'Project Config and Trust', slug: 'configuration/project-config' },
           ],
         },
         {
