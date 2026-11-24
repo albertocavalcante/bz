@@ -80,12 +80,12 @@ Controls the local module cache.
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `dir` | string | `~/.cache/bz` | Cache directory path |
-| `ttl` | string | `""` | Cache entry time-to-live (empty = never expire) |
+| `ttl` | string | `""` | Cache entry time-to-live (empty = never expire). Values are Go durations using `h`, `m` and `s` (for example `"168h"` for a week); `"7d"` is not accepted |
 
 ```toml
 [cache]
 dir = "/var/cache/bz"
-ttl = "7d"
+ttl = "168h"
 ```
 
 ### `[commands]`

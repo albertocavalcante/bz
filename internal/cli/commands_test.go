@@ -212,6 +212,11 @@ func TestCheckCommandAllowed_InvalidValueDoesNotReenableCommand(t *testing.T) {
 [network]
 timeout = "30"
 mode = "ofline"
+registry = "not-a-url"
+fallback_registries = ["https://:443"]
+
+[cache]
+ttl = "7d"
 
 [commands]
 disabled = ["audit"]

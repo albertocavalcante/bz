@@ -42,6 +42,27 @@ func TestMerge_RegistryValidation(t *testing.T) {
 	}
 }
 
+func TestMerge_RegistryIsStoredTrimmed(t *testing.T) {
+	for _, raw := range []string{"  https://x.example  ", "https://x.example\n", "\thttps://x.example"} {
+		reg := raw
+		fallback := []string{raw, " /opt/registry "}
+		eff, err := Merge(Defaults("/c"), Layer{Kind: LayerProject, Origin: "/p", Settings: Settings{Registry: &reg, FallbackRegistries: &fallback}})
+		require.NoError(t, err, "%q", raw)
+		assert.Equal(t, "https://x.example", eff.Network.Registry)
+		assert.Equal(t, []string{"https://x.example", "/opt/registry"}, eff.Network.FallbackRegistries)
+	}
+}
+
+func TestMerge_RegistryRejectsHostlessAndControlCharacters(t *testing.T) {
+	for _, raw := range []string{"http://:80", "https://:443/bcr", "https://x.example/a\nb", "/opt/re\x1bgistry"} {
+		reg := raw
+		eff, err := Merge(Defaults("/c"), Layer{Kind: LayerProject, Origin: "/p", Settings: Settings{Registry: &reg}})
+		require.Error(t, err, "%q", raw)
+		assert.Equal(t, DefaultRegistry, eff.Network.Registry)
+		assertNoControlBytes(t, err.Error())
+	}
+}
+
 func TestMerge_EmptyTTLIsAllowed(t *testing.T) {
 	eff, err := Merge(Defaults("/c"), parse(t, LayerProject, "/p/.bzconfig.toml", "[cache]\nttl = \"\"\n"))
 	require.NoError(t, err)

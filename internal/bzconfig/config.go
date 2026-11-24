@@ -229,24 +229,27 @@ func (e *Effective) apply(l Layer) []error {
 		e.sources[KeyMode] = l.source(KeyMode)
 	}
 	if s.Registry != nil {
-		if err := checkRegistryURL(*s.Registry); err != nil {
+		if reg, err := checkRegistryURL(*s.Registry); err != nil {
 			errs = append(errs, fmt.Errorf("invalid registry in %s: %w", l.source(KeyRegistry), err))
 		} else {
-			e.Network.Registry = *s.Registry
+			e.Network.Registry = reg
 			e.sources[KeyRegistry] = l.source(KeyRegistry)
 		}
 	}
 	if s.FallbackRegistries != nil {
 		var bad []error
+		regs := make([]string, 0, len(*s.FallbackRegistries))
 		for _, r := range *s.FallbackRegistries {
-			if err := checkRegistryURL(r); err != nil {
+			reg, err := checkRegistryURL(r)
+			if err != nil {
 				bad = append(bad, fmt.Errorf("invalid fallback_registries entry in %s: %w", l.source(KeyFallbackRegistries), err))
 			}
+			regs = append(regs, reg)
 		}
 		if len(bad) > 0 {
 			errs = append(errs, bad...)
 		} else {
-			e.Network.FallbackRegistries = slices.Clone(*s.FallbackRegistries)
+			e.Network.FallbackRegistries = regs
 			e.sources[KeyFallbackRegistries] = l.source(KeyFallbackRegistries)
 		}
 	}
@@ -283,32 +286,38 @@ func (e *Effective) apply(l Layer) []error {
 	return errs
 }
 
-// checkRegistryURL accepts the registry forms bz supports: http:// or
-// https:// URLs with a host, file:// URLs with a path, and absolute
-// filesystem paths (Unix or Windows drive paths).
-func checkRegistryURL(raw string) error {
+// checkRegistryURL validates a registry value and returns it with
+// surrounding whitespace removed, which is the form callers store (the
+// registry client matches URL prefixes on the raw string). It accepts the
+// forms bz supports: http:// or https:// URLs with a host name, file://
+// URLs with a path, and absolute filesystem paths (Unix or Windows drive
+// paths). A value with an interior control or non-printable character is
+// rejected.
+func checkRegistryURL(raw string) (string, error) {
 	v := strings.TrimSpace(raw)
 	switch {
 	case v == "":
-		return errors.New("empty registry URL")
+		return "", errors.New("empty registry URL")
+	case !printable(v):
+		return "", fmt.Errorf("%q: contains control or non-printable characters", raw)
 	case strings.HasPrefix(v, "https://"), strings.HasPrefix(v, "http://"):
 		u, err := url.Parse(v)
 		if err != nil {
-			return fmt.Errorf("%q: %w", raw, err)
+			return "", fmt.Errorf("%q: %w", raw, err)
 		}
-		if u.Host == "" {
-			return fmt.Errorf("%q: missing host", raw)
+		if u.Hostname() == "" {
+			return "", fmt.Errorf("%q: missing host", raw)
 		}
-		return nil
+		return v, nil
 	case strings.HasPrefix(v, "file://"):
 		if strings.TrimPrefix(v, "file://") == "" {
-			return fmt.Errorf("%q: missing path", raw)
+			return "", fmt.Errorf("%q: missing path", raw)
 		}
-		return nil
+		return v, nil
 	case strings.HasPrefix(v, "/"), isWindowsDrivePath(v):
-		return nil
+		return v, nil
 	default:
-		return fmt.Errorf("%q: want an https://, http:// or file:// URL or an absolute path", raw)
+		return "", fmt.Errorf("%q: want an https://, http:// or file:// URL or an absolute path", raw)
 	}
 }
 
