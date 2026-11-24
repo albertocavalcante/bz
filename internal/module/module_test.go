@@ -205,6 +205,46 @@ func TestLoadContent_ParseErrorIncludesPosition(t *testing.T) {
 	}
 }
 
+func TestLoadContent_MalformedIncludeIsReported(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		call string
+	}{
+		{"two positional", `include("a", "b")`},
+		{"keyword label", `include(label = "//x:y.MODULE.bazel")`},
+		{"unknown keyword", `include("//x:y.MODULE.bazel", foo = 1)`},
+		{"non-bool dev_dependency", `include("//x:y.MODULE.bazel", dev_dependency = 1)`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := LoadContent("MODULE.bazel", []byte("module(name = \"m\")\n"+tt.call+"\n"))
+			if err == nil {
+				t.Fatal("expected malformed include() to be reported, got nil")
+			}
+			msg := err.Error()
+			if !strings.Contains(msg, "one positional string literal") {
+				t.Fatalf("expected include shape message, got: %q", msg)
+			}
+			if !strings.HasPrefix(msg, "MODULE.bazel:2:") {
+				t.Fatalf("expected file:line:col prefix, got: %q", msg)
+			}
+		})
+	}
+
+	t.Run("well-formed loads", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := LoadContent("MODULE.bazel", []byte("module(name = \"m\")\ninclude(\"//x:y.MODULE.bazel\")\n"))
+		if err != nil {
+			t.Fatalf("well-formed include() should load, got: %v", err)
+		}
+	})
+}
+
 func TestFindAndLoad(t *testing.T) {
 	t.Parallel()
 
