@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	neturl "net/url"
 	"os"
@@ -53,6 +54,7 @@ type HTTPPublisher struct {
 	base       *neturl.URL // parsed once; no query or fragment
 	basePath   string      // base.EscapedPath() without trailing slashes
 	httpClient *http.Client
+	transport  *http.Transport // owned by this publisher; released by Close
 	auth       *Auth
 }
 
@@ -84,14 +86,45 @@ func NewHTTPPublisher(baseURL string, auth *Auth) (*HTTPPublisher, error) {
 		return nil, fmt.Errorf("invalid base URL %s: it must not contain a query or fragment", redactedBase(u))
 	}
 
+	// Each publisher owns its transport. The zero-value http.Client falls
+	// back to the process-wide http.DefaultTransport, which anything in the
+	// process can flush with CloseIdleConnections (httptest.Server.Close
+	// does), failing in-flight requests with "http: CloseIdleConnections
+	// called". Cloning keeps the default dialer, proxy and TLS settings.
+	transport := newTransport()
+
 	return &HTTPPublisher{
 		base:     u,
 		basePath: strings.TrimRight(u.EscapedPath(), "/"),
 		httpClient: &http.Client{
-			Timeout: httpTimeout,
+			Timeout:   httpTimeout,
+			Transport: transport,
 		},
-		auth: auth,
+		transport: transport,
+		auth:      auth,
 	}, nil
+}
+
+// newTransport returns a private transport configured like
+// http.DefaultTransport. If the default was replaced by another RoundTripper
+// (instrumentation, a test double) it cannot be cloned, so build one with the
+// same settings net/http uses for its default.
+func newTransport() *http.Transport {
+	if t, ok := http.DefaultTransport.(*http.Transport); ok {
+		return t.Clone()
+	}
+	return &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          100,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
 }
 
 // Put sends an HTTP PUT request to write content.
@@ -174,8 +207,10 @@ func (p *HTTPPublisher) Type() string {
 	return TypeHTTPPut
 }
 
-// Close releases any resources (no-op for HTTP publisher).
+// Close releases this publisher's idle connections. It never touches the
+// process-wide default transport or other publishers.
 func (p *HTTPPublisher) Close() error {
+	p.transport.CloseIdleConnections()
 	return nil
 }
 
