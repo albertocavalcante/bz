@@ -87,6 +87,19 @@ func Effective() (*bzconfig.Effective, error) {
 	return l.Resolve(flagLayer())
 }
 
+// effectiveOrFlags returns the effective configuration, or, when it cannot
+// be computed (only reachable when a command is invoked without the root
+// pre-run, which reports the error), defaults plus the flag layer.
+func effectiveOrFlags() *bzconfig.Effective {
+	if eff, err := Effective(); err == nil {
+		return eff
+	}
+	// Merge skips invalid values (an invalid --registry) and still returns
+	// a usable configuration.
+	eff, _ := bzconfig.Merge(bzconfig.Defaults(bzconfig.DefaultCacheDir(configEnv)), flagLayer())
+	return eff
+}
+
 // CommandDisabledError is returned when a command is disabled in configuration.
 type CommandDisabledError struct {
 	Command string
@@ -127,6 +140,8 @@ func CheckCommandAllowed(cmdName string) error {
 type OfflineModeError struct {
 	Command     string
 	Description string
+	// Source says which layer selected offline mode, e.g. "flag --offline".
+	Source string
 }
 
 func (e *OfflineModeError) Error() string {
@@ -134,9 +149,13 @@ func (e *OfflineModeError) Error() string {
 	if e.Description != "" {
 		msg += " " + e.Description
 	}
-	msg += ".\n\nIn offline mode, this operation is not available.\n\nOptions:\n"
-	msg += "  1. Run with network access (remove --offline flag or BZ_OFFLINE env var)\n"
-	msg += fmt.Sprintf("  2. Disable this command in .bzconfig.toml:\n     [commands]\n     disabled = [%q]\n", e.Command)
+	msg += ".\n\nIn offline mode, this operation is not available."
+	if e.Source != "" {
+		msg += fmt.Sprintf(" Offline mode is set by %s.", e.Source)
+	}
+	msg += "\n\nOptions:\n"
+	msg += "  1. Run with network access (remove --offline, BZ_OFFLINE, or [network] mode = \"offline\" from your bz config file)\n"
+	msg += fmt.Sprintf("  2. Disable this command in .bz.toml:\n     [commands]\n     disabled = [%q]\n", e.Command)
 	return msg
 }
 
@@ -146,27 +165,18 @@ func (e *OfflineModeError) Is(target error) bool {
 	return ok
 }
 
-// CheckOfflineAllowed returns OfflineModeError when offline mode is on, and
-// the load error when the configuration is invalid (fail closed).
+// CheckOfflineAllowed returns OfflineModeError when the effective network
+// mode is offline, and the load error when the configuration is invalid.
 func CheckOfflineAllowed(cmdName string) error {
-	offline, err := EffectivelyOffline()
+	eff, err := Effective()
 	if err != nil {
-		return err
+		return err // fail closed: never run a network command on a broken config
 	}
-	if offline {
+	if eff.IsOffline() {
 		return &OfflineModeError{
 			Command: cmdName,
+			Source:  eff.Source(bzconfig.KeyMode).String(),
 		}
 	}
 	return nil
-}
-
-// EffectivelyOffline reports whether flags or configuration select offline
-// mode, or the error that keeps the configuration from loading.
-func EffectivelyOffline() (bool, error) {
-	cfg, err := Effective()
-	if err != nil {
-		return false, err
-	}
-	return IsOffline() || cfg.IsOffline(), nil
 }

@@ -222,6 +222,8 @@ func TestRootCmd_OfflineWithBZOfflineEnv(t *testing.T) {
 	}()
 
 	// Even without the flag, IsOffline should return true
+	cli.ResetCachedConfig()
+	t.Cleanup(cli.ResetCachedConfig)
 	assert.True(t, cli.IsOffline(), "IsOffline should return true when BZ_OFFLINE env var is set")
 }
 

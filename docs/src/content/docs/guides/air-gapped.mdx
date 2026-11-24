@@ -174,7 +174,14 @@ mode = "offline"
 </Tabs>
 
 <Aside type="note">
-`--offline` and `--prefer-offline` are mutually exclusive. If both are set, `--offline` takes precedence.
+`--offline` and `--prefer-offline` are mutually exclusive: passing both is an error.
+Either flag overrides the config file and environment, so `bz --prefer-offline ...`
+works even when a config file says `mode = "offline"`. If both `BZ_OFFLINE` and
+`BZ_PREFER_OFFLINE` are true, `BZ_OFFLINE` wins.
+
+The mode can come from `/etc/bz/config.toml`, `~/.config/bz/config.toml`, a
+project `.bz.toml`, the environment or a flag. See
+[Configuration Precedence](/bz/configuration/toml/#configuration-precedence).
 </Aside>
 
 ---
@@ -384,8 +391,10 @@ bz cache download
 
 This is expected! In offline mode, bz should never attempt network access. If you see this error:
 
-1. Check that offline mode is enabled: `echo $BZ_OFFLINE`
-2. Verify config file: `cat ~/.config/bz/config.toml`
+1. Check that offline mode is enabled: `echo $BZ_OFFLINE`, or look for
+   `mode = "offline"` in `/etc/bz/config.toml`, `~/.config/bz/config.toml` or the
+   project's `.bz.toml`
+2. Check that bz prints no `Warning: ... unknown key` lines. A misspelt key is ignored
 3. Ensure the cache is populated: `bz cache verify`
 
 ### Checking Network Mode
@@ -400,15 +409,18 @@ bz mod list --offline
 
 ### Cache Location
 
-Default cache locations by platform:
+The cache directory is resolved in this order:
+
+1. `--cache-dir` on the `bz cache` subcommand
+2. `BZ_CACHE_DIR`
+3. `[cache] dir` in a config file (`~` is expanded; relative paths are relative to that file)
+4. The default:
 
 | Platform | Default Path |
 |----------|--------------|
-| Linux | `~/.cache/bz` |
-| macOS | `~/.cache/bz` |
-| Windows | `%LOCALAPPDATA%\bz\cache` |
-
-Override with `--cache-dir` flag or `BZ_CACHE_DIR` environment variable.
+| Linux | `~/.cache/bz`, or `$XDG_CACHE_HOME/bz` when `XDG_CACHE_HOME` is set and `~/.cache/bz` does not exist |
+| macOS | same as Linux |
+| Windows | `%LOCALAPPDATA%\bz\cache`, or `~/.cache/bz` if that directory already exists (the location used by earlier releases) |
 
 ---
 

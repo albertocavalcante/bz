@@ -234,7 +234,7 @@ func (r *NetworkAwareRegistry) ListModules(ctx context.Context) ([]string, error
 					URL:       r.inner.String(),
 					Err:       ErrListingNotSupported,
 					Suggestions: []string{
-						"Configure a cache directory in your bz.star config",
+						"Populate the cache with 'bz cache download' (cache location: --cache-dir, BZ_CACHE_DIR or [cache] dir in .bz.toml)",
 						"Use --prefer-offline to allow network fallback",
 					},
 				}

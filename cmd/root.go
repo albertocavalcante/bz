@@ -35,10 +35,16 @@ Air-gapped/Offline Usage:
   Use --prefer-offline to prefer cached data but fall back to network if needed.
   Use --registry to override the default registry URL for custom registries.
 
+Configuration (lowest to highest precedence):
+  built-in defaults < /etc/bz/config.toml < ~/.config/bz/config.toml
+  < .bz.toml (project) < environment variables < command-line flags
+
 Environment Variables:
-  BZ_OFFLINE=1         Same as --offline flag
-  BZ_PREFER_OFFLINE=1  Same as --prefer-offline flag
-  BZ_REGISTRY=<url>    Same as --registry flag`,
+  BZ_OFFLINE=1               Same as --offline flag
+  BZ_PREFER_OFFLINE=1        Same as --prefer-offline flag
+  BZ_REGISTRY=<url>          Same as --registry flag
+  BZ_CACHE_DIR=<dir>         Same as [cache] dir
+  BZ_DISABLE_COMMANDS=<list> Same as [commands] disabled (comma-separated)`,
 	// Enable typo suggestions with minimum edit distance of 2
 	SuggestionsMinimumDistance: 2,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {

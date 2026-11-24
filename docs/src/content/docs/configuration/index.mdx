@@ -147,6 +147,11 @@ All configuration is merged in this order (later overrides earlier):
 5. Environment variables
 6. CLI flags
 
+Each layer overrides only the keys it sets, and can set a key back to its default.
+See the [precedence table](/bz/configuration/toml/#configuration-precedence) for
+details. This order applies to the TOML settings; `bz.star` is read only by
+`bz mod sync`.
+
 <Aside type="tip">
 CLI flags always take precedence. Use them to override any configuration for a single command.
 </Aside>

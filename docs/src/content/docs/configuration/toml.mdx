@@ -70,8 +70,8 @@ timeout = "30s"
 
 # Cache settings
 [cache]
-dir = "~/.cache/bz"               # Cache directory
-ttl = "24h"                       # Cache time-to-live (optional)
+dir = "~/.cache/bz"               # Cache directory ("~" is expanded)
+ttl = "24h"                       # Cache time-to-live (accepted, not yet applied)
 
 # Command settings
 [commands]
@@ -87,9 +87,9 @@ Controls how bz accesses registries.
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `mode` | string | `"online"` | Network mode: `online`, `prefer-offline`, or `offline` |
-| `registry` | string | `"https://bcr.bazel.build"` | Primary registry URL |
-| `fallback_registries` | array | `[]` | Backup registries to try if primary fails |
-| `timeout` | string | `"30s"` | Request timeout (Go duration format) |
+| `registry` | string | `"https://bcr.bazel.build"` | Primary registry URL. Used by `mod`, `cache download`, `registry ping`, `sbom`, `doctor` and the TUI |
+| `fallback_registries` | array | `[]` | Backup registries to try if the primary fails. Validated and loaded, but not yet used by any command |
+| `timeout` | string | `"30s"` | Request timeout (Go duration such as `"30s"` or `"2m"`; must be positive). Validated and loaded, but HTTP clients still use their built-in timeouts |
 
 **Network modes:**
 
@@ -111,14 +111,24 @@ Controls the local module cache.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `dir` | string | `~/.cache/bz` | Cache directory path |
-| `ttl` | string | `""` | Cache entry time-to-live (empty = never expire). Values are Go durations using `h`, `m` and `s` (for example `"168h"` for a week); `"7d"` is not accepted. Validated, not yet applied |
+| `dir` | string | see below | Cache directory path. A leading `~` is expanded. A relative path is resolved against the directory of the file that sets it |
+| `ttl` | string | `""` | Cache entry time-to-live (empty = never expire). Values are Go durations using `h`, `m` and `s` (for example `"168h"` for a week); `"7d"` is not accepted. Validated but not yet applied |
 
 ```toml
 [cache]
 dir = "/var/cache/bz"
-ttl = "168h"                      # Go duration; "7d" is not accepted
 ```
+
+**Cache directory resolution** (first match wins):
+
+1. The command's `--cache-dir` flag (`bz cache download|stats|verify|clear`)
+2. `BZ_CACHE_DIR`
+3. `[cache] dir` from the highest config layer that sets it
+4. The built-in default:
+   - `~/.cache/bz` if that directory already exists. Earlier releases always
+     used this path, so an existing cache is never orphaned.
+   - otherwise `$XDG_CACHE_HOME/bz` when `XDG_CACHE_HOME` is set to an absolute path
+   - otherwise `%LocalAppData%\bz\cache` on Windows and `~/.cache/bz` elsewhere
 
 ### `[commands]`
 
@@ -141,17 +151,18 @@ Disabled commands will return an error when invoked. This is useful for restrict
 
 ## Environment Variables
 
-Environment variables provide another way to configure bz, especially useful in CI/CD pipelines and containers.
+This is the complete list of variables that affect configuration:
 
-| Variable | Equivalent Config | Description |
+| Variable | Equivalent config | Description |
 |----------|-------------------|-------------|
 | `BZ_OFFLINE` | `network.mode = "offline"` | Enable offline mode |
 | `BZ_PREFER_OFFLINE` | `network.mode = "prefer-offline"` | Enable prefer-offline mode |
 | `BZ_REGISTRY` | `network.registry` | Override registry URL |
-| `BZ_CACHE_DIR` | `cache.dir` | Override cache directory |
+| `BZ_CACHE_DIR` | `cache.dir` | Override cache directory (`~` is expanded) |
 | `BZ_DISABLE_COMMANDS` | `commands.disabled` | Disable commands (comma-separated) |
 | `BZ_TRUSTED_CONFIG_DIRS` | | Directories whose config files skip the ownership and permission checks, separated like `PATH`. See [Project Config and Trust](/bz/configuration/project-config/#trusting-a-directory) |
 | `XDG_CONFIG_HOME` | | Where to look for the user config file (absolute paths only) |
+| `XDG_CACHE_HOME` | | Base directory for the default cache directory, used only when `~/.cache/bz` does not already exist |
 | `NO_COLOR` | | Disable colored output (same as `--no-color`) |
 
 This is the complete list of variables that affect configuration.
@@ -159,6 +170,13 @@ This is the complete list of variables that affect configuration.
 **Boolean values:** `BZ_OFFLINE` and `BZ_PREFER_OFFLINE` accept `1`, `true`, `yes`
 or `on` for true and `0`, `false`, `no`, `off` or an empty value for false
 (case-insensitive). Any other value is an error that stops the command.
+
+A false value does not switch a config file's `mode = "offline"` back to online.
+To do that, set `mode = "online"` in a higher config layer. If both variables are true,
+`BZ_OFFLINE` wins. Empty `BZ_REGISTRY`, `BZ_CACHE_DIR` and `BZ_DISABLE_COMMANDS`
+count as unset; surrounding spaces in `BZ_REGISTRY` and `BZ_CACHE_DIR` are ignored.
+`BZ_DISABLE_COMMANDS=","` replaces the list from the config files with an empty
+list, re-enabling every command. `BZ_REGISTRY` is validated like `registry`.
 
 ```bash
 # Enable offline mode
@@ -184,12 +202,19 @@ Configuration is merged in this order (later overrides earlier):
 | 3 | User config | `~/.config/bz/config.toml` or `$XDG_CONFIG_HOME/bz/config.toml` (Windows: `%AppData%\bz\config.toml`) |
 | 4 | Project config | `.bz.toml` or `.bzconfig.toml`, nearest from the current directory up to the workspace root |
 | 5 | Environment variables | see above |
-| 6 | Command-line flags | `--offline`, `--prefer-offline`, `--registry` |
+| 6 | Command-line flags | `--offline`, `--prefer-offline`, `--registry` (and `mod --registry`, `cache download --registry`, `cache * --cache-dir`) |
 
-Each layer overrides only the keys it sets. A project file that sets only
-`[cache] dir` keeps the user file's `mode`. A higher layer can also set a key back
-to its default. The system file provides defaults that higher layers can
-override; it is not a lock.
+Each layer overrides only the keys it sets. A project file that sets only `[cache] dir`
+keeps the user file's `mode = "offline"`. A higher layer can also set a key back to
+its default. For example, `mode = "online"` or `registry = "https://bcr.bazel.build"` in a project file
+overrides a user file's offline mode or mirror. Lists such as `disabled` and
+`fallback_registries` are replaced, not merged. The system file provides defaults
+that higher layers can override; it is not a lock.
+
+`--offline` and `--prefer-offline` cannot be combined. Either flag overrides the
+mode from config files and the environment. With `mode = "offline"` in a config file,
+`bz --prefer-offline ...` runs in prefer-offline mode, and with
+`mode = "prefer-offline"`, `bz --offline ...` runs offline.
 
 ---
 
@@ -251,7 +276,6 @@ mode = "prefer-offline"
 
 [cache]
 dir = "~/.cache/bz"
-ttl = "24h"
 ```
 
 ### Restricted Environment
@@ -273,19 +297,21 @@ disabled = ["audit"]  # Disable commands that require network
 
 ## Validating Configuration
 
-You can check your effective configuration by running any command in verbose mode or checking the behavior:
+bz has no `config show` command yet. To check what is in effect:
 
 ```bash
-# Check if offline mode is active
-bz mod list --offline  # Should succeed if cache is populated
+# Unknown keys and invalid values are reported on every run
+bz version
 
-# Check current registry
-bz registry ping  # Shows which registry is being used
+# Shows which registry is being used (from config, BZ_REGISTRY or --registry)
+bz registry ping
+
+# Checks the configured registry, or reports that offline mode skips the check
+bz doctor
 ```
 
-<Aside type="tip">
-Use `bz doctor` to verify your overall setup, including configuration effects.
-</Aside>
+Error messages that depend on configuration name the layer that set the value,
+for example `Offline mode is set by user config /home/me/.config/bz/config.toml.`
 
 ---
 

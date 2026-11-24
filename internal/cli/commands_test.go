@@ -200,6 +200,9 @@ mode = "offline"
 
 	var offlineErr *OfflineModeError
 	assert.ErrorAs(t, err, &offlineErr)
+	assert.Contains(t, err.Error(), "project config")
+	assert.Contains(t, err.Error(), ".bzconfig.toml")
+	assert.NotContains(t, err.Error(), "bz.star")
 }
 
 // TestCheckCommandAllowed_InvalidConfigFailsClosed: an invalid value must

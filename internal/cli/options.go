@@ -4,11 +4,12 @@ package cli
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
 
-	"github.com/albertocavalcante/bz/internal/envutil"
+	"github.com/albertocavalcante/bz/internal/bzconfig"
 )
 
 // Options holds global CLI options that affect output behavior.
@@ -32,7 +33,7 @@ type Options struct {
 }
 
 // Global holds the current CLI options.
-// This is set by the root command's PersistentPreRun.
+// It is populated by the root command's persistent flags.
 var Global Options
 
 // IsQuiet returns true if quiet mode is enabled.
@@ -62,35 +63,49 @@ func ConfigureLipgloss() {
 	}
 }
 
-// IsOffline returns true if strict offline mode is enabled.
-// This also respects the BZ_OFFLINE environment variable.
+// IsOffline returns true if the effective network mode is offline
+// (from --offline, BZ_OFFLINE or [network] mode in a config file).
 func IsOffline() bool {
-	if Global.Offline {
-		return true
-	}
-	return envutil.IsTruthyEnv("BZ_OFFLINE")
+	return effectiveOrFlags().IsOffline()
 }
 
-// IsPreferOffline returns true if cache-first mode is enabled.
-// This also respects the BZ_PREFER_OFFLINE environment variable.
+// IsPreferOffline returns true if the effective network mode is
+// prefer-offline (from --prefer-offline, BZ_PREFER_OFFLINE or config).
 func IsPreferOffline() bool {
-	if Global.PreferOffline {
-		return true
-	}
-	return envutil.IsTruthyEnv("BZ_PREFER_OFFLINE")
+	return effectiveOrFlags().IsPreferOffline()
 }
 
-// GetRegistry returns the registry URL if overridden, empty string otherwise.
-// This also respects the BZ_REGISTRY environment variable.
+// GetRegistry returns the effective registry URL when any layer (config
+// file, BZ_REGISTRY or --registry) sets one, and "" when the built-in
+// default applies, so callers can choose their own default client.
 func GetRegistry() string {
-	if Global.Registry != "" {
-		return Global.Registry
+	eff := effectiveOrFlags()
+	if eff.Source(bzconfig.KeyRegistry).Layer == bzconfig.LayerDefault {
+		return ""
 	}
-	// Also respect BZ_REGISTRY environment variable
-	if val, ok := os.LookupEnv("BZ_REGISTRY"); ok && val != "" {
-		return val
+	return eff.Network.Registry
+}
+
+// FallbackRegistries returns the effective [network] fallback_registries.
+func FallbackRegistries() []string {
+	return effectiveOrFlags().Network.FallbackRegistries
+}
+
+// Timeout returns the effective [network] timeout.
+func Timeout() time.Duration {
+	return effectiveOrFlags().Network.TimeoutDuration
+}
+
+// CacheDir returns the effective cache directory (BZ_CACHE_DIR, then
+// [cache] dir, then the platform default). Per-command --cache-dir flags
+// take precedence and are applied by the commands that define them.
+// It fails when the configuration cannot be loaded.
+func CacheDir() (string, error) {
+	eff, err := Effective()
+	if err != nil {
+		return "", err
 	}
-	return ""
+	return eff.Cache.Dir, nil
 }
 
 // ValidateOfflineFlags checks that --offline and --prefer-offline are not both set.

@@ -34,6 +34,15 @@ var (
 // defaultDoctorRegistryURL is the default registry to check, can be overridden for testing.
 var defaultDoctorRegistryURL = registry.DefaultBCR
 
+// doctorRegistryURL returns the effective registry (config file,
+// BZ_REGISTRY or --registry), falling back to defaultDoctorRegistryURL.
+func doctorRegistryURL() string {
+	if reg := cli.GetRegistry(); reg != "" {
+		return reg
+	}
+	return defaultDoctorRegistryURL
+}
+
 // CommandRunner interface for running external commands (allows mocking in tests).
 type CommandRunner interface {
 	Run(ctx context.Context, name string, args ...string) (string, error)
@@ -319,7 +328,7 @@ func checkRegistryConnectivity(ctx context.Context, out io.Writer) DoctorCheck {
 
 	// Without a valid configuration the registry and mode are unknown, so
 	// doctor must not reach out to a default one.
-	offline, err := cli.EffectivelyOffline()
+	eff, err := cli.Effective()
 	if err != nil {
 		check.Status = statusSkipped
 		check.Message = "Registry connectivity (skipped: configuration is invalid)"
@@ -329,9 +338,19 @@ func checkRegistryConnectivity(ctx context.Context, out io.Writer) DoctorCheck {
 		return check
 	}
 
-	if offline {
+	if eff.IsOffline() {
 		check.Status = statusSkipped
 		check.Message = "Registry connectivity (skipped - offline mode)"
+		if !doctorJSON {
+			printCheckSkipped(out, check.Message)
+		}
+		return check
+	}
+
+	registryURL := doctorRegistryURL()
+	if !strings.HasPrefix(registryURL, "https://") && !strings.HasPrefix(registryURL, "http://") {
+		check.Status = statusSkipped
+		check.Message = fmt.Sprintf("Registry connectivity (skipped - local registry %s)", registryURL)
 		if !doctorJSON {
 			printCheckSkipped(out, check.Message)
 		}
@@ -344,7 +363,7 @@ func checkRegistryConnectivity(ctx context.Context, out io.Writer) DoctorCheck {
 	}
 
 	// Ping the registry
-	url := defaultDoctorRegistryURL + "/bazel_registry.json"
+	url := strings.TrimSuffix(registryURL, "/") + "/bazel_registry.json"
 	req, err := http.NewRequestWithContext(ctx, http.MethodHead, url, nil)
 	if err != nil {
 		check.Status = statusFail
@@ -371,7 +390,7 @@ func checkRegistryConnectivity(ctx context.Context, out io.Writer) DoctorCheck {
 	// Accept 200 OK and 403 Forbidden (some registries block HEAD requests but are still "up")
 	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusForbidden {
 		// Extract hostname from registry URL
-		registryHost := strings.TrimPrefix(defaultDoctorRegistryURL, "https://")
+		registryHost := strings.TrimPrefix(registryURL, "https://")
 		registryHost = strings.TrimPrefix(registryHost, "http://")
 		registryHost = strings.Split(registryHost, "/")[0]
 

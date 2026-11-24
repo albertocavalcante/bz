@@ -251,6 +251,7 @@ func TestIsOffline(t *testing.T) {
 				}
 			}()
 
+			ResetCachedConfig()
 			result := IsOffline()
 			assert.Equal(t, tt.expected, result)
 		})
@@ -318,6 +319,7 @@ func TestIsPreferOffline(t *testing.T) {
 				}
 			}()
 
+			ResetCachedConfig()
 			result := IsPreferOffline()
 			assert.Equal(t, tt.expected, result)
 		})
@@ -385,6 +387,7 @@ func TestGetRegistry(t *testing.T) {
 				}
 			}()
 
+			ResetCachedConfig()
 			result := GetRegistry()
 			assert.Equal(t, tt.expected, result)
 		})

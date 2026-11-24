@@ -1,19 +1,16 @@
 package cache
 
 import (
-	"fmt"
-	"os"
-	"path/filepath"
+	"github.com/albertocavalcante/bz/internal/cli"
 )
 
+// resolveCacheDir returns the cache directory for a cache command:
+// the command's --cache-dir flag (override) wins, then BZ_CACHE_DIR, then
+// [cache] dir from the config files, then the platform default (see
+// bzconfig.DefaultCacheDir).
 func resolveCacheDir(override string) (string, error) {
 	if override != "" {
 		return override, nil
 	}
-
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("failed to get home directory: %w", err)
-	}
-	return filepath.Join(homeDir, ".cache", "bz"), nil
+	return cli.CacheDir()
 }
