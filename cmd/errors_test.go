@@ -34,6 +34,9 @@ func resetCommandTree(c *cobra.Command) {
 func runCLI(t *testing.T, args ...string) (stdout, stderr string, code int) {
 	t.Helper()
 	resetCommandTree(rootCmd)
+	// Other tests pin doctorCmd's writer to os.Stdout; let it inherit from root.
+	doctorCmd.SetOut(nil)
+	doctorCmd.SetErr(nil)
 	cli.Global = cli.Options{}
 	cli.ResetCachedConfig()
 	t.Cleanup(func() {
@@ -64,15 +67,22 @@ func TestRun_ErrorsArePrintedOnce(t *testing.T) {
 		env     map[string]string
 		module  bool // create a MODULE.bazel in the working directory
 		wantSub string
+		// wantErrLines is the expected number of "Error:" lines on stderr.
+		wantErrLines int
+		// onceSub, when set, must appear exactly once in stdout+stderr combined.
+		onceSub string
 	}{
-		{name: "missing MODULE.bazel", args: []string{"mod", "list"}, wantSub: "MODULE.bazel"},
-		{name: "unknown subcommand flag", args: []string{"mod", "sync", "--workflow", "x"}, wantSub: "unknown flag: --workflow"},
-		{name: "unknown subcommand", args: []string{"nosuchcmd"}, wantSub: "unknown command"},
-		{name: "disabled command", args: []string{"registry", "ping"}, env: map[string]string{"BZ_DISABLE_COMMANDS": "ping"}, wantSub: "disabled"},
-		{name: "mutually exclusive offline flags", args: []string{"--offline", "--prefer-offline", "mod", "list"}, wantSub: "offline"},
-		{name: "init over existing MODULE.bazel", args: []string{"init"}, module: true, wantSub: "MODULE.bazel"},
-		{name: "sbom invalid format", args: []string{"sbom", "--format=xml"}, module: true, wantSub: "unknown format"},
-		{name: "offline cache miss", args: []string{"--offline", "mod", "info", "rules_go"}, wantSub: "offline"},
+		{name: "missing MODULE.bazel", args: []string{"mod", "list"}, wantSub: "MODULE.bazel", wantErrLines: 1},
+		{name: "unknown subcommand flag", args: []string{"mod", "sync", "--workflow", "x"}, wantSub: "unknown flag: --workflow", wantErrLines: 1},
+		{name: "unknown subcommand", args: []string{"nosuchcmd"}, wantSub: "unknown command", wantErrLines: 1},
+		{name: "disabled command", args: []string{"registry", "ping"}, env: map[string]string{"BZ_DISABLE_COMMANDS": "ping"}, wantSub: "disabled", wantErrLines: 1},
+		{name: "mutually exclusive offline flags", args: []string{"--offline", "--prefer-offline", "mod", "list"}, wantSub: "offline", wantErrLines: 1},
+		{name: "init over existing MODULE.bazel", args: []string{"init"}, module: true, wantSub: "MODULE.bazel", wantErrLines: 1},
+		{name: "sbom invalid format", args: []string{"sbom", "--format=xml"}, module: true, wantSub: "unknown format", wantErrLines: 1},
+		{name: "unknown flag gets a usage hint", args: []string{"mod", "sync", "--workflow", "x"}, wantSub: "Run 'bz mod sync --help' for usage.", wantErrLines: 1},
+		{name: "doctor reports issues once without Error line", args: []string{"--offline", "doctor"}, wantSub: "issue", wantErrLines: 0, onceSub: "issues found"},
+		{name: "cache download failure summary once", args: []string{"cache", "download", "--registry", "http://127.0.0.1:1", "--cache-dir", "CACHEDIR", "rules_go@0.50.1"}, wantSub: "1 of 1 module(s) failed to download", wantErrLines: 0, onceSub: "failed to download"},
+		{name: "offline cache miss", args: []string{"--offline", "mod", "info", "rules_go"}, wantSub: "offline", wantErrLines: 1},
 	}
 
 	for _, tt := range tests {
@@ -93,19 +103,30 @@ func TestRun_ErrorsArePrintedOnce(t *testing.T) {
 				t.Setenv(k, v)
 			}
 
-			stdout, stderr, code := runCLI(t, tt.args...)
+			args := append([]string(nil), tt.args...)
+			for i, a := range args {
+				if a == "CACHEDIR" {
+					args[i] = filepath.Join(dir, "cache")
+				}
+			}
+			stdout, stderr, code := runCLI(t, args...)
 
 			if code == 0 {
 				t.Errorf("exit code = 0, want non-zero (stderr=%q)", stderr)
 			}
-			if strings.TrimSpace(stderr) == "" {
-				t.Fatalf("stderr is empty; error was swallowed (stdout=%q)", stdout)
+			if strings.TrimSpace(stdout+stderr) == "" || (tt.wantErrLines > 0 && strings.TrimSpace(stderr) == "") {
+				t.Fatalf("error was swallowed (stdout=%q stderr=%q)", stdout, stderr)
 			}
-			if n := countErrorLines(stderr); n != 1 {
-				t.Errorf("stderr has %d \"Error:\" lines, want exactly 1:\n%s", n, stderr)
+			if n := countErrorLines(stderr); n != tt.wantErrLines {
+				t.Errorf("stderr has %d \"Error:\" lines, want %d:\n%s", n, tt.wantErrLines, stderr)
 			}
-			if !strings.Contains(strings.ToLower(stderr), strings.ToLower(tt.wantSub)) {
-				t.Errorf("stderr missing %q:\n%s", tt.wantSub, stderr)
+			if tt.onceSub != "" {
+				if n := strings.Count(stdout+stderr, tt.onceSub); n != 1 {
+					t.Errorf("%q appears %d times, want 1:\nstdout=%s\nstderr=%s", tt.onceSub, n, stdout, stderr)
+				}
+			}
+			if !strings.Contains(strings.ToLower(stdout+stderr), strings.ToLower(tt.wantSub)) {
+				t.Errorf("output missing %q:\nstdout=%s\nstderr=%s", tt.wantSub, stdout, stderr)
 			}
 			if strings.Contains(stderr, "Usage:") {
 				t.Errorf("usage text should be suppressed:\n%s", stderr)

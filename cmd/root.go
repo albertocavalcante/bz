@@ -121,6 +121,9 @@ func configureRootCmd() {
 	// nor append usage text to runtime failures.
 	rootCmd.SilenceErrors = true
 	rootCmd.SilenceUsage = true
+	rootCmd.SetFlagErrorFunc(func(c *cobra.Command, err error) error {
+		return fmt.Errorf("%w\nRun '%s --help' for usage.", err, c.CommandPath())
+	})
 
 	// Global flags
 	rootCmd.PersistentFlags().BoolVarP(&cli.Global.Quiet, "quiet", "q", false, "Reduce output, only show errors and essential info")

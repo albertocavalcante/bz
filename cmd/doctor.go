@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -397,12 +398,8 @@ func printDoctorText(out io.Writer, result DoctorResult) error {
 		return nil
 	}
 
-	if result.IssueCount == 1 {
-		fmt.Fprintln(out, cli.Warning("1 issue found"))
-	} else {
-		fmt.Fprintf(out, "%s\n", cli.Warning(fmt.Sprintf("%d issues found", result.IssueCount)))
-	}
-	return cmdutil.AlreadyReported(fmt.Errorf("%d issues found", result.IssueCount))
+	fmt.Fprintln(out, cli.Warning(issuesFoundMessage(result.IssueCount)))
+	return cmdutil.AlreadyReported(errors.New(issuesFoundMessage(result.IssueCount)))
 }
 
 func printDoctorJSON(out io.Writer, result DoctorResult) error {
@@ -411,9 +408,17 @@ func printDoctorJSON(out io.Writer, result DoctorResult) error {
 	}
 
 	if result.IssueCount > 0 {
-		return fmt.Errorf("%d issues found", result.IssueCount)
+		return errors.New(issuesFoundMessage(result.IssueCount))
 	}
 	return nil
+}
+
+// issuesFoundMessage returns the singular or plural "N issue(s) found" text.
+func issuesFoundMessage(n int) string {
+	if n == 1 {
+		return "1 issue found"
+	}
+	return fmt.Sprintf("%d issues found", n)
 }
 
 // parseBazelVersion extracts the version from bazel --version output.
