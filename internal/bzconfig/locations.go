@@ -1,6 +1,7 @@
 package bzconfig
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -68,20 +69,36 @@ func (e Environment) home() string {
 	return h
 }
 
-func (e Environment) isDir(path string) bool {
+// stat returns path's FileInfo and whether it exists, and an error naming
+// path for any failure other than "not exist" (permission denied, I/O
+// error): only "not exist" means absent.
+func (e Environment) stat(path string) (fs.FileInfo, bool, error) {
 	if e.Stat == nil {
-		return false
+		return nil, false, nil
 	}
 	fi, err := e.Stat(path)
-	return err == nil && fi.IsDir()
+	switch {
+	case err == nil:
+		return fi, true, nil
+	case errors.Is(err, fs.ErrNotExist):
+		return nil, false, nil
+	default:
+		return nil, false, fmt.Errorf("checking %s: %w", path, err)
+	}
 }
 
-func (e Environment) isFile(path string) bool {
-	if e.Stat == nil {
-		return false
+// regularFile reports whether path exists as a regular file. A path that
+// exists but is not a regular file (a directory, FIFO or device) is an
+// error naming it.
+func (e Environment) regularFile(path string) (bool, error) {
+	fi, ok, err := e.stat(path)
+	if err != nil || !ok {
+		return false, err
 	}
-	fi, err := e.Stat(path)
-	return err == nil && !fi.IsDir()
+	if !fi.Mode().IsRegular() {
+		return false, fmt.Errorf("%s is not a regular file (%s)", path, fi.Mode().Type())
+	}
+	return true, nil
 }
 
 // SystemConfigPath returns the system-wide config file:
@@ -89,6 +106,9 @@ func (e Environment) isFile(path string) bool {
 // when ProgramData is unset).
 func SystemConfigPath(goos string, lookup func(string) (string, bool)) string {
 	if goos == "windows" {
+		if lookup == nil {
+			return ""
+		}
 		pd, _ := lookup("ProgramData")
 		if pd == "" {
 			return ""
@@ -123,7 +143,10 @@ func UserConfigPath(e Environment) string {
 // DefaultCacheDir returns the built-in cache directory:
 //
 //  1. ~/.cache/bz when that directory already exists (the location every
-//     earlier release used, so existing caches are never orphaned);
+//     earlier release used, so existing caches are never orphaned); when it
+//     cannot be checked (permission denied, I/O error) it is kept too, so the
+//     command that uses it reports the real error instead of silently
+//     switching to another cache;
 //  2. $XDG_CACHE_HOME/bz when XDG_CACHE_HOME is an absolute path;
 //  3. on Windows, %LocalAppData%\bz\cache;
 //  4. otherwise ~/.cache/bz.
@@ -132,7 +155,7 @@ func DefaultCacheDir(e Environment) string {
 	legacy := ""
 	if home != "" {
 		legacy = filepath.Join(home, ".cache", "bz")
-		if e.isDir(legacy) {
+		if fi, ok, err := e.stat(legacy); err != nil || (ok && fi.IsDir()) {
 			return legacy
 		}
 	}
@@ -156,8 +179,10 @@ func DefaultCacheDir(e Environment) string {
 // containing MODULE.bazel, REPO.bazel, WORKSPACE.bazel or WORKSPACE), every
 // directory from the working directory up to and including the workspace
 // root is searched and the nearest file wins. Outside a workspace only the
-// working directory is searched, so a stray file in a parent directory is
-// never picked up. It returns "" when there is no project file.
+// working directory is searched. A marker or config path that exists but
+// cannot be checked is an error naming it, as is a config path that is not
+// a regular file; only a path that does not exist counts as absent. It
+// returns "" when there is no project file.
 func FindProjectConfig(e Environment) (string, error) {
 	if e.Getwd == nil {
 		return "", nil
@@ -166,10 +191,21 @@ func FindProjectConfig(e Environment) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("finding project config: %w", err)
 	}
-	for _, dir := range projectSearchDirs(e, wd) {
+	dirs, err := projectSearchDirs(e, wd)
+	if err != nil {
+		return "", err
+	}
+	for _, dir := range dirs {
 		primary := filepath.Join(dir, ProjectConfigName)
 		legacy := filepath.Join(dir, LegacyProjectConfigName)
-		hasPrimary, hasLegacy := e.isFile(primary), e.isFile(legacy)
+		hasPrimary, err := e.regularFile(primary)
+		if err != nil {
+			return "", err
+		}
+		hasLegacy, err := e.regularFile(legacy)
+		if err != nil {
+			return "", err
+		}
 		switch {
 		case hasPrimary && hasLegacy:
 			return "", fmt.Errorf("both %s and %s exist; keep only one (%s is preferred)",
@@ -183,27 +219,41 @@ func FindProjectConfig(e Environment) (string, error) {
 	return "", nil
 }
 
-func projectSearchDirs(e Environment, wd string) []string {
+// projectSearchDirs returns the directories to search, nearest first. The
+// innermost directory with a workspace marker is the root, so a nested
+// workspace (a MODULE.bazel below the repository root) ends the search.
+func projectSearchDirs(e Environment, wd string) ([]string, error) {
 	var dirs []string
 	for dir := wd; ; {
 		dirs = append(dirs, dir)
-		if isWorkspaceRoot(e, dir) {
-			return dirs
+		root, err := isWorkspaceRoot(e, dir)
+		if err != nil {
+			return nil, err
+		}
+		if root {
+			return dirs, nil
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
 			// No workspace root above wd: only search wd itself.
-			return []string{wd}
+			return []string{wd}, nil
 		}
 		dir = parent
 	}
 }
 
-func isWorkspaceRoot(e Environment, dir string) bool {
+// isWorkspaceRoot reports whether dir holds a workspace marker file. A
+// marker that is a directory is not a marker; one that cannot be checked
+// is an error, so the walk never continues past an unreadable root.
+func isWorkspaceRoot(e Environment, dir string) (bool, error) {
 	for _, m := range workspaceMarkers {
-		if e.isFile(filepath.Join(dir, m)) {
-			return true
+		fi, ok, err := e.stat(filepath.Join(dir, m))
+		if err != nil {
+			return false, err
+		}
+		if ok && !fi.IsDir() {
+			return true, nil
 		}
 	}
-	return false
+	return false, nil
 }
