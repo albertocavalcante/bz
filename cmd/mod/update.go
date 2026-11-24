@@ -4,7 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
+	"path/filepath"
+	"slices"
 
 	"github.com/spf13/cobra"
 
@@ -35,7 +36,8 @@ Examples:
   bz mod update rules_go gazelle   # update multiple modules
   bz mod update --dry-run          # preview changes without modifying
   bz mod update --registry=https://my-registry.example.com`,
-	RunE: runUpdate,
+	RunE:              runUpdate,
+	ValidArgsFunction: completeInstalledModules,
 }
 
 func configureUpdateCmd() {
@@ -50,6 +52,15 @@ type updateInfo struct {
 	latest     string
 	updateType version.UpdateType
 	err        error
+	file       string // workspace-relative file that declares the dependency
+}
+
+// inFile names the declaring file for dependencies outside the root file.
+func (u updateInfo) inFile(root string) string {
+	if u.file == "" || u.file == root {
+		return ""
+	}
+	return " [" + u.file + "]"
 }
 
 //nolint:gocyclo // CLI command handler with sequential steps
@@ -64,32 +75,42 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	content, err := os.ReadFile(modulePath)
-	if err != nil {
-		return fmt.Errorf("failed to read MODULE.bazel: %w", err)
-	}
-
-	f, err := module.LoadContent(modulePath, content)
+	ws, err := module.OpenWorkspace(modulePath)
 	if err != nil {
 		return err
 	}
+	defer ws.Close()
+	f := ws.File
+	deps := f.UniqueDeps()
 
-	included, err := includedDeps(f, modulePath)
-	if err != nil {
-		return err
-	}
-	for _, arg := range args {
-		if o, ok := included[arg]; ok {
-			return includedEditError(arg, o)
+	// Snapshot every declaring file before the slow registry calls, so the
+	// write below detects edits made in between.
+	snapshot := make(map[string][]byte)
+	for _, dep := range deps {
+		file := ws.RelPath(f.OriginOf(dep))
+		if _, ok := snapshot[file]; ok {
+			continue
 		}
+		content, err := ws.ReadFile(file)
+		if err != nil {
+			return fmt.Errorf("failed to read %s: %w", file, err)
+		}
+		snapshot[file] = content
 	}
-	if len(args) == 0 && len(included) > 0 {
-		fmt.Fprintf(cmd.ErrOrStderr(), "Warning: %d dependencies declared in included files are not updated; editing included files is not supported yet\n", len(included))
+
+	// A module declared in several files must not be updated in just one.
+	for _, dep := range deps {
+		name := dep.Name.String()
+		if len(args) == 0 || slices.Contains(args, name) {
+			if err := ws.CheckDeclaredOnce(name); err != nil {
+				return err
+			}
+		}
 	}
 
 	out := cmd.OutOrStdout()
 
-	if len(f.Deps) == 0 {
+	if len(deps) == 0 {
 		fmt.Fprintln(out, "No dependencies found in MODULE.bazel")
 		return nil
 	}
@@ -111,7 +132,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	// Warn about modules that don't exist in MODULE.bazel
 	if len(targetModules) > 0 {
 		existingDeps := make(map[string]bool)
-		for _, dep := range f.Deps {
+		for _, dep := range deps {
 			existingDeps[dep.Name.String()] = true
 		}
 		for name := range targetModules {
@@ -123,7 +144,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 
 	// Check each dependency for updates
 	var updates []updateInfo
-	for _, dep := range f.Deps {
+	for _, dep := range deps {
 		name := dep.Name.String()
 		current := dep.Version.String()
 
@@ -140,6 +161,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		info := updateInfo{
 			name:    name,
 			current: current,
+			file:    ws.RelPath(f.OriginOf(dep)),
 		}
 
 		// Fetch metadata from registry
@@ -186,29 +208,50 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	// Handle dry-run
 	if updateDryRun {
 		for _, u := range pendingUpdates {
-			fmt.Fprintf(out, "Would update %s: %s -> %s (%s)\n",
-				u.name, u.current, u.latest, u.updateType.String())
+			fmt.Fprintf(out, "Would update %s: %s -> %s (%s)%s\n",
+				u.name, u.current, u.latest, u.updateType.String(), u.inFile(filepath.Base(modulePath)))
 		}
 		return nil
 	}
 
-	// Apply updates in memory, then write once.
-	newContent, applied, err := applyVersionUpdates(content, pendingUpdates, out)
-	if err != nil {
-		return err
+	// Apply updates in memory per file, then write all files together.
+	var files []string
+	for _, u := range pendingUpdates {
+		if !slices.Contains(files, u.file) {
+			files = append(files, u.file)
+		}
+	}
+	var edits []module.FileEdit
+	var appliedAll []updateInfo
+	for _, file := range files {
+		var group []updateInfo
+		for _, u := range pendingUpdates {
+			if u.file == file {
+				group = append(group, u)
+			}
+		}
+		newContent, applied, err := applyVersionUpdates(snapshot[file], group, out)
+		if err != nil {
+			return err
+		}
+		if len(applied) == 0 {
+			continue
+		}
+		edits = append(edits, module.FileEdit{Rel: file, Original: snapshot[file], Updated: newContent})
+		appliedAll = append(appliedAll, applied...)
 	}
 
-	if len(applied) == 0 {
+	if len(edits) == 0 {
 		return nil
 	}
 
-	if err := module.WriteFileIfUnchanged(modulePath, content, newContent); err != nil {
-		return fmt.Errorf("failed to write MODULE.bazel: %w", err)
+	if err := ws.WriteAll(edits); err != nil {
+		return err
 	}
 
-	for _, u := range applied {
-		fmt.Fprintf(out, "Updated %s: %s -> %s (%s)\n",
-			u.name, u.current, u.latest, u.updateType.String())
+	for _, u := range appliedAll {
+		fmt.Fprintf(out, "Updated %s: %s -> %s (%s)%s\n",
+			u.name, u.current, u.latest, u.updateType.String(), u.inFile(filepath.Base(modulePath)))
 	}
 
 	return nil

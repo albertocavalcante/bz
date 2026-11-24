@@ -131,21 +131,14 @@ func AddDependency(name, version string, dev bool) tea.Cmd {
 			return ErrMsg{Err: err}
 		}
 
-		content, err := os.ReadFile(path)
+		ws, err := module.OpenWorkspace(path)
 		if err != nil {
-			return ErrMsg{Err: fmt.Errorf("failed to read MODULE.bazel: %w", err)}
+			return ErrMsg{Err: err}
 		}
+		defer ws.Close()
 
-		depLine := module.FormatBazelDep(name, version, dev)
-
-		newContent := string(content)
-		if len(newContent) > 0 && newContent[len(newContent)-1] != '\n' {
-			newContent += "\n"
-		}
-		newContent += depLine
-
-		if err := os.WriteFile(path, []byte(newContent), 0o644); err != nil {
-			return ErrMsg{Err: fmt.Errorf("failed to write MODULE.bazel: %w", err)}
+		if err := ws.AddDeps([]module.DepSpec{{Name: name, Version: version, Dev: dev}}); err != nil {
+			return ErrMsg{Err: err}
 		}
 
 		return DepAddedMsg{Name: name, Version: version}

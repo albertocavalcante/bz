@@ -358,7 +358,9 @@ func (f *File) OverridesFor(name string) []Override {
 	var out []Override
 	for _, o := range f.Overrides {
 		if o.ModuleName().String() == name {
-			out = append(out, overrideToSummary(o))
+			ov := overrideToSummary(o)
+			ov.DeclaredIn = f.includedFile(o)
+			out = append(out, ov)
 		}
 	}
 	return out
