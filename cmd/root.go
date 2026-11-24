@@ -87,12 +87,44 @@ func run(args []string, stdout, stderr io.Writer) int {
 // printError writes err to w as an "Error: ..." line, followed by any
 // suggestions carried by the error type.
 func printError(w io.Writer, err error) {
-	fmt.Fprintf(w, "Error: %s\n", strings.TrimRight(err.Error(), "\n"))
+	fmt.Fprintf(w, "Error: %s\n", formatError(err))
 
 	var netErr *registrylib.NetworkError
 	if errors.As(err, &netErr) {
 		fmt.Fprintf(w, "\n%s", netErr.UserFriendlyError())
 	}
+}
+
+// formatError renders err for one "Error:" line. An errors.Join of several
+// errors, alone or wrapped with %w, becomes a count and an indented list so
+// no item reads as an unrelated message.
+func formatError(err error) string {
+	msg := strings.TrimRight(err.Error(), "\n")
+	for e := err; e != nil; e = errors.Unwrap(e) {
+		joined, ok := e.(interface{ Unwrap() []error })
+		if !ok {
+			continue
+		}
+		errs := joined.Unwrap()
+		texts := make([]string, len(errs))
+		for i, item := range errs {
+			texts[i] = item.Error()
+		}
+		// fmt.Errorf with several %w also has Unwrap() []error; only a join
+		// ends the message with its items separated by newlines.
+		prefix, isJoin := strings.CutSuffix(err.Error(), strings.Join(texts, "\n"))
+		if len(errs) < 2 || !isJoin {
+			return msg
+		}
+		var b strings.Builder
+		fmt.Fprintf(&b, "%s%d problems:", prefix, len(errs))
+		for _, text := range texts {
+			text = strings.TrimRight(text, "\n")
+			b.WriteString("\n  - " + strings.ReplaceAll(text, "\n", "\n    "))
+		}
+		return b.String()
+	}
+	return msg
 }
 
 // Configure wires all root and subcommands once.
