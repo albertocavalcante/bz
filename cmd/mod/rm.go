@@ -102,17 +102,20 @@ func runRm(cmd *cobra.Command, args []string) error {
 	for _, dep := range depsToRemove {
 		names = append(names, dep.name)
 	}
-	newContent, err := module.RemoveDeps(content, names)
+	newContent, removed, err := module.RemoveDeps(content, names)
 	if err != nil {
 		return fmt.Errorf("failed to remove from MODULE.bazel: %w", err)
 	}
 
-	if err := module.WriteFileAtomic(modulePath, newContent); err != nil {
+	if err := module.WriteFileIfUnchanged(modulePath, content, newContent); err != nil {
 		return fmt.Errorf("failed to write MODULE.bazel: %w", err)
 	}
 
-	for _, dep := range depsToRemove {
-		fmt.Fprintf(out, "Removed %s\n", dep.name)
+	for _, name := range removed {
+		fmt.Fprintf(out, "Removed %s\n", name)
+		for _, ov := range f.OverridesFor(name) {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Warning: %s_override for removed module %s is still in MODULE.bazel\n", ov.Type, name)
+		}
 	}
 
 	return nil

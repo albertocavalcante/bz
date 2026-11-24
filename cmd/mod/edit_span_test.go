@@ -208,3 +208,36 @@ func TestAddCmd_WarnsOnYankedVersion(t *testing.T) {
 	require.NoError(t, addCmd.RunE(addCmd, []string{"a@1.1.0"}))
 	assert.NotContains(t, stderr.String(), "yanked")
 }
+
+func TestRmCmd_WarnsAboutRemainingOverride(t *testing.T) {
+	in := "bazel_dep(name = \"x\", version = \"1\")\nsingle_version_override(module_name = \"x\", version = \"1\")\n"
+	p := writeModule(t, in, 0o644)
+	rmDryRun = false
+	var stdout, stderr bytes.Buffer
+	rmCmd.SetOut(&stdout)
+	rmCmd.SetErr(&stderr)
+	defer rmCmd.SetOut(os.Stdout)
+	defer rmCmd.SetErr(os.Stderr)
+
+	require.NoError(t, rmCmd.RunE(rmCmd, []string{"x"}))
+
+	got, err := os.ReadFile(p)
+	require.NoError(t, err)
+	assert.Equal(t, "single_version_override(module_name = \"x\", version = \"1\")\n", string(got))
+	assert.Contains(t, stderr.String(), "single_version_override for removed module x")
+}
+
+func TestRmCmd_ReadOnlyFileIsRefused(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root bypasses file permissions")
+	}
+	in := "bazel_dep(name = \"x\", version = \"1\")\n"
+	p := writeModule(t, in, 0o444)
+	rmDryRun = false
+
+	require.Error(t, rmCmd.RunE(rmCmd, []string{"x"}))
+
+	got, err := os.ReadFile(p)
+	require.NoError(t, err)
+	assert.Equal(t, in, string(got))
+}

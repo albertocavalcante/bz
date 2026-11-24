@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
+	"strings"
 
 	"github.com/bazelbuild/buildtools/build"
 )
@@ -106,26 +108,39 @@ func DetectEOL(src []byte) string {
 // RemoveDeps removes every bazel_dep statement named in names, including the
 // full multi-line span, the rest of its last line (a trailing comment) and
 // the line terminator. Everything else is preserved byte for byte. The result
-// is re-parsed; an unparsable result is an error.
-func RemoveDeps(src []byte, names []string) ([]byte, error) {
+// is re-parsed; an unparsable result is an error. It returns the names that
+// were removed; a requested name that cannot be located is an error and
+// nothing is returned.
+func RemoveDeps(src []byte, names []string) ([]byte, []string, error) {
 	want := make(map[string]bool, len(names))
 	for _, n := range names {
 		want[n] = true
 	}
 	deps, err := findDeps(src)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	type span struct{ start, end int }
 	var spans []span
+	located := make(map[string]bool)
 	for _, d := range deps {
 		if want[d.name] {
 			spans = append(spans, removalSpan(src, d.start, d.end))
+			located[d.name] = true
 		}
 	}
-	if len(spans) == 0 {
-		return append([]byte(nil), src...), nil
+	var removed, missing []string
+	for _, n := range names {
+		switch {
+		case !located[n]:
+			missing = append(missing, n)
+		case !slices.Contains(removed, n):
+			removed = append(removed, n)
+		}
+	}
+	if len(missing) > 0 {
+		return nil, nil, fmt.Errorf("%w: %s", ErrDepNotFound, strings.Join(missing, ", "))
 	}
 	sort.Slice(spans, func(i, j int) bool { return spans[i].start < spans[j].start })
 
@@ -143,9 +158,9 @@ func RemoveDeps(src []byte, names []string) ([]byte, error) {
 		res = bytes.TrimSuffix(bytes.TrimSuffix(res, []byte("\n")), []byte("\r"))
 	}
 	if err := validate(res); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return res, nil
+	return res, removed, nil
 }
 
 // removalSpan widens a statement span to whole lines when the statement is
@@ -276,6 +291,13 @@ func WriteFileAtomic(path string, data []byte) error {
 	mode := os.FileMode(0o644)
 	if info, err := os.Stat(target); err == nil {
 		mode = info.Mode().Perm()
+		// Renaming over a read-only file would bypass its permissions, so
+		// refuse unless the current user could have written it in place.
+		probe, perr := os.OpenFile(target, os.O_WRONLY, 0)
+		if perr != nil {
+			return perr
+		}
+		_ = probe.Close()
 	}
 
 	tmp, err := os.CreateTemp(filepath.Dir(target), ".bz-"+filepath.Base(target)+".*")
@@ -311,4 +333,33 @@ func writeAndClose(f *os.File, data []byte, mode os.FileMode) error {
 		return err
 	}
 	return f.Close()
+}
+
+// ErrFileChanged indicates the file was modified after it was read.
+var ErrFileChanged = errors.New("MODULE.bazel changed while bz was running; re-run")
+
+// WriteFileIfUnchanged is WriteFileAtomic guarded against lost updates: it
+// re-reads path and writes only when its content still equals original, the
+// bytes the edit was computed from. Otherwise it returns ErrFileChanged and
+// writes nothing.
+func WriteFileIfUnchanged(path string, original, data []byte) error {
+	current, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(current, original) {
+		return ErrFileChanged
+	}
+	return WriteFileAtomic(path, data)
+}
+
+// OverridesFor returns the overrides that target the named module.
+func (f *File) OverridesFor(name string) []Override {
+	var out []Override
+	for _, o := range f.Overrides {
+		if o.ModuleName().String() == name {
+			out = append(out, overrideToSummary(o))
+		}
+	}
+	return out
 }

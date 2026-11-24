@@ -90,18 +90,13 @@ func TestRemoveDeps(t *testing.T) {
 			names: []string{"x"},
 			want:  crlf(head + "bazel_dep(name = \"y\", version = \"2\")\n"),
 		},
-		{
-			name:  "unknown name is a no-op",
-			in:    head + "bazel_dep(name = \"y\", version = \"2\")\n",
-			names: []string{"nope"},
-			want:  head + "bazel_dep(name = \"y\", version = \"2\")\n",
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := RemoveDeps([]byte(tt.in), tt.names)
+			got, removed, err := RemoveDeps([]byte(tt.in), tt.names)
 			require.NoError(t, err)
+			assert.ElementsMatch(t, tt.names, removed)
 			assert.Equal(t, tt.want, string(got))
 		})
 	}
@@ -109,8 +104,18 @@ func TestRemoveDeps(t *testing.T) {
 
 func TestRemoveDeps_UnparsableInput(t *testing.T) {
 	t.Parallel()
-	_, err := RemoveDeps([]byte("bazel_dep(name = \"x\"\n"), []string{"x"})
+	_, _, err := RemoveDeps([]byte("bazel_dep(name = \"x\"\n"), []string{"x"})
 	require.Error(t, err)
+}
+
+func TestRemoveDeps_UnlocatedNameIsError(t *testing.T) {
+	t.Parallel()
+	in := "bazel_dep(name = \"y\", version = \"2\")\n"
+	out, removed, err := RemoveDeps([]byte(in), []string{"y", "nope"})
+	require.ErrorIs(t, err, ErrDepNotFound)
+	assert.Contains(t, err.Error(), "nope")
+	assert.Nil(t, out)
+	assert.Nil(t, removed)
 }
 
 func TestSetDepVersion(t *testing.T) {
@@ -307,6 +312,57 @@ func TestWriteFileAtomic(t *testing.T) {
 		got, _ := os.ReadFile(realPath)
 		assert.Equal(t, "new", string(got))
 	})
+}
+
+func TestWriteFileAtomic_RefusesReadOnlyFile(t *testing.T) {
+	t.Parallel()
+	if os.Geteuid() == 0 {
+		t.Skip("root bypasses file permissions")
+	}
+	dir := t.TempDir()
+	p := filepath.Join(dir, "MODULE.bazel")
+	require.NoError(t, os.WriteFile(p, []byte("old"), 0o444))
+	require.NoError(t, os.Chmod(p, 0o444))
+
+	require.Error(t, WriteFileAtomic(p, []byte("new")))
+
+	got, err := os.ReadFile(p)
+	require.NoError(t, err)
+	assert.Equal(t, "old", string(got))
+	info, err := os.Stat(p)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o444), info.Mode().Perm())
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	assert.Len(t, entries, 1, "no temp file left")
+}
+
+func TestWriteFileIfUnchanged(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	p := filepath.Join(dir, "MODULE.bazel")
+	require.NoError(t, os.WriteFile(p, []byte("v1"), 0o644))
+
+	require.NoError(t, WriteFileIfUnchanged(p, []byte("v1"), []byte("v2")))
+	got, _ := os.ReadFile(p)
+	assert.Equal(t, "v2", string(got))
+
+	// Simulate an editor save between our read and our write.
+	require.NoError(t, os.WriteFile(p, []byte("edited"), 0o644))
+	err := WriteFileIfUnchanged(p, []byte("v2"), []byte("v3"))
+	require.ErrorIs(t, err, ErrFileChanged)
+	got, _ = os.ReadFile(p)
+	assert.Equal(t, "edited", string(got))
+}
+
+func TestOverridesFor(t *testing.T) {
+	t.Parallel()
+	f, err := LoadContent("MODULE.bazel", []byte("bazel_dep(name = \"x\", version = \"1\")\nsingle_version_override(module_name = \"x\", version = \"1\")\nlocal_path_override(module_name = \"y\", path = \"../y\")\n"))
+	require.NoError(t, err)
+	got := f.OverridesFor("x")
+	require.Len(t, got, 1)
+	assert.Equal(t, "single_version", got[0].Type)
+	assert.Empty(t, f.OverridesFor("z"))
 }
 
 func TestErrorsAreDistinct(t *testing.T) {

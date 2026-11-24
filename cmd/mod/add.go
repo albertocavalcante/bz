@@ -144,7 +144,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to add to MODULE.bazel: %w", err)
 	}
 
-	if err := module.WriteFileAtomic(modulePath, newContent); err != nil {
+	if err := module.WriteFileIfUnchanged(modulePath, content, newContent); err != nil {
 		return fmt.Errorf("failed to write MODULE.bazel: %w", err)
 	}
 

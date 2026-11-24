@@ -190,17 +190,18 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 			}
 			return fmt.Errorf("failed to update %s: %w", u.name, err)
 		}
-		if changed {
-			newContent = next
-			applied = append(applied, u)
+		if !changed {
+			return fmt.Errorf("failed to update %s: version %s not found in MODULE.bazel text", u.name, u.current)
 		}
+		newContent = next
+		applied = append(applied, u)
 	}
 
 	if len(applied) == 0 {
 		return nil
 	}
 
-	if err := module.WriteFileAtomic(modulePath, newContent); err != nil {
+	if err := module.WriteFileIfUnchanged(modulePath, content, newContent); err != nil {
 		return fmt.Errorf("failed to write MODULE.bazel: %w", err)
 	}
 
