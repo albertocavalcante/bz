@@ -70,4 +70,5 @@ pre-push:
       run: go build ./...
 
     lint:
-      run: go tool -modfile=tools.go.mod golangci-lint run --config=tools/lint/golangci.toml
+      # The pinned golangci-lint needs the toolchain from go.mod (not a newer local Go).
+      run: GOTOOLCHAIN="$(awk '/^toolchain /{print $2}' go.mod)" go tool -modfile=tools.go.mod golangci-lint run --config=tools/lint/golangci.toml
