@@ -19,6 +19,16 @@
 // Bazel also accepts the empty version for modules with a non-registry
 // override. An empty version never names a registry directory, so
 // [ValidateVersion] rejects it: callers must not build a path from it.
+//
+// Names and versions are additionally capped at [MaxCoordinateLen] bytes so
+// a single segment stays within common filesystem name limits.
+//
+// Some coordinates Bazel accepts are awkward on particular filesystems, and
+// they are accepted here too because rejecting them would reject valid
+// modules: Windows device names such as "con" or "aux" are valid module
+// names, and versions that differ only in case (for example "1.0.A" and
+// "1.0.a") collide on case-insensitive filesystems. Neither can address a
+// location outside the base directory.
 package coord
 
 import (
@@ -45,6 +55,22 @@ var (
 	ErrEscapesBase = errors.New("path escapes base directory")
 )
 
+// Length limits, in bytes.
+const (
+	// MaxCoordinateLen caps a module name or version.
+	MaxCoordinateLen = 255
+	// MaxSegmentLen caps any segment of a registry path.
+	MaxSegmentLen = 255
+	// MaxRegistryPathLen caps a whole registry path.
+	MaxRegistryPathLen = 1024
+)
+
+// fileSegmentPattern restricts registry path segments below the version
+// directory (file names such as "MODULE.bazel" or "patches/fix.patch"): no
+// leading dot, no separators, and none of '%', '?', '#', ':', whitespace or
+// control characters.
+var fileSegmentPattern = regexp.MustCompile(`^[A-Za-z0-9_+-][A-Za-z0-9._+-]*$`)
+
 // moduleNamePattern is Bazel's RepositoryName.VALID_MODULE_NAME.
 var moduleNamePattern = regexp.MustCompile(`^[a-z]([a-z0-9._-]*[a-z0-9])?$`)
 
@@ -53,6 +79,9 @@ var versionPattern = regexp.MustCompile(`^([a-zA-Z0-9.]+)(?:-([a-zA-Z0-9.-]+))?(
 
 // ValidateModuleName reports whether name is a valid Bazel module name.
 func ValidateModuleName(name string) error {
+	if len(name) > MaxCoordinateLen {
+		return fmt.Errorf("%w: name is %d bytes, longer than the %d-byte limit", ErrInvalidModuleName, len(name), MaxCoordinateLen)
+	}
 	if !moduleNamePattern.MatchString(name) {
 		return fmt.Errorf("%w %q: must start with a lowercase letter, end with a lowercase letter or digit, "+
 			"and contain only a-z, 0-9, '.', '-' and '_'", ErrInvalidModuleName, name)
@@ -66,6 +95,9 @@ func ValidateModuleName(name string) error {
 func ValidateVersion(version string) error {
 	if version == "" {
 		return fmt.Errorf("%w: version is empty (overridden modules have no registry version)", ErrInvalidVersion)
+	}
+	if len(version) > MaxCoordinateLen {
+		return fmt.Errorf("%w: version is %d bytes, longer than the %d-byte limit", ErrInvalidVersion, len(version), MaxCoordinateLen)
 	}
 	m := versionPattern.FindStringSubmatch(version)
 	if m == nil {
@@ -85,7 +117,10 @@ func ValidateVersion(version string) error {
 
 // validateIdentifiers mirrors Version.Identifier.from: every dot-separated
 // identifier is non-empty and numeric identifiers fit in an unsigned 64-bit
-// integer.
+// integer. Current Bazel (8.4 and later) parses numeric identifiers with
+// Long.parseUnsignedLong; Bazel 7.x and 8.0 used Integer.parseInt, so values
+// above 2147483647 only work with newer Bazel. The bound is not a safety
+// property: digits can never form a path traversal.
 func validateIdentifiers(s string) error {
 	for ident := range strings.SplitSeq(s, ".") {
 		if ident == "" {
@@ -118,13 +153,21 @@ func Validate(name, version string) error {
 }
 
 // ValidateRegistryPath validates a slash-separated path relative to a
-// registry's modules directory, such as "rules_go/0.50.0/MODULE.bazel" or
-// "rules_go/metadata.json". The first segment must be a valid module name;
-// when there are three or more segments the second must be a valid version.
-// No segment may be empty, ".", "..", or contain a backslash or NUL.
+// registry's modules directory, such as "rules_go/0.50.0/MODULE.bazel",
+// "rules_go/metadata.json" or "rules_go/0.50.0/patches/fix.patch".
+//
+// The first segment must be a valid module name. With three or more
+// segments the second must be a valid version. Every later (file) segment
+// must match [A-Za-z0-9_+-][A-Za-z0-9._+-]*, so it has no leading dot and
+// none of '%', '?', '#', ':', whitespace or control characters. No segment
+// may be ".git" in any letter case, segments are capped at [MaxSegmentLen]
+// bytes and the whole path at [MaxRegistryPathLen] bytes.
 func ValidateRegistryPath(p string) error {
 	if p == "" || strings.HasPrefix(p, "/") || strings.ContainsAny(p, "\\\x00") || filepath.IsAbs(p) {
 		return fmt.Errorf("%w %q", ErrInvalidPath, p)
+	}
+	if len(p) > MaxRegistryPathLen {
+		return fmt.Errorf("%w: path is %d bytes, longer than the %d-byte limit", ErrInvalidPath, len(p), MaxRegistryPathLen)
 	}
 	segs := strings.Split(p, "/")
 	if len(segs) < 2 {
@@ -134,13 +177,26 @@ func ValidateRegistryPath(p string) error {
 		if s == "" || s == "." || s == ".." {
 			return fmt.Errorf("%w %q: empty, '.' or '..' segment", ErrInvalidPath, p)
 		}
+		if strings.EqualFold(s, ".git") {
+			return fmt.Errorf("%w %q: '.git' segment", ErrInvalidPath, p)
+		}
+		if len(s) > MaxSegmentLen {
+			return fmt.Errorf("%w %q: segment longer than the %d-byte limit", ErrInvalidPath, p, MaxSegmentLen)
+		}
 	}
 	if err := ValidateModuleName(segs[0]); err != nil {
 		return fmt.Errorf("%w %q: %w", ErrInvalidPath, p, err)
 	}
+	files := segs[1:]
 	if len(segs) >= 3 {
 		if err := ValidateVersion(segs[1]); err != nil {
 			return fmt.Errorf("%w %q: %w", ErrInvalidPath, p, err)
+		}
+		files = segs[2:]
+	}
+	for _, f := range files {
+		if !fileSegmentPattern.MatchString(f) {
+			return fmt.Errorf("%w %q: file segment %q must match [A-Za-z0-9_+-][A-Za-z0-9._+-]*", ErrInvalidPath, p, f)
 		}
 	}
 	return nil

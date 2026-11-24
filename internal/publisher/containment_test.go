@@ -31,6 +31,12 @@ var hostilePaths = []string{
 	"rules_go/%2e%2e/MODULE.bazel",
 	"rules_go//MODULE.bazel",
 	".git/hooks/pre-commit",
+	"rules_go/1.0/%2e%2e/%2e%2e/pwn",
+	"rules_go/1.0/x?y=1#frag",
+	"rules_go/1.0/a\nb",
+	"rules_go/1.0/.git/config",
+	"rules_go/1.0/.GIT/hooks/pre-commit",
+	"rules_go/1.0/x:ads",
 }
 
 // assertNoFilesUnder fails if any regular file or symlink exists under dir,
@@ -186,6 +192,9 @@ func TestHTTPPublisher_RejectsEscapingPaths(t *testing.T) {
 	if len(requests) != 0 {
 		t.Errorf("sent %d request(s) for invalid paths: %v", len(requests), requests)
 	}
+	mu.Unlock()
+	assertNoSpecialRequests(t, &mu, &requests)
+	mu.Lock()
 	requests = nil
 	mu.Unlock()
 
@@ -198,6 +207,93 @@ func TestHTTPPublisher_RejectsEscapingPaths(t *testing.T) {
 	for _, r := range requests {
 		if strings.Contains(r, "..") || !strings.Contains(r, " /registry/rules_go") {
 			t.Errorf("request outside the base URL: %s", r)
+		}
+	}
+}
+
+// assertNoSpecialRequests fails if any recorded request URI carries "..",
+// an encoded dot, a query or a fragment.
+func assertNoSpecialRequests(t *testing.T, mu *sync.Mutex, requests *[]string) {
+	t.Helper()
+	mu.Lock()
+	defer mu.Unlock()
+	for _, r := range *requests {
+		lower := strings.ToLower(r)
+		if strings.Contains(r, "..") || strings.Contains(lower, "%2e") || strings.ContainsAny(r, "?#") {
+			t.Errorf("request carries path-special content: %s", r)
+		}
+	}
+}
+
+// TestHTTPPublisher_EscapesSegments exercises the second layer directly:
+// even a path that bypassed validation is sent as literal, escaped segments,
+// so the server never sees a decoded "..", a query or a fragment.
+func TestHTTPPublisher_EscapesSegments(t *testing.T) {
+	t.Parallel()
+
+	type seen struct{ path, rawPath, rawQuery, uri string }
+	var mu sync.Mutex
+	var got []seen
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		got = append(got, seen{r.URL.Path, r.URL.RawPath, r.URL.RawQuery, r.RequestURI})
+		mu.Unlock()
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer server.Close()
+
+	pub, err := NewHTTPPublisher(server.URL+"/registry", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, raw := range []string{"rules_go/1.0/..", "rules_go/./x", "rules_go//x"} {
+		if _, err := pub.joinURL(raw); !errors.Is(err, coord.ErrInvalidPath) {
+			t.Errorf("joinURL(%q) error = %v, want ErrInvalidPath", raw, err)
+		}
+	}
+
+	for _, raw := range []string{
+		"rules_go/1.0/%2e%2e/%2e%2e/pwn",
+		"rules_go/1.0/x?y=1#frag",
+		"rules_go/1.0/a b",
+	} {
+		u, err := pub.joinURL(raw)
+		if err != nil {
+			t.Fatalf("joinURL(%q): %v", raw, err)
+		}
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodPut, u, strings.NewReader("x"))
+		if err != nil {
+			t.Fatalf("NewRequest(%q): %v", u, err)
+		}
+		resp, err := pub.httpClient.Do(req)
+		if err != nil {
+			t.Fatalf("PUT %q: %v", u, err)
+		}
+		_ = resp.Body.Close()
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(got) != 3 {
+		t.Fatalf("got %d requests, want 3: %+v", len(got), got)
+	}
+	for _, g := range got {
+		if g.rawQuery != "" || strings.Contains(g.uri, "#") {
+			t.Errorf("request has a query or fragment: %+v", g)
+		}
+		// On the wire, special characters are escaped: no raw "..", encoded
+		// dot, query or fragment reaches the server.
+		if strings.Contains(g.uri, "..") || strings.Contains(strings.ToLower(g.uri), "%2e") || strings.ContainsAny(g.uri, "?#") {
+			t.Errorf("request URI carries path-special content: %+v", g)
+		}
+		if !strings.HasPrefix(g.path, "/registry/rules_go/1.0/") {
+			t.Errorf("request left the base path: %+v", g)
+		}
+		for _, seg := range strings.Split(g.path, "/") {
+			if seg == ".." {
+				t.Errorf("decoded path has a '..' segment: %+v", g)
+			}
 		}
 	}
 }

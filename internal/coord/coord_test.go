@@ -3,6 +3,7 @@ package coord
 import (
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -17,6 +18,7 @@ func TestValidateModuleName(t *testing.T) {
 		"", ".", "..", "../x", "../../victim", "a/b", `a\b`, "/abs", "Rules_go",
 		"rules_go/", "1abc", "_abc", "-abc", ".abc", "abc-", "abc.", "abc_",
 		"a b", "a\x00b", "@scope/pkg", "a@1", "abc\n", "ä",
+		strings.Repeat("a", MaxCoordinateLen+1),
 	}
 
 	for _, name := range accepted {
@@ -42,12 +44,14 @@ func TestValidateVersion(t *testing.T) {
 		"0.20261105.0", "36.0.bcr.1",
 		// Other shapes Bazel's Version.parse accepts.
 		"1", "1.0", "v1.0", "1.0.0+build.5", "1.0.0-alpha.1+meta-data", "1.0+..",
-		"1.0.0-rc.1", "18446744073709551615",
+		"1.0.0-rc.1", "18446744073709551615", "9223372036854775808",
+		strings.Repeat("1", 19) + "." + strings.Repeat("a", MaxCoordinateLen-20),
 	}
 	rejected := []string{
 		"", ".", "..", "...", "../../../esc", "1.0/../..", "1.0/x", `1.0\x`, "/1.0",
 		"1..0", ".1", "1.", "-1", "1.0-", "1.0-.", "1.0-a..b", "1.0+", "+1",
 		"1.0_0", "1.0 ", "1.0\x00", "1.0:", "1.0%2f", "18446744073709551616",
+		"1." + strings.Repeat("a", MaxCoordinateLen-1),
 	}
 
 	for _, v := range accepted {
@@ -60,6 +64,22 @@ func TestValidateVersion(t *testing.T) {
 		if !errors.Is(err, ErrInvalidVersion) {
 			t.Errorf("ValidateVersion(%q) = %v, want ErrInvalidVersion", v, err)
 		}
+	}
+}
+
+func TestLengthLimitsAreReported(t *testing.T) {
+	t.Parallel()
+
+	if err := ValidateModuleName(strings.Repeat("a", MaxCoordinateLen)); err != nil {
+		t.Errorf("name at the limit rejected: %v", err)
+	}
+	err := ValidateModuleName(strings.Repeat("a", MaxCoordinateLen+1))
+	if err == nil || !strings.Contains(err.Error(), "255-byte limit") {
+		t.Errorf("long name error = %v, want a message naming the 255-byte limit", err)
+	}
+	err = ValidateVersion("1." + strings.Repeat("a", MaxCoordinateLen))
+	if err == nil || !strings.Contains(err.Error(), "255-byte limit") {
+		t.Errorf("long version error = %v, want a message naming the 255-byte limit", err)
 	}
 }
 
@@ -85,6 +105,8 @@ func TestValidateRegistryPath(t *testing.T) {
 		"rules_go/0.50.0/MODULE.bazel",
 		"rules_go/0.50.0/source.json",
 		"protobuf/37.0-rc3/patches/fix.patch",
+		"rules_go/1.0/overlay/BUILD.bazel",
+		"rules_go/1.0/patches/0001-fix_build+x.patch",
 	}
 	rejected := []string{
 		"", "rules_go", "/rules_go/1.0/MODULE.bazel", "../rules_go/1.0/MODULE.bazel",
@@ -92,6 +114,21 @@ func TestValidateRegistryPath(t *testing.T) {
 		"rules_go//MODULE.bazel", `rules_go\1.0\MODULE.bazel`, "rules_go/1.0/../../x",
 		"Bad/1.0/MODULE.bazel", "rules_go/1..0/MODULE.bazel", "rules_go/1.0/",
 		"rules_go/1.0/x\x00y",
+		// File segments carrying URL-special, dot-prefixed or control content.
+		"rules_go/1.0/%2e%2e/%2e%2e/pwn",
+		"rules_go/1.0/x?y=1#frag",
+		"rules_go/1.0/x#frag",
+		"rules_go/1.0/a\nb",
+		"rules_go/1.0/a b",
+		"rules_go/1.0/a\tb",
+		"rules_go/1.0/.git/config",
+		"rules_go/1.0/.GIT/hooks/pre-commit",
+		"rules_go/.Git",
+		"rules_go/1.0/x:ads",
+		"rules_go/1.0/.hidden",
+		"rules_go/.metadata.json",
+		"rules_go/1.0/patches/" + strings.Repeat("a", MaxSegmentLen+1),
+		"rules_go/1.0/" + strings.Repeat("a/", MaxRegistryPathLen/2) + "x",
 	}
 
 	for _, p := range accepted {

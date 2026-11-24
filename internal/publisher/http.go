@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	neturl "net/url"
 	"os"
 	"path"
 	"strings"
@@ -156,14 +157,29 @@ func (p *HTTPPublisher) Close() error {
 	return nil
 }
 
-// url validates a registry path and appends it to the base URL. Validated
-// segments contain only characters that need no escaping and are never
-// empty, "." or "..", so the request cannot address anything above baseURL.
+// url validates a registry path and appends it to the base URL. Each
+// segment is also escaped with url.PathEscape, so even a segment that slipped
+// past validation is sent as one literal path segment and cannot introduce a
+// query, fragment, or decoded "..".
 func (p *HTTPPublisher) url(filePath string) (string, error) {
 	if err := coord.ValidateRegistryPath(filePath); err != nil {
 		return "", err
 	}
-	return p.baseURL + "/" + filePath, nil
+	return p.joinURL(filePath)
+}
+
+// joinURL appends a slash-separated path to the base URL, escaping each
+// segment. Escaping leaves "." and ".." unchanged, so those (and empty
+// segments) are refused outright.
+func (p *HTTPPublisher) joinURL(rel string) (string, error) {
+	segs := strings.Split(rel, "/")
+	for i, s := range segs {
+		if s == "" || s == "." || s == ".." {
+			return "", fmt.Errorf("%w: %q", coord.ErrInvalidPath, rel)
+		}
+		segs[i] = neturl.PathEscape(s)
+	}
+	return p.baseURL + "/" + strings.Join(segs, "/"), nil
 }
 
 // addAuth adds authentication headers to a request.
@@ -212,7 +228,10 @@ func (p *HTTPPublisher) ensureDirectories(ctx context.Context, filePath string) 
 	dirs := p.parentDirs(filePath)
 
 	for _, dir := range dirs {
-		url := p.baseURL + "/" + dir // dir is a prefix of a path already validated by Put
+		url, err := p.joinURL(dir) // dir is a prefix of a path already validated by Put
+		if err != nil {
+			return err
+		}
 
 		req, err := http.NewRequestWithContext(ctx, "MKCOL", url, nil)
 		if err != nil {
