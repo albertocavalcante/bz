@@ -5,10 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 )
 
@@ -16,7 +14,8 @@ import (
 type GitPublisher struct {
 	repoURL    string
 	branch     string
-	workDir    string // temp directory with cloned repo
+	workDir    string   // temp directory with cloned repo
+	root       *os.Root // confines file access to workDir
 	hasChanges bool
 }
 
@@ -49,40 +48,36 @@ func NewGitPublisher(repoURL, branch string) (*GitPublisher, error) {
 		return nil, err
 	}
 
+	root, err := os.OpenRoot(workDir)
+	if err != nil {
+		_ = os.RemoveAll(workDir)
+		return nil, fmt.Errorf("open work directory: %w", err)
+	}
+	p.root = root
+
 	return p, nil
 }
 
 // Put writes content to a file in the cloned repository.
+// The path must be a valid registry path (see coord.ValidateRegistryPath);
+// the write is confined to the clone.
 func (p *GitPublisher) Put(_ context.Context, path string, content []byte) error {
-	fullPath := filepath.Join(p.workDir, path)
-
-	// Create parent directories
-	dir := filepath.Dir(fullPath)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("create directories: %w", err)
+	if p.root == nil {
+		return errors.New("git publisher is closed")
 	}
-
-	// Write the file
-	if err := os.WriteFile(fullPath, content, 0o644); err != nil {
-		return fmt.Errorf("write file: %w", err)
+	if err := putInRoot(p.root, path, content); err != nil {
+		return err
 	}
-
 	p.hasChanges = true
 	return nil
 }
 
 // Exists checks if a file exists in the cloned repository.
 func (p *GitPublisher) Exists(_ context.Context, path string) (bool, error) {
-	fullPath := filepath.Join(p.workDir, path)
-
-	_, err := os.Stat(fullPath)
-	if err == nil {
-		return true, nil
+	if p.root == nil {
+		return false, errors.New("git publisher is closed")
 	}
-	if errors.Is(err, fs.ErrNotExist) {
-		return false, nil
-	}
-	return false, fmt.Errorf("stat file: %w", err)
+	return existsInRoot(p.root, path)
 }
 
 // Finalize commits and pushes all changes.
@@ -127,6 +122,10 @@ func (p *GitPublisher) Type() string {
 
 // Close removes the temporary directory.
 func (p *GitPublisher) Close() error {
+	if p.root != nil {
+		_ = p.root.Close()
+		p.root = nil
+	}
 	if p.workDir != "" {
 		return os.RemoveAll(p.workDir)
 	}

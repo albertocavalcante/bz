@@ -2,10 +2,13 @@ package publisher
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
+
+	"github.com/albertocavalcante/bz/internal/coord"
 )
 
 // skipIfNoGit skips the test if git is not available.
@@ -128,13 +131,22 @@ func TestGitPublisher_Exists(t *testing.T) {
 		t.Error("Exists() = true, want false")
 	}
 
-	// README.md should exist (from initial commit)
-	exists, err = pub.Exists(ctx, "README.md")
+	// After a Put the file exists.
+	if err := pub.Put(ctx, "rules_go/0.50.0/MODULE.bazel", []byte("module()")); err != nil {
+		t.Fatalf("Put() error = %v", err)
+	}
+	exists, err = pub.Exists(ctx, "rules_go/0.50.0/MODULE.bazel")
 	if err != nil {
 		t.Fatalf("Exists() error = %v", err)
 	}
 	if !exists {
-		t.Error("Exists() = false, want true for README.md")
+		t.Error("Exists() = false, want true")
+	}
+
+	// Paths outside the registry layout (such as README.md from the initial
+	// commit) are not addressable through the publisher.
+	if _, err := pub.Exists(ctx, "README.md"); !errors.Is(err, coord.ErrInvalidPath) {
+		t.Errorf("Exists(README.md) error = %v, want ErrInvalidPath", err)
 	}
 }
 
