@@ -60,6 +60,70 @@ func TestLoad_SymlinkedConfigOpensTheResolvedTarget(t *testing.T) {
 	assert.NotContains(t, opened, projectFile, "the link itself is never opened")
 }
 
+func TestLoad_SystemAndUserFileOwnership(t *testing.T) {
+	tests := []struct {
+		name    string
+		path    string
+		owner   int
+		mode    fs.FileMode
+		vars    map[string]string
+		wantErr string
+	}{
+		{name: "own user file", path: userFile, owner: 1000, mode: 0o644},
+		{name: "root's user file", path: userFile, owner: 0, mode: 0o644},
+		{
+			name: "user file of another user", path: userFile, owner: 2000, mode: 0o644,
+			wantErr: "untrusted user config /home/u/.config/bz/config.toml: owned by uid 2000, not you (uid 1000) or root",
+		},
+		{
+			name: "group-writable user file", path: userFile, owner: 1000, mode: 0o664,
+			wantErr: "untrusted user config /home/u/.config/bz/config.toml: writable by group or others (mode -rw-rw-r--); fix: chmod go-w -- '/home/u/.config/bz/config.toml'",
+		},
+		{name: "root's system file", path: systemFile, owner: 0, mode: 0o644},
+		{
+			name: "system file not owned by root", path: systemFile, owner: 1000, mode: 0o644,
+			wantErr: "untrusted system config /etc/bz/config.toml: owned by uid 1000, not root; fix: have an administrator make root its owner",
+		},
+		{
+			name: "world-writable system file", path: systemFile, owner: 0, mode: 0o666,
+			wantErr: "fix: have an administrator run chmod go-w on it",
+		},
+		{
+			name: "trusted directory skips the rules", path: userFile, owner: 2000, mode: 0o666,
+			vars: map[string]string{EnvTrustedConfigDirs: "/home/u/.config/bz"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newFakeEnv()
+			f.files[tt.path] = "[network]\nmode = \"offline\"\n"
+			f.owners[tt.path] = tt.owner
+			f.modes[tt.path] = tt.mode
+			for k, v := range tt.vars {
+				f.vars[k] = v
+			}
+			eff, _, err := Load(f.env(), Layer{Kind: LayerFlag})
+			if tt.wantErr == "" {
+				require.NoError(t, err)
+				assert.Equal(t, NetworkModeOffline, eff.Network.Mode)
+				return
+			}
+			require.ErrorIs(t, err, ErrUntrustedConfig)
+			assert.Contains(t, err.Error(), tt.wantErr)
+		})
+	}
+}
+
+func TestLoad_WindowsSkipsSystemAndUserOwnership(t *testing.T) {
+	f := newFakeEnv()
+	f.goos = "windows"
+	f.files[systemFile] = "[network]\nmode = \"offline\"\n"
+	f.owners[systemFile] = 1000
+	f.modes[systemFile] = 0o666
+	eff := mustLoad(t, f, Layer{Kind: LayerFlag})
+	assert.Equal(t, NetworkModeOffline, eff.Network.Mode)
+}
+
 func TestLoad_OversizedFileIsAnError(t *testing.T) {
 	f := newFakeEnv()
 	f.files[projectFile] = strings.Repeat("#", maxConfigSize+1)
@@ -72,7 +136,8 @@ func TestLoad_NonRegularUserFileIsAnError(t *testing.T) {
 	f.files[userFile] = ""
 	f.modes[userFile] = fs.ModeNamedPipe | 0o644
 	_, _, err := Load(f.env(), Layer{Kind: LayerFlag})
-	require.EqualError(t, err, "reading user config /home/u/.config/bz/config.toml: not a regular file")
+	require.EqualError(t, err, "untrusted user config /home/u/.config/bz/config.toml: not a regular file; "+
+		"fix: replace it with a regular file, or list /home/u/.config/bz in BZ_TRUSTED_CONFIG_DIRS if the shared setup is intended")
 }
 
 func TestLoad_WarningsAreReturned(t *testing.T) {

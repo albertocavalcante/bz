@@ -105,7 +105,8 @@ func TestReadConfigFile(t *testing.T) {
 			setup: func(f *fakeEnv) {
 				f.files["/u/config.toml/x"] = ""
 			},
-			wantErr: "reading user config /u/config.toml: not a regular file",
+			wantErr: "untrusted user config /u/config.toml: not a regular file; fix: replace it with a regular file, " +
+				"or list /u in BZ_TRUSTED_CONFIG_DIRS if the shared setup is intended",
 		},
 		{
 			name: "read error after the open", kind: LayerProject, path: handleTestFile,
@@ -132,7 +133,8 @@ func TestReadConfigFile(t *testing.T) {
 				f.files["/u/config.toml"] = ""
 				f.modes["/u/config.toml"] = fs.ModeNamedPipe | 0o644
 			},
-			wantErr: "reading user config /u/config.toml: not a regular file",
+			wantErr: "untrusted user config /u/config.toml: not a regular file; fix: replace it with a regular file, " +
+				"or list /u in BZ_TRUSTED_CONFIG_DIRS if the shared setup is intended",
 		},
 	}
 	for _, tt := range tests {

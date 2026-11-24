@@ -68,7 +68,10 @@ type UntrustedConfigError struct {
 	// Path is the file as found; Target is its resolved path (equal to
 	// Path unless Path is a symbolic link); Dir is Target's directory.
 	Path, Target, Dir string
-	Reason            UntrustedReason
+	// Layer is the file's layer: LayerSystem, LayerUser, or LayerProject
+	// (the zero value LayerDefault is also reported as a project config).
+	Layer  LayerKind
+	Reason UntrustedReason
 	// Detail describes the problem and Fix the concrete remedy.
 	Detail, Fix string
 }
@@ -78,8 +81,12 @@ func (e *UntrustedConfigError) Error() string {
 	if e.Target != e.Path {
 		where = fmt.Sprintf("%s (resolved to %s)", where, DisplayPath(e.Target))
 	}
-	return fmt.Sprintf("untrusted project config %s: %s; fix: %s, or list %s in %s if the shared setup is intended",
-		where, e.Detail, e.Fix, DisplayPath(e.Dir), EnvTrustedConfigDirs)
+	kind := "project config"
+	if e.Layer == LayerSystem || e.Layer == LayerUser {
+		kind = e.Layer.String()
+	}
+	return fmt.Sprintf("untrusted %s %s: %s; fix: %s, or list %s in %s if the shared setup is intended",
+		kind, where, e.Detail, e.Fix, DisplayPath(e.Dir), EnvTrustedConfigDirs)
 }
 
 // Is makes errors.Is(err, ErrUntrustedConfig) match.
@@ -132,7 +139,7 @@ func (e Environment) checkTrust(path string, trusted []fs.FileInfo) error {
 		return fmt.Errorf("checking project config %s: %w", DisplayPath(path), cleanErr(err))
 	}
 	refuse := func(reason UntrustedReason, detail, fix string) error {
-		return &UntrustedConfigError{Path: path, Target: target, Dir: filepath.Dir(target), Reason: reason, Detail: detail, Fix: fix}
+		return &UntrustedConfigError{Path: path, Target: target, Dir: filepath.Dir(target), Layer: LayerProject, Reason: reason, Detail: detail, Fix: fix}
 	}
 
 	fi, ok, err := e.stat(target)
@@ -151,7 +158,7 @@ func (e Environment) checkTrust(path string, trusted []fs.FileInfo) error {
 func (e Environment) checkTrustInfo(path, target string, fi fs.FileInfo, trusted []fs.FileInfo) error {
 	dir := filepath.Dir(target)
 	refuse := func(reason UntrustedReason, detail, fix string) error {
-		return &UntrustedConfigError{Path: path, Target: target, Dir: dir, Reason: reason, Detail: detail, Fix: fix}
+		return &UntrustedConfigError{Path: path, Target: target, Dir: dir, Layer: LayerProject, Reason: reason, Detail: detail, Fix: fix}
 	}
 	if !fi.Mode().IsRegular() {
 		return refuse(ReasonNotRegular, "not a regular file", "replace it with a regular file")
