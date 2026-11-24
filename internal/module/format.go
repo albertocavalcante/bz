@@ -17,6 +17,9 @@ type Dep struct {
 	Name    string `json:"name"`
 	Version string `json:"version"`
 	Dev     bool   `json:"dev_dependency,omitempty"`
+	// DeclaredIn is the included file that declares the dependency; empty
+	// for the root MODULE.bazel.
+	DeclaredIn string `json:"declared_in,omitempty"`
 }
 
 // Extension is a simplified extension for output.
@@ -25,13 +28,15 @@ type Extension struct {
 	File          string `json:"file"`
 	DevDependency bool   `json:"dev_dependency,omitempty"`
 	Isolate       bool   `json:"isolate,omitempty"`
+	DeclaredIn    string `json:"declared_in,omitempty"`
 }
 
 // Override is a simplified override for output.
 type Override struct {
-	Type   string `json:"type"`
-	Module string `json:"module"`
-	Detail string `json:"detail,omitempty"`
+	Type       string `json:"type"`
+	Module     string `json:"module"`
+	Detail     string `json:"detail,omitempty"`
+	DeclaredIn string `json:"declared_in,omitempty"`
 }
 
 // Summary is a JSON-serializable summary of a MODULE.bazel file.
@@ -55,6 +60,8 @@ func (f *File) ToSummary() Summary {
 			Name:    d.Name.String(),
 			Version: d.Version.String(),
 			Dev:     d.DevDependency,
+
+			DeclaredIn: f.includedFile(d),
 		})
 	}
 
@@ -64,11 +71,14 @@ func (f *File) ToSummary() Summary {
 			File:          e.ExtensionFile.String(),
 			DevDependency: e.DevDependency,
 			Isolate:       e.Isolate,
+			DeclaredIn:    f.includedFile(e),
 		})
 	}
 
 	for _, o := range f.Overrides {
-		s.Overrides = append(s.Overrides, overrideToSummary(o))
+		ov := overrideToSummary(o)
+		ov.DeclaredIn = f.includedFile(o)
+		s.Overrides = append(s.Overrides, ov)
 	}
 
 	return s
@@ -146,12 +156,23 @@ func (f *File) WriteDepsTable(w io.Writer) error {
 	}
 
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "NAME\tVERSION\tDEV")
+	// The FILE column only appears when an included file declares a dependency,
+	// so workspaces without include() print exactly what they always did.
+	showFile := len(f.origins) > 0
+	if showFile {
+		fmt.Fprintln(tw, "NAME\tVERSION\tDEV\tFILE")
+	} else {
+		fmt.Fprintln(tw, "NAME\tVERSION\tDEV")
+	}
 
 	for _, dep := range f.Deps {
 		dev := ""
 		if dep.DevDependency {
 			dev = cli.Muted("yes")
+		}
+		if showFile {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", dep.Name.String(), dep.Version.String(), dev, f.OriginOf(dep).File)
+			continue
 		}
 		fmt.Fprintf(tw, "%s\t%s\t%s\n", dep.Name.String(), dep.Version.String(), dev)
 	}
@@ -179,7 +200,7 @@ func (f *File) WriteFullTable(w io.Writer) error {
 			if dep.DevDependency {
 				dev = cli.Muted(" (dev)")
 			}
-			fmt.Fprintf(tw, "  %s\t%s%s\n", dep.Name.String(), dep.Version.String(), dev)
+			fmt.Fprintf(tw, "  %s\t%s%s\n", dep.Name.String(), dep.Version.String(), dev+f.fromSuffix(dep))
 		}
 		if err := tw.Flush(); err != nil {
 			return err
@@ -196,7 +217,7 @@ func (f *File) WriteFullTable(w io.Writer) error {
 			if ext.DevDependency {
 				dev = " (dev)"
 			}
-			fmt.Fprintf(tw, "  %s\t%s%s\n", ext.ExtensionName.String(), ext.ExtensionFile.String(), dev)
+			fmt.Fprintf(tw, "  %s\t%s%s\n", ext.ExtensionName.String(), ext.ExtensionFile.String(), dev+f.fromSuffix(ext))
 		}
 		if err := tw.Flush(); err != nil {
 			return err
@@ -214,7 +235,7 @@ func (f *File) WriteFullTable(w io.Writer) error {
 			if ov.Detail != "" {
 				detail = " → " + ov.Detail
 			}
-			fmt.Fprintf(tw, "  %s\t[%s]%s\n", ov.Module, ov.Type, detail)
+			fmt.Fprintf(tw, "  %s\t[%s]%s%s\n", ov.Module, ov.Type, detail, f.fromSuffix(o))
 		}
 		if err := tw.Flush(); err != nil {
 			return err
@@ -249,4 +270,13 @@ func (f *File) WriteFullTable(w io.Writer) error {
 	}
 
 	return nil
+}
+
+// includedFile returns the included file that declared stmt, or "" for the
+// root file.
+func (f *File) includedFile(stmt ast.Statement) string {
+	if o := f.OriginOf(stmt); !o.IsRoot() {
+		return o.File
+	}
+	return ""
 }
