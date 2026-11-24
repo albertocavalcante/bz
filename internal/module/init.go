@@ -1,6 +1,7 @@
 package module
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -8,6 +9,10 @@ import (
 
 	"github.com/albertocavalcante/bz/internal/coord"
 )
+
+// ErrNameFromDir marks an invalid module name that InitInDir derived from the
+// directory name rather than receiving it, so callers can add surface-specific help.
+var ErrNameFromDir = errors.New("derived from the directory name")
 
 const (
 	// DefaultModuleVersion is used when creating a new MODULE.bazel without an explicit version.
@@ -34,12 +39,12 @@ func InitInDir(dir, name, version string, force bool) (string, string, error) {
 	// Validate before writing anything, so a refusal leaves the directory untouched.
 	if err := coord.ValidateModuleName(name); err != nil {
 		if fromDir {
-			return "", "", fmt.Errorf("%w (derived from the directory name)\nhelp: pass --name to choose a valid module name", err)
+			return "", "", fmt.Errorf("%w (%w)", err, ErrNameFromDir)
 		}
-		return "", "", fmt.Errorf("%w\nhelp: pass a --name such as my_module", err)
+		return "", "", err
 	}
 	if err := coord.ValidateVersion(version); err != nil {
-		return "", "", fmt.Errorf("%w\nhelp: pass a --version such as 1.0.0 or 1.0.0-rc1, or omit it to use %s", err, DefaultModuleVersion)
+		return "", "", err
 	}
 
 	content := FormatModuleFile(name, version)
