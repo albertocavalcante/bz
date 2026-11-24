@@ -6,10 +6,6 @@ import (
 	"strings"
 )
 
-// Version is the current version of the bz CLI.
-// This is set at build time via ldflags.
-var Version = "dev"
-
 // UpdateType represents the type of version update.
 type UpdateType int
 
