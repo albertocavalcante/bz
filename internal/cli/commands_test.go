@@ -198,3 +198,28 @@ mode = "offline"
 	var offlineErr *OfflineModeError
 	assert.ErrorAs(t, err, &offlineErr)
 }
+
+// TestCheckCommandAllowed_InvalidValueDoesNotReenableCommand: an invalid
+// value elsewhere in the file must not make the disabled list disappear.
+func TestCheckCommandAllowed_InvalidValueDoesNotReenableCommand(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Chdir(tmpDir)
+	ResetCachedConfig()
+	t.Cleanup(ResetCachedConfig)
+	t.Setenv("BZ_OFFLINE", "ture")
+
+	configContent := `
+[network]
+timeout = "30"
+mode = "ofline"
+
+[commands]
+disabled = ["audit"]
+`
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, ".bzconfig.toml"), []byte(configContent), 0o644))
+
+	err := CheckCommandAllowed("audit")
+	var cmdErr *CommandDisabledError
+	require.ErrorAs(t, err, &cmdErr)
+	assert.Equal(t, "audit", cmdErr.Command)
+}

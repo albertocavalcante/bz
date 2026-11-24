@@ -1,13 +1,14 @@
 package bzconfig
 
 import (
-	"os"
+	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/albertocavalcante/bz/internal/envutil"
 )
 
-// Environment variable names.
+// Environment variable names read by bz.
 const (
 	EnvOffline         = "BZ_OFFLINE"
 	EnvPreferOffline   = "BZ_PREFER_OFFLINE"
@@ -16,31 +17,57 @@ const (
 	EnvDisableCommands = "BZ_DISABLE_COMMANDS"
 )
 
-// applyEnvVars applies environment variable overrides to the config.
-func (c *Config) applyEnvVars() {
-	// BZ_OFFLINE takes precedence over BZ_PREFER_OFFLINE
-	if isEnvTrue(EnvOffline) {
-		c.Network.Mode = NetworkModeOffline
-	} else if isEnvTrue(EnvPreferOffline) {
-		c.Network.Mode = NetworkModePreferOffline
+// EnvLayer builds the environment layer.
+//
+// Booleans are parsed with [envutil.ParseBool]. An unrecognized value is
+// treated as false and reported in the returned error; the layer is usable
+// either way. Only a true value sets the mode: BZ_OFFLINE wins over
+// BZ_PREFER_OFFLINE, and a false or empty value leaves the mode to lower
+// layers. Empty (or all-space) BZ_REGISTRY and BZ_CACHE_DIR are unset. Any
+// non-empty BZ_DISABLE_COMMANDS replaces the list, so "," clears it.
+// BZ_CACHE_DIR gets "~" expansion against home.
+func EnvLayer(lookup func(string) (string, bool), home string) (Layer, error) {
+	l := Layer{Kind: LayerEnv, KeyOrigins: map[Key]string{}}
+	get := func(name string) string {
+		v, _ := lookup(name)
+		return v
 	}
 
-	if registry := os.Getenv(EnvRegistry); registry != "" {
-		c.Network.Registry = registry
+	var errs []error
+	offline, err := envutil.ParseBool(get(EnvOffline))
+	if err != nil {
+		errs = append(errs, fmt.Errorf("%s: %w", EnvOffline, err))
+	}
+	preferOffline, err := envutil.ParseBool(get(EnvPreferOffline))
+	if err != nil {
+		errs = append(errs, fmt.Errorf("%s: %w", EnvPreferOffline, err))
+	}
+	switch {
+	case offline:
+		m := NetworkModeOffline
+		l.Settings.Mode = &m
+		l.KeyOrigins[KeyMode] = EnvOffline
+	case preferOffline:
+		m := NetworkModePreferOffline
+		l.Settings.Mode = &m
+		l.KeyOrigins[KeyMode] = EnvPreferOffline
 	}
 
-	if cacheDir := os.Getenv(EnvCacheDir); cacheDir != "" {
-		c.Cache.Dir = cacheDir
+	if v := strings.TrimSpace(get(EnvRegistry)); v != "" {
+		l.Settings.Registry = &v
+		l.KeyOrigins[KeyRegistry] = EnvRegistry
 	}
-
-	if disabledCmds := os.Getenv(EnvDisableCommands); disabledCmds != "" {
-		c.Commands.Disabled = parseCommaSeparated(disabledCmds)
+	if v := strings.TrimSpace(get(EnvCacheDir)); v != "" {
+		v = ExpandHome(v, home)
+		l.Settings.CacheDir = &v
+		l.KeyOrigins[KeyCacheDir] = EnvCacheDir
 	}
-}
-
-// isEnvTrue returns true if the environment variable is set to a truthy value.
-func isEnvTrue(name string) bool {
-	return envutil.IsTruthyEnv(name)
+	if v := get(EnvDisableCommands); v != "" {
+		list := parseCommaSeparated(v)
+		l.Settings.Disabled = &list
+		l.KeyOrigins[KeyDisabled] = EnvDisableCommands
+	}
+	return l, errors.Join(errs...)
 }
 
 // parseCommaSeparated parses a comma-separated string into a slice.
