@@ -19,6 +19,11 @@ go test ./...
 go tool -modfile=tools.go.mod golangci-lint run --config=tools/lint/golangci.toml
 ```
 
+> [!NOTE]
+> The pinned golangci-lint cannot load Go 1.27 export data. On a machine with a
+> newer Go, run the linter with `GOTOOLCHAIN=<toolchain line of go.mod>` (for
+> example `GOTOOLCHAIN=go1.26.11`). The lefthook pre-push hook does this itself.
+
 ## Commit Messages
 
 This project uses [Conventional Commits](https://www.conventionalcommits.org/):

@@ -5,15 +5,46 @@ on:
     tags:
       - "v*"
 
+# Never cancel an in-flight release; a re-pushed tag queues behind it.
 concurrency:
   group: release-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
-permissions:
-  contents: write
+permissions: {}
 
 jobs:
+  # Gate: nothing is built or published from a commit that fails tests or
+  # has a called vulnerability.
+  verify:
+    runs-on: ubuntu-24.04
+    name: Test and Vulnerability Check
+    timeout-minutes: 20
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: |
+            go.sum
+            tools.go.sum
+
+      - name: Test
+        run: go tool -modfile=tools.go.mod gotestsum --format pkgname-and-test-fails -- -race ./...
+
+      - name: Run govulncheck
+        run: go tool -modfile=tools.go.mod govulncheck ./...
+
   build:
+    needs: verify
     strategy:
       fail-fast: false
       matrix:
@@ -114,6 +145,8 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write
+      id-token: write
+      attestations: write
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -131,6 +164,22 @@ jobs:
           mkdir -p release
           find artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" -o -name "*.sha256" \) -exec cp {} release/ \;
           ls -la release/
+
+      # Combined checksums of the archives. The Windows runner writes CRLF
+      # line endings, so normalise before verifying.
+      - name: Generate checksums
+        working-directory: release
+        run: |
+          cat ./*.sha256 | tr -d '\r' | sort -k2 > checksums.txt
+          cat checksums.txt
+          sha256sum --check checksums.txt
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            release/*.tar.gz
+            release/*.zip
 
       - name: Create Release
         uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2.5.0

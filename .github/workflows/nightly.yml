@@ -11,13 +11,12 @@ on:
         type: boolean
         default: false
 
+# A cancelled run could leave the nightly release deleted but not recreated.
 concurrency:
   group: nightly-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
-permissions:
-  contents: write
-  checks: write
+permissions: {}
 
 jobs:
   check-changes:
@@ -38,18 +37,20 @@ jobs:
 
       - name: Check for changes
         id: check
+        env:
+          FORCE: ${{ inputs.force }}
         run: |
           SHORT_SHA=$(git rev-parse --short HEAD)
           echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
 
-          if [ "${{ inputs.force }}" == "true" ]; then
+          if [ "$FORCE" == "true" ]; then
             echo "should_build=true" >> "$GITHUB_OUTPUT"
             echo "Force build requested"
             exit 0
           fi
 
-          if git rev-parse nightly >/dev/null 2>&1; then
-            NIGHTLY_SHA=$(git rev-parse nightly)
+          # The nightly release tag points at the commit that was built.
+          if NIGHTLY_SHA=$(git rev-parse --verify --quiet "refs/tags/nightly^{commit}"); then
             HEAD_SHA=$(git rev-parse HEAD)
             if [ "$NIGHTLY_SHA" == "$HEAD_SHA" ]; then
               echo "should_build=false" >> "$GITHUB_OUTPUT"
@@ -93,7 +94,7 @@ jobs:
 
       - name: Test report
         if: always()
-        uses: dorny/test-reporter@d3cb5605561a46347256b466ef836b85076ad522 # v2.5.0
+        uses: dorny/test-reporter@b082adf0eced0765477756c2a610396589b8c637 # v2.5.0
         with:
           name: Test Results
           path: test-results.xml
@@ -200,7 +201,9 @@ jobs:
           retention-days: 3
 
   release:
-    needs: [check-changes, build]
+    # test is required so a failing suite never replaces the nightly release;
+    # a skipped needs (no changes) also skips this job.
+    needs: [check-changes, test, build]
     if: needs.check-changes.outputs.should_build == 'true'
     runs-on: ubuntu-24.04
     name: Create Release
@@ -267,17 +270,39 @@ jobs:
           cat release/*.sha256 >> notes.md
           echo '```' >> notes.md
 
+      # Remove the previous release and its tag so the new tag is created at
+      # the built commit (see target_commitish below). "Not found" is the only
+      # tolerated outcome; any other failure fails the job.
       - name: Delete old release
-        run: |
-          gh release delete nightly --yes || true
-          git push origin :refs/tags/nightly || true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if out=$(gh release view nightly 2>&1); then
+            gh release delete nightly --yes --cleanup-tag
+          elif grep -qi "release not found" <<<"$out"; then
+            echo "No previous nightly release"
+          else
+            echo "$out" >&2
+            exit 1
+          fi
+
+          # A tag can outlive its release (e.g. a manually deleted release).
+          if out=$(gh api "repos/${GH_REPO}/git/ref/tags/nightly" 2>&1); then
+            gh api -X DELETE "repos/${GH_REPO}/git/refs/tags/nightly"
+            echo "Deleted leftover nightly tag"
+          elif grep -q '"status":"404"' <<<"$out"; then
+            echo "No leftover nightly tag"
+          else
+            echo "$out" >&2
+            exit 1
+          fi
 
       - name: Create release
         uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2.5.0
         with:
           tag_name: nightly
+          target_commitish: ${{ github.sha }}
           name: Nightly Build
           draft: false
           prerelease: true

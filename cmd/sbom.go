@@ -332,8 +332,8 @@ func generateSPDX(w io.Writer, f *module.File, deps map[string]*sbomDependency) 
 	}
 
 	// Add version to tool creator if available
-	if version != "" && version != "dev" {
-		doc.CreationInfo.Creators = []string{fmt.Sprintf("Tool: bz-%s", version)}
+	if v := buildInfo().Version; v != "" && v != "dev" {
+		doc.CreationInfo.Creators = []string{fmt.Sprintf("Tool: bz-%s", v)}
 	}
 
 	// Add packages for each dependency

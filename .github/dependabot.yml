@@ -6,6 +6,10 @@ updates:
       interval: "weekly"
     commit-message:
       prefix: "ci"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
 
   - package-ecosystem: "gomod"
     directory: "/"
@@ -13,10 +17,19 @@ updates:
       interval: "weekly"
     commit-message:
       prefix: "deps"
+    groups:
+      go-modules:
+        patterns:
+          - "*"
 
-  - package-ecosystem: "npm"
+  # The bun ecosystem keeps docs/bun.lock in sync with docs/package.json.
+  - package-ecosystem: "bun"
     directory: "/docs"
     schedule:
       interval: "weekly"
     commit-message:
       prefix: "deps(docs)"
+    groups:
+      docs-npm:
+        patterns:
+          - "*"

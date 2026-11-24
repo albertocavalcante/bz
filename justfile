@@ -52,7 +52,8 @@ bench:
 # Linting & Formatting
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Run linters
+# Run linters. The pinned golangci-lint cannot load Go 1.27 export data; on a
+# machine with a newer Go run with GOTOOLCHAIN=<toolchain line of go.mod>.
 lint:
     go tool -modfile=tools.go.mod golangci-lint run --config=tools/lint/golangci.toml
 
