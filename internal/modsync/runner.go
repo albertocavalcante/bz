@@ -7,6 +7,7 @@ import (
 	"path"
 
 	"github.com/albertocavalcante/bz/internal/config"
+	"github.com/albertocavalcante/bz/internal/coord"
 	"github.com/albertocavalcante/bz/internal/publisher"
 	"github.com/albertocavalcante/bz/internal/registry"
 	bzversion "github.com/albertocavalcante/bz/internal/version"
@@ -94,6 +95,12 @@ func (r *runner) run(ctx context.Context) *Result {
 func (r *runner) syncModule(ctx context.Context, moduleName string, result *Result) error {
 	result.ModulesProcessed++
 
+	// Module names come from --modules or the workflow file and become path
+	// segments in the destination; refuse invalid ones before any I/O.
+	if err := coord.ValidateModuleName(moduleName); err != nil {
+		return err
+	}
+
 	// Get metadata from source
 	meta, err := r.source.GetMetadata(ctx, moduleName)
 	if err != nil {
@@ -117,6 +124,14 @@ func (r *runner) syncModule(ctx context.Context, moduleName string, result *Resu
 
 	// Process each version
 	for _, version := range versions {
+		// Versions come from untrusted source metadata; an invalid one fails
+		// only that version and nothing is written for it.
+		if err := coord.ValidateVersion(version); err != nil {
+			// The error quotes the version; do not echo it unquoted.
+			result.Errors = append(result.Errors, fmt.Errorf("%s: %w", moduleName, err))
+			continue
+		}
+
 		// Skip yanked versions if transform is set
 		if skipYanked {
 			if _, yanked := meta.YankedVersions[version]; yanked {
