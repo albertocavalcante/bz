@@ -2,10 +2,12 @@ package cache
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
+	"os/user"
 	"path/filepath"
 	"strings"
 
@@ -89,7 +91,7 @@ func runClear(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	if err := checkModulesDirSafe(modulesDir); err != nil {
+	if err := checkClearDirsSafe(cacheDir, modulesDir); err != nil {
 		return err
 	}
 
@@ -192,38 +194,100 @@ func selectClearTargets(modulesDir string, args []string) (names []string, skipp
 	return names, skipped, nil
 }
 
-// checkModulesDirSafe refuses to clear when the modules directory resolves
-// (after following symlinks) to a filesystem root, the user's home
-// directory, or a parent of it.
-func checkModulesDirSafe(modulesDir string) error {
-	resolved, err := filepath.EvalSymlinks(modulesDir)
+// lookupHome returns the user's home directory. It is a variable so tests
+// can simulate an environment where no home directory can be determined.
+var lookupHome = func() (string, error) {
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		return home, nil
+	}
+	u, err := user.Current()
 	if err != nil {
-		return fmt.Errorf("resolve cache directory: %w", err)
+		return "", err
 	}
-	resolved, err = filepath.Abs(resolved)
+	if u.HomeDir == "" {
+		return "", errors.New("user has no home directory")
+	}
+	return u.HomeDir, nil
+}
+
+// checkClearDirsSafe refuses to clear when the cache directory or its modules
+// directory is, by file identity (following symlinks), a filesystem root, the
+// user's home directory, or any parent of it. Identity rather than path text
+// is compared, so case-insensitive filesystems and symlinked spellings cannot
+// slip past. If no home directory can be determined the guard refuses
+// instead of being skipped.
+func checkClearDirsSafe(dirs ...string) error {
+	home, err := lookupHome()
 	if err != nil {
-		return fmt.Errorf("resolve cache directory: %w", err)
+		return fmt.Errorf("refusing to clear the cache: cannot determine the home directory to protect (%v); set HOME", err)
 	}
-	if filepath.Dir(resolved) == resolved {
-		return fmt.Errorf("refusing to clear %s: it resolves to the filesystem root", modulesDir)
+	protected, err := protectedDirs(home)
+	if err != nil {
+		return fmt.Errorf("refusing to clear the cache: %w", err)
 	}
-	if home, err := os.UserHomeDir(); err == nil && home != "" && containsPath(resolved, home) {
-		return fmt.Errorf("refusing to clear %s: it resolves to the home directory or one of its parents (%s)", modulesDir, resolved)
+	for _, dir := range dirs {
+		info, err := os.Stat(dir)
+		if err != nil {
+			return fmt.Errorf("refusing to clear %s: %w", dir, err)
+		}
+		if isFilesystemRoot(dir) {
+			return fmt.Errorf("refusing to clear %s: it resolves to the filesystem root", dir)
+		}
+		for _, p := range protected {
+			if os.SameFile(info, p.info) {
+				return fmt.Errorf("refusing to clear %s: it is the home directory or one of its parents (%s)", dir, p.path)
+			}
+		}
 	}
 	return nil
 }
 
-// containsPath reports whether dir is target or one of its parents, after
-// resolving symlinks in target.
-func containsPath(dir, target string) bool {
-	if t, err := filepath.EvalSymlinks(target); err == nil {
-		target = t
+type protectedDir struct {
+	path string
+	info os.FileInfo
+}
+
+// protectedDirs stats home and each of its ancestors up to the filesystem
+// root, following symlinks in home first.
+func protectedDirs(home string) ([]protectedDir, error) {
+	if resolved, err := filepath.EvalSymlinks(home); err == nil {
+		home = resolved
 	}
-	rel, err := filepath.Rel(dir, target)
+	home, err := filepath.Abs(home)
+	if err != nil {
+		return nil, fmt.Errorf("resolve home directory: %w", err)
+	}
+	var out []protectedDir
+	for p := home; ; p = filepath.Dir(p) {
+		info, err := os.Stat(p)
+		if err != nil {
+			return nil, fmt.Errorf("stat %s: %w", p, err)
+		}
+		out = append(out, protectedDir{path: p, info: info})
+		if filepath.Dir(p) == p {
+			break
+		}
+	}
+	return out, nil
+}
+
+// isFilesystemRoot reports whether dir resolves to a filesystem root.
+func isFilesystemRoot(dir string) bool {
+	resolved, err := filepath.EvalSymlinks(dir)
 	if err != nil {
 		return false
 	}
-	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
+	resolved, err = filepath.Abs(resolved)
+	if err != nil {
+		return false
+	}
+	if filepath.Dir(resolved) == resolved {
+		return true
+	}
+	rootPath := filepath.VolumeName(resolved) + string(filepath.Separator)
+	a, errA := os.Stat(resolved)
+	b, errB := os.Stat(rootPath)
+	return errA == nil && errB == nil && os.SameFile(a, b)
 }
 
 func plural(n int, one, many string) string {

@@ -262,23 +262,121 @@ func TestClearCmd_RefusesHomeDirectory(t *testing.T) {
 	assert.DirExists(t, home)
 }
 
-// checkModulesDirSafe is tested directly for the filesystem root so a
+// The filesystem-root refusal is tested on the guard directly so a
 // regression can never turn into a real deletion.
-func TestCheckModulesDirSafe(t *testing.T) {
+func TestCheckClearDirsSafe_FilesystemRoot(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
 	root := string(filepath.Separator)
 	if v := filepath.VolumeName(os.TempDir()); v != "" {
 		root = v + string(filepath.Separator)
 	}
-	assert.ErrorContains(t, checkModulesDirSafe(root), "filesystem root")
+	assert.ErrorContains(t, checkClearDirsSafe(root), "refusing to clear")
 
 	link := filepath.Join(t.TempDir(), "modules")
 	if err := os.Symlink(root, link); err == nil {
-		assert.ErrorContains(t, checkModulesDirSafe(link), "filesystem root")
+		assert.ErrorContains(t, checkClearDirsSafe(link), "refusing to clear")
 	}
 
 	ok := filepath.Join(t.TempDir(), "modules")
 	require.NoError(t, os.MkdirAll(ok, 0o755))
-	assert.NoError(t, checkModulesDirSafe(ok))
+	assert.NoError(t, checkClearDirsSafe(ok))
+}
+
+// homeSandbox creates a fake home with victim files and points HOME at it.
+func homeSandbox(t *testing.T) (parent, home string) {
+	t.Helper()
+	parent = t.TempDir()
+	home = filepath.Join(parent, "Home")
+	writeFiles(t, home, map[string]string{"projects/keep": "x", "rules_go/keep": "x"})
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	return parent, home
+}
+
+func assertHomeIntact(t *testing.T, home string) {
+	t.Helper()
+	assert.FileExists(t, filepath.Join(home, "projects", "keep"))
+	assert.FileExists(t, filepath.Join(home, "rules_go", "keep"))
+}
+
+// On a case-insensitive filesystem a link spelled with different case still
+// names the home directory; the guard compares file identity, not text.
+func TestClearCmd_RefusesCaseVariantHomeLink(t *testing.T) {
+	probe := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(probe, "a"), nil, 0o644))
+	if _, err := os.Stat(filepath.Join(probe, "A")); err != nil {
+		t.Skip("temp filesystem is case-sensitive")
+	}
+
+	parent, home := homeSandbox(t)
+	cacheDir := filepath.Join(parent, "cache")
+	require.NoError(t, os.MkdirAll(cacheDir, 0o755))
+	if err := os.Symlink(filepath.Join(parent, "HOME"), filepath.Join(cacheDir, "modules")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	_, err := runClearCmd(t, "", "--cache-dir="+cacheDir, "--force")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "home directory")
+	assertHomeIntact(t, home)
+}
+
+// With no determinable home directory the guard refuses instead of being
+// skipped.
+func TestClearCmd_RefusesWithoutHome(t *testing.T) {
+	parent, home := homeSandbox(t)
+	t.Setenv("HOME", "")
+	t.Setenv("USERPROFILE", "")
+	orig := lookupHome
+	lookupHome = func() (string, error) { return "", errors.New("no home") }
+	t.Cleanup(func() { lookupHome = orig })
+
+	cacheDir := filepath.Join(parent, "cache")
+	createMockCacheEntry(t, cacheDir, "rules_go", "1.0", 10)
+
+	_, err := runClearCmd(t, "", "--cache-dir="+cacheDir, "--force")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "set HOME")
+	assert.DirExists(t, filepath.Join(cacheDir, "modules", "rules_go"))
+	assertHomeIntact(t, home)
+}
+
+// When HOME is unset the guard falls back to the account's home directory.
+func TestClearCmd_HomeFallbackStillGuards(t *testing.T) {
+	parent, home := homeSandbox(t)
+	t.Setenv("HOME", "")
+	t.Setenv("USERPROFILE", "")
+	orig := lookupHome
+	lookupHome = func() (string, error) { return home, nil } // stands in for user.Current
+	t.Cleanup(func() { lookupHome = orig })
+
+	cacheDir := filepath.Join(parent, "cache")
+	require.NoError(t, os.MkdirAll(cacheDir, 0o755))
+	if err := os.Symlink(home, filepath.Join(cacheDir, "modules")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	_, err := runClearCmd(t, "", "--cache-dir="+cacheDir, "--force")
+	require.Error(t, err)
+	assertHomeIntact(t, home)
+}
+
+// --cache-dir naming the home directory (whose modules directory is then a
+// real child of home) is refused for the clear-all path, and so is a cache
+// directory that is a parent of home.
+func TestClearCmd_RefusesCacheDirAtHome(t *testing.T) {
+	parent, home := homeSandbox(t)
+	writeFiles(t, home, map[string]string{"modules/rules_go/1.0/MODULE.bazel": "x"})
+
+	for _, dir := range []string{home, parent} {
+		if dir == parent {
+			writeFiles(t, parent, map[string]string{"modules/rules_go/keep": "x"})
+		}
+		_, err := runClearCmd(t, "", "--cache-dir="+dir, "--force")
+		require.Error(t, err, dir)
+		assert.Contains(t, err.Error(), "home directory", dir)
+	}
+	assertHomeIntact(t, home)
+	assert.FileExists(t, filepath.Join(home, "modules", "rules_go", "1.0", "MODULE.bazel"))
+	assert.FileExists(t, filepath.Join(parent, "modules", "rules_go", "keep"))
 }
