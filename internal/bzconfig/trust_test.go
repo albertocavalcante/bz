@@ -31,16 +31,16 @@ func TestCheckProjectConfigTrust(t *testing.T) {
 		{name: "file and directory owned by root", owners: map[string]int{cfg: 0, "/ws": 0}},
 		{
 			name: "owned by another user", owners: map[string]int{cfg: 2000}, wantReason: ReasonFileOwner,
-			wantErr: "owned by uid 2000, not you (uid 1000) or root; fix: remove it or have it owned by you (chown 1000 /ws/.bz.toml)",
+			wantErr: "owned by uid 2000, not you (uid 1000) or root; fix: recreate it as yourself, or have an administrator change its owner (it belongs to uid 2000),",
 		},
 		{
 			name: "group-writable file", modes: map[string]fs.FileMode{cfg: 0o664}, wantReason: ReasonFileWritable,
-			wantErr: "writable by group or others (mode -rw-rw-r--); fix: chmod go-w /ws/.bz.toml,",
+			wantErr: "writable by group or others (mode -rw-rw-r--); fix: chmod go-w -- '/ws/.bz.toml',",
 		},
 		{name: "world-writable file", modes: map[string]fs.FileMode{cfg: 0o646}, wantReason: ReasonFileWritable},
 		{
 			name: "group-writable directory", modes: map[string]fs.FileMode{"/ws": fs.ModeDir | 0o775}, wantReason: ReasonDirWritable,
-			wantErr: "its directory /ws is writable by group or others (mode -rwxrwxr-x) and is not a sticky directory holding a file you own; fix: chmod go-w /ws,",
+			wantErr: "its directory /ws is writable by group or others (mode -rwxrwxr-x) and is not a sticky directory holding a file you own; fix: chmod go-w -- '/ws',",
 		},
 		{
 			name: "own file in a directory owned by another user", owners: map[string]int{"/ws": 2000}, wantReason: ReasonDirOwner,
@@ -49,7 +49,8 @@ func TestCheckProjectConfigTrust(t *testing.T) {
 		{name: "sticky shared directory, own file", modes: map[string]fs.FileMode{"/ws": fs.ModeDir | fs.ModeSticky | 0o777}, owners: map[string]int{"/ws": 0}},
 		{
 			name: "sticky directory owned by another user, own file", modes: map[string]fs.FileMode{"/ws": fs.ModeDir | fs.ModeSticky | 0o777},
-			owners: map[string]int{"/ws": 2000},
+			owners: map[string]int{"/ws": 2000}, wantReason: ReasonDirOwner,
+			wantErr: "its directory /ws is owned by uid 2000, not you (uid 1000) or root, so that user can replace the file; fix: keep the project in a directory you own,",
 		},
 		{
 			name: "sticky shared directory, root's file", modes: map[string]fs.FileMode{"/ws": fs.ModeDir | fs.ModeSticky | 0o777},
@@ -135,7 +136,7 @@ func TestCheckProjectConfigTrust_UmaskMessage(t *testing.T) {
 
 	_, err := CheckProjectConfigTrust(f.env(), "/ws/.bz.toml")
 	require.EqualError(t, err, "untrusted project config /ws/.bz.toml: the file and its directory /ws are writable by group or others "+
-		"(modes -rw-rw-r--, -rwxrwxr-x); fix: chmod go-w /ws/.bz.toml /ws, or list /ws in BZ_TRUSTED_CONFIG_DIRS if the shared setup is intended")
+		"(modes -rw-rw-r--, -rwxrwxr-x); fix: chmod go-w -- '/ws/.bz.toml' '/ws', or list /ws in BZ_TRUSTED_CONFIG_DIRS if the shared setup is intended")
 	var ue *UntrustedConfigError
 	require.ErrorAs(t, err, &ue)
 	assert.Equal(t, ReasonFileWritable, ue.Reason)
@@ -395,4 +396,124 @@ func TestCheckProjectConfigTrust_RealFilesystem(t *testing.T) {
 	t.Setenv(EnvTrustedConfigDirs, dir)
 	_, err = CheckProjectConfigTrust(env, path)
 	assert.NoError(t, err)
+}
+
+// TestCheckProjectConfigTrust_FixDependsOnOwnership: a command is
+// suggested only for what the user owns; anything else is described.
+func TestCheckProjectConfigTrust_FixDependsOnOwnership(t *testing.T) {
+	const cfg = "/ws/.bz.toml"
+	const tail = ", or list /ws in BZ_TRUSTED_CONFIG_DIRS if the shared setup is intended"
+	tests := []struct {
+		name   string
+		modes  map[string]fs.FileMode
+		owners map[string]int
+		want   string
+	}{
+		{
+			name: "file-writable, you own the file", modes: map[string]fs.FileMode{cfg: 0o664},
+			want: "untrusted project config /ws/.bz.toml: writable by group or others (mode -rw-rw-r--); fix: chmod go-w -- '/ws/.bz.toml'" + tail,
+		},
+		{
+			name: "file-writable, root owns the file", modes: map[string]fs.FileMode{cfg: 0o664}, owners: map[string]int{cfg: 0},
+			want: "untrusted project config /ws/.bz.toml: writable by group or others (mode -rw-rw-r--); fix: the file is owned by root: have an administrator run chmod go-w on it, or recreate it as yourself" + tail,
+		},
+		{
+			name: "dir-writable, you own the directory", modes: map[string]fs.FileMode{"/ws": fs.ModeDir | 0o775},
+			want: "untrusted project config /ws/.bz.toml: its directory /ws is writable by group or others (mode -rwxrwxr-x) and is not a sticky directory holding a file you own; fix: chmod go-w -- '/ws'" + tail,
+		},
+		{
+			name: "dir-writable, root owns the directory", modes: map[string]fs.FileMode{"/ws": fs.ModeDir | 0o775}, owners: map[string]int{"/ws": 0},
+			want: "untrusted project config /ws/.bz.toml: its directory /ws is writable by group or others (mode -rwxrwxr-x) and is not a sticky directory holding a file you own; fix: its directory is owned by root: keep the project in a directory you own" + tail,
+		},
+		{
+			name:  "root's file in root-owned sticky directory: never suggest chmod on the directory",
+			modes: map[string]fs.FileMode{"/ws": fs.ModeDir | fs.ModeSticky | 0o777}, owners: map[string]int{cfg: 0, "/ws": 0},
+			want: "untrusted project config /ws/.bz.toml: its directory /ws is writable by group or others (mode -rwxrwxrwx) and is not a sticky directory holding a file you own; fix: its directory is owned by root: keep the project in a directory you own" + tail,
+		},
+		{
+			name:  "both writable, you own the file, root owns the directory",
+			modes: map[string]fs.FileMode{cfg: 0o664, "/ws": fs.ModeDir | 0o775}, owners: map[string]int{"/ws": 0},
+			want: "untrusted project config /ws/.bz.toml: the file and its directory /ws are writable by group or others (modes -rw-rw-r--, -rwxrwxr-x); fix: chmod go-w -- '/ws/.bz.toml'; its directory is owned by root: keep the project in a directory you own" + tail,
+		},
+		{
+			name: "file-owner: another user's file", owners: map[string]int{cfg: 2000},
+			want: "untrusted project config /ws/.bz.toml: owned by uid 2000, not you (uid 1000) or root; fix: recreate it as yourself, or have an administrator change its owner (it belongs to uid 2000)" + tail,
+		},
+		{
+			name: "dir-owner: another user's directory", owners: map[string]int{"/ws": 2000},
+			want: "untrusted project config /ws/.bz.toml: its directory /ws is owned by uid 2000, not you (uid 1000) or root, so that user can replace the file; fix: keep the project in a directory you own" + tail,
+		},
+		{
+			name: "not-regular", modes: map[string]fs.FileMode{cfg: fs.ModeNamedPipe | 0o644},
+			want: "untrusted project config /ws/.bz.toml: not a regular file; fix: replace it with a regular file" + tail,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newFakeEnv()
+			f.files = map[string]string{cfg: "", "/ws/MODULE.bazel": ""}
+			for k, v := range tt.modes {
+				f.modes[k] = v
+			}
+			for k, v := range tt.owners {
+				f.owners[k] = v
+			}
+			_, err := CheckProjectConfigTrust(f.env(), cfg)
+			require.EqualError(t, err, tt.want)
+		})
+	}
+}
+
+func TestCheckProjectConfigTrust_SuggestedPathsAreQuoted(t *testing.T) {
+	const dir = "/ws dir/$(touch x)/it's/-n"
+	cfg := dir + "/.bz.toml"
+	f := newFakeEnv()
+	f.files = map[string]string{cfg: ""}
+	f.modes[cfg] = 0o664
+	f.modes[dir] = fs.ModeDir | 0o775
+
+	_, err := CheckProjectConfigTrust(f.env(), cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `fix: chmod go-w -- '/ws dir/$(touch x)/it'\''s/-n/.bz.toml' '/ws dir/$(touch x)/it'\''s/-n',`)
+}
+
+func TestShellQuote(t *testing.T) {
+	for in, want := range map[string]string{
+		"/plain": `'/plain'`,
+		"/a b":   `'/a b'`,
+		"$(x)":   `'$(x)'`,
+		"it's":   `'it'\''s'`,
+		"-rf":    `'-rf'`,
+		`"q"`:    `'"q"'`,
+		"":       `''`,
+	} {
+		assert.Equal(t, want, shellQuote(in), in)
+	}
+}
+
+func TestFindProjectConfig_SkippedMarkersWarnAndTrustedDirsCount(t *testing.T) {
+	// A checkout owned by another account, reached through group access.
+	setup := func() *fakeEnv {
+		f := newFakeEnv()
+		f.wd = "/srv/repo/pkg"
+		f.files = map[string]string{"/srv/repo/MODULE.bazel": "", "/srv/repo/.bz.toml": ""}
+		f.owners["/srv/repo/MODULE.bazel"] = 2000
+		f.owners["/srv/repo/.bz.toml"] = 2000
+		f.owners["/srv/repo"] = 2000
+		return f
+	}
+
+	got, warnings, err := FindProjectConfig(setup().env())
+	require.NoError(t, err)
+	assert.Empty(t, got, "the foreign workspace's policy does not apply")
+	require.Len(t, warnings, 1)
+	assert.Equal(t, "workspace marker /srv/repo/MODULE.bazel is owned by uid 2000, not you or root; ignored, "+
+		"so no project config from that workspace applies (list /srv/repo in BZ_TRUSTED_CONFIG_DIRS to trust it)", warnings[0])
+
+	f := setup()
+	f.vars[EnvTrustedConfigDirs] = "/srv/repo"
+	got, warnings, err = FindProjectConfig(f.env())
+	require.NoError(t, err)
+	assert.Equal(t, "/srv/repo/.bz.toml", got, "a trusted directory's marker counts and its config is trusted")
+	assert.Empty(t, warnings)
 }

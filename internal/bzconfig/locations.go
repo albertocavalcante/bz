@@ -213,9 +213,17 @@ func DefaultCacheDir(e Environment) string {
 //     makes that workspace's marker ignored. When home is unset or cannot
 //     be resolved, this rule is off.
 //   - On platforms with file ownership (not Windows), a marker not owned by
-//     the current user or root is skipped and the walk continues upward,
-//     so a marker planted in a shared directory cannot cut the search
-//     short or point it at a planted config.
+//     the current user or root is skipped, with a warning, and the walk
+//     continues upward, so a marker planted in a shared directory cannot
+//     cut the search short or point it at a planted config. The
+//     consequence: no project config applies from a workspace whose marker
+//     belongs to someone else (for example a checkout reached through
+//     group access, or any checkout when running as root) unless its
+//     directory is listed in BZ_TRUSTED_CONFIG_DIRS, which makes markers
+//     there count regardless of owner. On platforms that expose no
+//     ownership at all other than Windows (such as plan9 or js), a
+//     marker's owner is unknown, which is an error, so bz does not run
+//     inside a workspace there.
 //   - A file that is found must pass [CheckProjectConfigTrust]; an
 //     untrusted file is an [*UntrustedConfigError].
 //
@@ -239,93 +247,110 @@ func FindProjectConfig(e Environment) (string, []string, error) {
 	if err != nil {
 		return "", nil, err
 	}
-	dirs, err := projectSearchDirs(e, wd, homeDirs)
+	trusted, warnings, err := e.trustedDirs()
 	if err != nil {
-		return "", nil, err
+		return "", warnings, err
+	}
+	dirs, markerWarnings, err := projectSearchDirs(e, wd, homeDirs, trusted)
+	warnings = append(warnings, markerWarnings...)
+	if err != nil {
+		return "", warnings, err
 	}
 	for _, dir := range dirs {
 		primary := filepath.Join(dir, ProjectConfigName)
 		legacy := filepath.Join(dir, LegacyProjectConfigName)
 		hasPrimary, err := e.regularFile(primary)
 		if err != nil {
-			return "", nil, err
+			return "", warnings, err
 		}
 		hasLegacy, err := e.regularFile(legacy)
 		if err != nil {
-			return "", nil, err
+			return "", warnings, err
 		}
 		switch {
 		case hasPrimary && hasLegacy:
-			return "", nil, fmt.Errorf("both %s and %s exist; keep only one (%s is preferred)",
+			return "", warnings, fmt.Errorf("both %s and %s exist; keep only one (%s is preferred)",
 				primary, legacy, ProjectConfigName)
 		case hasPrimary:
-			warnings, err := CheckProjectConfigTrust(e, primary)
-			return primary, warnings, err
+			return primary, warnings, e.checkTrust(primary, trusted)
 		case hasLegacy:
-			warnings, err := CheckProjectConfigTrust(e, legacy)
-			return legacy, warnings, err
+			return legacy, warnings, e.checkTrust(legacy, trusted)
 		}
 	}
-	return "", nil, nil
+	return "", warnings, nil
 }
 
 // projectSearchDirs returns the directories to search, nearest first. The
-// innermost directory with a workspace marker is the root, so a nested
-// workspace (a MODULE.bazel below the repository root) ends the search.
-// Reaching the home directory or one of its ancestors ends the walk as
-// "outside a workspace".
-func projectSearchDirs(e Environment, wd string, homeDirs []fs.FileInfo) ([]string, error) {
-	var dirs []string
+// innermost directory with an accepted workspace marker is the root, so a
+// nested workspace (a MODULE.bazel below the repository root) ends the
+// search. Reaching the home directory or one of its ancestors ends the
+// walk as "outside a workspace". It also returns one warning per skipped
+// marker.
+func projectSearchDirs(e Environment, wd string, homeDirs, trusted []fs.FileInfo) ([]string, []string, error) {
+	var dirs, warnings []string
 	for dir := wd; ; {
 		home, err := e.isAnyOf(dir, homeDirs)
 		if err != nil {
-			return nil, err
+			return nil, warnings, err
 		}
 		if home {
-			return []string{wd}, nil
+			return []string{wd}, warnings, nil
 		}
 		dirs = append(dirs, dir)
-		root, err := isWorkspaceRoot(e, dir)
+		root, skipped, err := isWorkspaceRoot(e, dir, trusted)
+		warnings = append(warnings, skipped...)
 		if err != nil {
-			return nil, err
+			return nil, warnings, err
 		}
 		if root {
-			return dirs, nil
+			return dirs, warnings, nil
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
 			// No workspace root above wd: only search wd itself.
-			return []string{wd}, nil
+			return []string{wd}, warnings, nil
 		}
 		dir = parent
 	}
 }
 
-// isWorkspaceRoot reports whether dir holds a workspace marker file. A
-// marker that is a directory is not a marker; one that cannot be checked
-// is an error, so the walk never continues past an unreadable root.
-// Outside Windows, a marker not owned by the current user or root is
-// skipped; one whose owner cannot be determined is an error.
-func isWorkspaceRoot(e Environment, dir string) (bool, error) {
+// isWorkspaceRoot reports whether dir holds an accepted workspace marker
+// file. A marker that is a directory is not a marker; one that cannot be
+// checked is an error, so the walk never continues past an unreadable
+// root. Outside Windows, a marker not owned by the current user or root is
+// skipped with a warning, unless dir is a trusted directory; one whose
+// owner cannot be determined is an error.
+func isWorkspaceRoot(e Environment, dir string, trusted []fs.FileInfo) (bool, []string, error) {
+	var warnings []string
 	for _, m := range workspaceMarkers {
 		path := filepath.Join(dir, m)
 		fi, ok, err := e.stat(path)
 		if err != nil {
-			return false, err
+			return false, warnings, err
 		}
 		if !ok || fi.IsDir() {
 			continue
 		}
 		if e.GOOS == goosWindows {
-			return true, nil
+			return true, warnings, nil
 		}
 		owner, known := e.FileOwner(fi)
 		if !known {
-			return false, fmt.Errorf("cannot determine the owner of workspace marker %s", path)
+			return false, warnings, fmt.Errorf("cannot determine the owner of workspace marker %s", path)
 		}
 		if uid := e.Getuid(); owner == uid || owner == 0 {
-			return true, nil
+			return true, warnings, nil
 		}
+		inTrusted, err := e.isAnyOf(dir, trusted)
+		if err != nil {
+			return false, warnings, err
+		}
+		if inTrusted {
+			return true, warnings, nil
+		}
+		warnings = append(warnings, fmt.Sprintf(
+			"workspace marker %s is owned by uid %d, not you or root; ignored, so no project config from that workspace applies (list %s in %s to trust it)",
+			path, owner, dir, EnvTrustedConfigDirs))
 	}
-	return false, nil
+	return false, warnings, nil
 }
