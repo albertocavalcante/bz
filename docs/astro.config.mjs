@@ -27,9 +27,9 @@ export default defineConfig({
         },
       },
       description: 'Bazel module management CLI with Starlark-based configuration',
-      social: {
-        github: 'https://github.com/albertocavalcante/bz',
-      },
+      social: [
+        { icon: 'github', label: 'GitHub', href: 'https://github.com/albertocavalcante/bz' },
+      ],
       editLink: {
         baseUrl: 'https://github.com/albertocavalcante/bz/edit/main/docs/',
       },
