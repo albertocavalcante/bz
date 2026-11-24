@@ -53,6 +53,7 @@ type HTTPPublisher struct {
 	base       *neturl.URL // parsed once; no query or fragment
 	basePath   string      // base.EscapedPath() without trailing slashes
 	httpClient *http.Client
+	transport  *http.Transport // owned by this publisher; released by Close
 	auth       *Auth
 }
 
@@ -84,13 +85,22 @@ func NewHTTPPublisher(baseURL string, auth *Auth) (*HTTPPublisher, error) {
 		return nil, fmt.Errorf("invalid base URL %s: it must not contain a query or fragment", redactedBase(u))
 	}
 
+	// Each publisher owns its transport. The zero-value http.Client falls
+	// back to the process-wide http.DefaultTransport, which anything in the
+	// process can flush with CloseIdleConnections (httptest.Server.Close
+	// does), failing in-flight requests with "http: CloseIdleConnections
+	// called". Cloning keeps the default dialer, proxy and TLS settings.
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+
 	return &HTTPPublisher{
 		base:     u,
 		basePath: strings.TrimRight(u.EscapedPath(), "/"),
 		httpClient: &http.Client{
-			Timeout: httpTimeout,
+			Timeout:   httpTimeout,
+			Transport: transport,
 		},
-		auth: auth,
+		transport: transport,
+		auth:      auth,
 	}, nil
 }
 
@@ -174,8 +184,10 @@ func (p *HTTPPublisher) Type() string {
 	return TypeHTTPPut
 }
 
-// Close releases any resources (no-op for HTTP publisher).
+// Close releases this publisher's idle connections. It never touches the
+// process-wide default transport or other publishers.
 func (p *HTTPPublisher) Close() error {
+	p.transport.CloseIdleConnections()
 	return nil
 }
 
