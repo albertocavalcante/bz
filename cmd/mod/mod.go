@@ -2,11 +2,11 @@
 package mod
 
 import (
-	"fmt"
 	"sync"
 
 	"github.com/spf13/cobra"
 
+	"github.com/albertocavalcante/bz/internal/bzconfig"
 	"github.com/albertocavalcante/bz/internal/cli"
 	"github.com/albertocavalcante/bz/internal/cmdutil"
 	"github.com/albertocavalcante/bz/internal/registry"
@@ -29,10 +29,14 @@ func resolvedRegistryURL() string {
 // createNetworkAwareRegistry creates a registry that respects offline mode settings.
 // It returns the registry and any error encountered.
 func createNetworkAwareRegistry() (registry.Registry, error) {
+	if err := checkRegistryFlag(); err != nil {
+		return nil, err
+	}
+
 	// Create the inner registry
 	inner, err := registry.New(resolvedRegistryURL())
 	if err != nil {
-		return nil, fmt.Errorf("invalid registry: %w", err)
+		return nil, err
 	}
 
 	// Wrap with network-aware registry that respects CLI options
@@ -46,6 +50,17 @@ func createNetworkAwareRegistry() (registry.Registry, error) {
 	return registry.NewNetworkAware(inner, nil, opts), nil
 }
 
+// registryFlagSource names the flag in registry validation errors.
+const registryFlagSource = "flag --registry"
+
+// checkRegistryFlag refuses an invalid --registry before any other work.
+func checkRegistryFlag() error {
+	if registryFlag == "" {
+		return nil
+	}
+	return bzconfig.ValidateRegistry(registryFlagSource, registryFlag)
+}
+
 // Cmd is the root command for module operations
 var Cmd = &cobra.Command{
 	Use:   "mod",
@@ -57,6 +72,15 @@ Commands for adding, removing, listing, and updating bazel_dep entries.`,
 	SuggestionsMinimumDistance: 2,
 	// Require a subcommand
 	RunE: cmdutil.RequireSubcommand,
+	// Replaces the root hook for this subtree, so run it first.
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		if root := cmd.Root(); root.PersistentPreRunE != nil {
+			if err := root.PersistentPreRunE(cmd, args); err != nil {
+				return err
+			}
+		}
+		return checkRegistryFlag()
+	},
 }
 
 func configureModCmd() {

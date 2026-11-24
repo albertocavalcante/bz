@@ -359,6 +359,16 @@ func urlProblem(err error) string {
 	return "not a valid URL"
 }
 
+// ValidateRegistry checks a registry value taken from source (for example
+// "flag --registry") with the rules that apply to configured registries. The
+// error names the source and shows the value without credentials.
+func ValidateRegistry(source, raw string) error {
+	if _, err := checkRegistryURL(raw); err != nil {
+		return fmt.Errorf("invalid registry in %s: %w", source, err)
+	}
+	return nil
+}
+
 // checkRegistryURL validates a registry value and returns it with
 // surrounding whitespace removed, which is the form callers store (the
 // registry client matches URL prefixes on the raw string). It accepts the

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/albertocavalcante/bz/internal/bzconfig"
 	"github.com/albertocavalcante/bz/internal/coord"
 )
 
@@ -264,7 +265,7 @@ func (r *HTTPRegistry) fetch(ctx context.Context, url string) ([]byte, error) {
 
 	resp, err := r.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("fetch %s: %w", url, err)
+		return nil, fmt.Errorf("fetch %s: %w", bzconfig.RedactURL(url), err)
 	}
 	defer resp.Body.Close()
 
@@ -273,7 +274,7 @@ func (r *HTTPRegistry) fetch(ctx context.Context, url string) ([]byte, error) {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP %d from %s", resp.StatusCode, url)
+		return nil, fmt.Errorf("HTTP %d from %s", resp.StatusCode, bzconfig.RedactURL(url))
 	}
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxFetchResponseBytes))

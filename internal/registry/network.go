@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/albertocavalcante/bz/internal/bzconfig"
 	"github.com/albertocavalcante/bz/internal/cli"
 )
 
@@ -27,9 +28,9 @@ type NetworkError struct {
 // Error returns a short error message for programmatic use.
 func (e *NetworkError) Error() string {
 	if e.Err != nil {
-		return fmt.Sprintf("%s: %s: %v", e.Operation, e.URL, e.Err)
+		return fmt.Sprintf("%s: %s: %v", e.Operation, bzconfig.RedactURL(e.URL), e.Err)
 	}
-	return fmt.Sprintf("%s: %s", e.Operation, e.URL)
+	return fmt.Sprintf("%s: %s", e.Operation, bzconfig.RedactURL(e.URL))
 }
 
 // Unwrap returns the underlying error for errors.Is/As support.
@@ -47,7 +48,7 @@ func (e *NetworkError) UserFriendlyError() string {
 	sb.WriteString(" Cannot reach registry")
 	if e.URL != "" {
 		sb.WriteString(" (")
-		sb.WriteString(e.URL)
+		sb.WriteString(bzconfig.RedactURL(e.URL))
 		sb.WriteString(")")
 	}
 	sb.WriteString("\n\n")

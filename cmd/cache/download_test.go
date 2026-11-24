@@ -265,3 +265,51 @@ func TestParseModuleArg(t *testing.T) {
 		})
 	}
 }
+
+func TestDownloadCmd_RegistryFlagNeverPrintsCredentials(t *testing.T) {
+	const help = "\nhelp: want https://host[:port]/path, file:///abs/path or an absolute path"
+	const prefix = "invalid registry in flag --registry: "
+	const secret = "S3CR3T"
+
+	tests := []struct {
+		name    string
+		value   string
+		wantErr string
+	}{
+		{
+			name:    "credentialed URL that is unreachable",
+			value:   "https://user:" + secret + "@127.0.0.1:1/",
+			wantErr: "1 of 1 module(s) failed to download",
+		},
+		{
+			name:    "unparsable credentialed value",
+			value:   "https://user:" + secret + "@",
+			wantErr: prefix + `"https://<redacted>": missing host` + help,
+		},
+		{
+			name:    "plain bad value",
+			value:   "bad",
+			wantErr: prefix + `"bad": want an https://, http:// or file:// URL or an absolute path`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			downloadAll = false
+			downloadJSON = true
+			t.Cleanup(func() { downloadJSON = false })
+			cmd := resetDownloadCmd()
+			var out bytes.Buffer
+			cmd.SetOut(&out)
+			cmd.SetErr(&out)
+			cmd.SetArgs([]string{"--registry=" + tt.value, "--cache-dir=" + t.TempDir(), "rules_go@0.50.1"})
+
+			err := cmd.Execute()
+			shown := out.String()
+			if err != nil {
+				shown += err.Error()
+			}
+			require.EqualError(t, err, tt.wantErr)
+			assert.NotContains(t, shown, secret)
+		})
+	}
+}
