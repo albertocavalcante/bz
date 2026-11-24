@@ -201,7 +201,9 @@ jobs:
           retention-days: 3
 
   release:
-    needs: [check-changes, build]
+    # test is required so a failing suite never replaces the nightly release;
+    # a skipped needs (no changes) also skips this job.
+    needs: [check-changes, test, build]
     if: needs.check-changes.outputs.should_build == 'true'
     runs-on: ubuntu-24.04
     name: Create Release
