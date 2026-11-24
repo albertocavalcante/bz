@@ -42,7 +42,7 @@ func CheckProjectConfigTrust(e Environment, path string) error {
 	if !ok || !fi.Mode().IsRegular() {
 		return untrusted(path, target, "not a regular file")
 	}
-	if e.GOOS == "windows" {
+	if e.GOOS == goosWindows {
 		return nil
 	}
 

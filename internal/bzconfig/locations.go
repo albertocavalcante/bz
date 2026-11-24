@@ -17,6 +17,9 @@ const (
 	LegacyProjectConfigName = ".bzconfig.toml"
 )
 
+// goosWindows is the GOOS value that selects Windows locations and rules.
+const goosWindows = "windows"
+
 // workspaceMarkers identify a Bazel workspace root; the project file search
 // stops there.
 var workspaceMarkers = []string{"MODULE.bazel", "REPO.bazel", "WORKSPACE.bazel", "WORKSPACE"}
@@ -121,7 +124,7 @@ func (e Environment) regularFile(path string) (bool, error) {
 // /etc/bz/config.toml, or %ProgramData%\bz\config.toml on Windows (none
 // when ProgramData is unset).
 func SystemConfigPath(goos string, lookup func(string) (string, bool)) string {
-	if goos == "windows" {
+	if goos == goosWindows {
 		if lookup == nil {
 			return ""
 		}
@@ -145,7 +148,7 @@ func UserConfigPath(e Environment) string {
 	if xdg := e.getenv("XDG_CONFIG_HOME"); xdg != "" && filepath.IsAbs(xdg) {
 		return filepath.Join(xdg, "bz", "config.toml")
 	}
-	if e.GOOS == "windows" {
+	if e.GOOS == goosWindows {
 		if appData := e.getenv("AppData"); appData != "" {
 			return filepath.Join(appData, "bz", "config.toml")
 		}
@@ -178,7 +181,7 @@ func DefaultCacheDir(e Environment) string {
 	if xdg := e.getenv("XDG_CACHE_HOME"); xdg != "" && filepath.IsAbs(xdg) {
 		return filepath.Join(xdg, "bz")
 	}
-	if e.GOOS == "windows" {
+	if e.GOOS == goosWindows {
 		if local := e.getenv("LocalAppData"); local != "" {
 			return filepath.Join(local, "bz", "cache")
 		}
