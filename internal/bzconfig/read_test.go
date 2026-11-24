@@ -170,7 +170,7 @@ func TestMessagesRenderHostilePaths(t *testing.T) {
 
 	assert.Equal(t, "project config "+shown, Source{Layer: LayerProject, Origin: bad}.String())
 
-	_, err := ParseFile(LayerProject, bad, []byte("[network\n"), "")
+	_, _, err := ParseFile(LayerProject, bad, []byte("[network\n"), "")
 	require.EqualError(t, err, "parsing project config "+shown+": invalid TOML at line 1, column 9: invalid table name")
 
 	m := NetworkMode("bogus")

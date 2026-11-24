@@ -337,3 +337,35 @@ func TestLoad_EmptyTTLIsAllowed(t *testing.T) {
 	assert.Equal(t, "", eff.Cache.TTL)
 	assert.Equal(t, LayerProject, eff.Source(KeyCacheTTL).Layer)
 }
+
+func TestParseFile_UnknownKeysAreWarnings(t *testing.T) {
+	f := newFakeEnv()
+	f.files[projectFile] = "[network]\nregistery = \"https://typo.example\"\n\n[comands]\ndisabled = [\"audit\"]\n"
+
+	eff, warnings, err := Load(f.env(), Layer{Kind: LayerFlag})
+	require.NoError(t, err)
+	assert.Equal(t, DefaultRegistry, eff.Network.Registry)
+	require.Len(t, warnings, 2)
+	joined := strings.Join(warnings, "\n")
+	assert.Contains(t, joined, projectFile)
+	assert.Contains(t, joined, `"network.registery"`)
+	assert.Contains(t, joined, `"comands"`)
+}
+
+func TestParseFile_NoWarningsForKnownKeys(t *testing.T) {
+	data := "[network]\nmode = \"online\"\nregistry = \"https://r.example\"\nfallback_registries = []\ntimeout = \"30s\"\n" +
+		"[cache]\ndir = \"/c\"\nttl = \"\"\n[commands]\ndisabled = []\n"
+	_, warnings, err := ParseFile(LayerProject, projectFile, []byte(data), "/home/u")
+	require.NoError(t, err)
+	assert.Empty(t, warnings)
+}
+
+func TestLoad_TrustedConfigDirsWarningsAreReported(t *testing.T) {
+	f := newFakeEnv()
+	f.files[projectFile] = "[network]\nmode = \"online\"\n"
+	f.vars[EnvTrustedConfigDirs] = "/missing"
+	_, warnings, err := Load(f.env(), Layer{Kind: LayerFlag})
+	require.NoError(t, err)
+	require.Len(t, warnings, 1)
+	assert.Contains(t, warnings[0], `"/missing" does not exist`)
+}

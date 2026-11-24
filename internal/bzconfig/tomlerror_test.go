@@ -33,7 +33,7 @@ func TestParseFile_ErrorMessages(t *testing.T) {
 		{"column counts characters", "[network]\nmode = \"é€\" x\n", "invalid TOML at line 2, column 12: expected the end of the line after a value"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := ParseFile(LayerProject, "/p/.bz.toml", []byte(tc.data), "")
+			_, _, err := ParseFile(LayerProject, "/p/.bz.toml", []byte(tc.data), "")
 			require.EqualError(t, err, prefix+tc.want)
 		})
 	}
@@ -55,7 +55,7 @@ func TestParseErrorsNeverEchoContent(t *testing.T) {
 		"network = \"hunter2-secret\"\n",
 		"[commands]\ndisabled = [\"audit\", { hunter2_secret_key = 1 }]\n",
 	} {
-		_, err := ParseFile(LayerProject, "/p/.bz.toml", []byte(data), "")
+		_, _, err := ParseFile(LayerProject, "/p/.bz.toml", []byte(data), "")
 		require.Error(t, err, data)
 		assert.NotContains(t, err.Error(), "hunter2", data)
 	}

@@ -435,7 +435,8 @@ func LoadLayers(e Environment) (*Loaded, error) {
 		if !ok {
 			continue
 		}
-		layer, err := ParseFile(f.kind, f.path, data, home)
+		layer, fileWarnings, err := ParseFile(f.kind, f.path, data, home)
+		out.Warnings = append(out.Warnings, fileWarnings...)
 		if err != nil {
 			return out, err
 		}

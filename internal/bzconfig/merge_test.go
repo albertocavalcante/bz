@@ -10,7 +10,7 @@ import (
 
 func parse(t *testing.T, kind LayerKind, path, data string) Layer {
 	t.Helper()
-	l, err := ParseFile(kind, path, []byte(data), "/home/u")
+	l, _, err := ParseFile(kind, path, []byte(data), "/home/u")
 	require.NoError(t, err)
 	return l
 }
@@ -154,7 +154,7 @@ disabled = ["audit", "search"]
 
 func TestParseFile_Errors(t *testing.T) {
 	for _, data := range []string{"[network\n", "this is not valid toml [[[", "[network]\nmode = 1\n"} {
-		_, err := ParseFile(LayerProject, "/p/.bzconfig.toml", []byte(data), "")
+		_, _, err := ParseFile(LayerProject, "/p/.bzconfig.toml", []byte(data), "")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "/p/.bzconfig.toml")
 	}

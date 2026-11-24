@@ -29,14 +29,31 @@ type fileSchema struct {
 
 // ParseFile decodes one configuration file into a layer of the given kind.
 //
-// A leading "~" in [cache] dir is expanded against home, and a relative
+// Unknown keys are returned as warnings (a mistyped security setting must
+// not be silently ignored). A leading "~" in [cache] dir is expanded
+// against home, and a relative
 // [cache] dir is resolved against the file's directory. Entries of
 // [commands] disabled are trimmed and empty entries dropped, as for
 // BZ_DISABLE_COMMANDS.
-func ParseFile(kind LayerKind, path string, data []byte, home string) (Layer, error) {
+func ParseFile(kind LayerKind, path string, data []byte, home string) (Layer, []string, error) {
 	var s fileSchema
-	if _, err := toml.Decode(string(data), &s); err != nil {
-		return Layer{}, fmt.Errorf("parsing %s %s: %s", kind, DisplayPath(path), describeTOMLError(err, data))
+	md, err := toml.Decode(string(data), &s)
+	if err != nil {
+		return Layer{}, nil, fmt.Errorf("parsing %s %s: %s", kind, DisplayPath(path), describeTOMLError(err, data))
+	}
+
+	// Report each unknown table or key once: skip keys below an unknown
+	// table ("comands.disabled" when "comands" is reported).
+	var warnings []string
+	unknown := map[string]bool{}
+	for _, k := range md.Undecoded() {
+		unknown[k.String()] = true
+	}
+	for _, k := range md.Undecoded() {
+		if len(k) > 1 && unknown[k[:len(k)-1].String()] {
+			continue
+		}
+		warnings = append(warnings, fmt.Sprintf("%s %s: unknown key %q ignored", kind, DisplayPath(path), k.String()))
 	}
 
 	l := Layer{Kind: kind, Origin: path}
@@ -64,7 +81,7 @@ func ParseFile(kind LayerKind, path string, data []byte, home string) (Layer, er
 		}
 		l.Settings.Disabled = &list
 	}
-	return l, nil
+	return l, warnings, nil
 }
 
 // ExpandHome replaces a leading "~" (alone or followed by a path separator)

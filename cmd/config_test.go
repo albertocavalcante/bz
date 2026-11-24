@@ -71,6 +71,16 @@ func TestRun_ConfigFilesAreRead(t *testing.T) {
 	})
 }
 
+func TestRun_UnknownConfigKeyWarns(t *testing.T) {
+	configWorkspace(t, "[network]\nregistery = \"https://typo.example\"\n", "")
+
+	_, stderr, code := runCLI(t, "version")
+	assert.Equal(t, 0, code)
+	assert.Contains(t, stderr, "Warning:")
+	assert.Contains(t, stderr, ".bz.toml")
+	assert.Contains(t, stderr, `unknown key "network.registery"`)
+}
+
 func TestRun_BothProjectFileNamesIsAnError(t *testing.T) {
 	ws, _ := configWorkspace(t, "[network]\nmode = \"offline\"\n", "")
 	require.NoError(t, os.WriteFile(filepath.Join(ws, ".bzconfig.toml"), []byte(""), 0o644))

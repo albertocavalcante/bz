@@ -41,6 +41,8 @@ Settings in later layers override earlier ones; see
 [Configuration Precedence](#configuration-precedence).
 
 <Aside type="caution">
+Unknown keys or tables, such as `registery` or `[comands]`, do not stop bz: it
+prints a `Warning:` line on stderr naming the file and key, and ignores the key.
 A malformed file, an invalid value, an untrusted file or a problem locating the
 project file stops the command before it runs, with one `Error:` line that names
 the file or variable. Invalid values include an unknown `mode`, a `timeout` or
