@@ -201,3 +201,84 @@ func TestClearCmd_SymlinkedModuleDoesNotFollow(t *testing.T) {
 	_, err = os.Lstat(filepath.Join(cacheDir, "modules", "rules_go"))
 	assert.True(t, os.IsNotExist(err), "symlink should be removed, got %v", err)
 }
+
+// Clearing the whole cache removes only module-named directories.
+func TestClearCmd_AllSkipsNonModuleEntries(t *testing.T) {
+	cacheDir := t.TempDir()
+	createMockCacheEntry(t, cacheDir, "rules_go", "1.0", 10)
+	createMockCacheEntry(t, cacheDir, "abseil-cpp", "20240116.2", 10)
+	modules := filepath.Join(cacheDir, "modules")
+	writeFiles(t, modules, map[string]string{
+		".git/config":       "[core]",
+		"Not_A_Module/keep": "x",
+		"has space/keep":    "x",
+	})
+
+	out, err := runClearCmd(t, "", "--cache-dir="+cacheDir, "--force", "--json")
+	require.NoError(t, err, out)
+	var result clearResult
+	require.NoError(t, json.Unmarshal([]byte(out), &result), out)
+	assert.Equal(t, 2, result.ModulesCleared)
+	assert.ElementsMatch(t, []string{"rules_go", "abseil-cpp"}, result.Modules)
+	assert.Equal(t, 3, result.Skipped)
+	assert.ElementsMatch(t, []string{".git", "Not_A_Module", "has space"}, dirNames(t, modules))
+
+	createMockCacheEntry(t, cacheDir, "rules_go", "1.0", 10)
+	out, err = runClearCmd(t, "", "--cache-dir="+cacheDir, "--force")
+	require.NoError(t, err, out)
+	assert.Contains(t, out, "Skipping 3 entries")
+	assert.FileExists(t, filepath.Join(modules, ".git", "config"))
+	assert.NoDirExists(t, filepath.Join(modules, "rules_go"))
+}
+
+// A modules directory that resolves to the home directory is refused
+// before anything is deleted.
+func TestClearCmd_RefusesHomeDirectory(t *testing.T) {
+	parent := t.TempDir()
+	home := filepath.Join(parent, "home")
+	writeFiles(t, home, map[string]string{"projects/keep": "x", "rules_go/keep": "x"})
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	cacheDir := filepath.Join(parent, "cache")
+	require.NoError(t, os.MkdirAll(cacheDir, 0o755))
+	if err := os.Symlink(home, filepath.Join(cacheDir, "modules")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	for _, args := range [][]string{{"--force"}, {"--force", "rules_go"}} {
+		_, err := runClearCmd(t, "", append([]string{"--cache-dir=" + cacheDir}, args...)...)
+		require.Error(t, err, args)
+		assert.Contains(t, err.Error(), "home directory", args)
+	}
+	assert.FileExists(t, filepath.Join(home, "projects", "keep"))
+	assert.FileExists(t, filepath.Join(home, "rules_go", "keep"))
+
+	// A parent of the home directory is refused too.
+	require.NoError(t, os.Remove(filepath.Join(cacheDir, "modules")))
+	require.NoError(t, os.Symlink(parent, filepath.Join(cacheDir, "modules")))
+	_, err := runClearCmd(t, "", "--cache-dir="+cacheDir, "--force")
+	require.Error(t, err)
+	assert.DirExists(t, home)
+}
+
+// checkModulesDirSafe is tested directly for the filesystem root so a
+// regression can never turn into a real deletion.
+func TestCheckModulesDirSafe(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	root := string(filepath.Separator)
+	if v := filepath.VolumeName(os.TempDir()); v != "" {
+		root = v + string(filepath.Separator)
+	}
+	assert.ErrorContains(t, checkModulesDirSafe(root), "filesystem root")
+
+	link := filepath.Join(t.TempDir(), "modules")
+	if err := os.Symlink(root, link); err == nil {
+		assert.ErrorContains(t, checkModulesDirSafe(link), "filesystem root")
+	}
+
+	ok := filepath.Join(t.TempDir(), "modules")
+	require.NoError(t, os.MkdirAll(ok, 0o755))
+	assert.NoError(t, checkModulesDirSafe(ok))
+}

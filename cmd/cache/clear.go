@@ -55,6 +55,9 @@ type clearResult struct {
 	BytesCleared   int64    `json:"bytes_cleared"`
 	SizeCleared    string   `json:"size_cleared"`
 	Modules        []string `json:"modules,omitempty"`
+	// Skipped counts cache entries left in place because their names are
+	// not valid module names (only when clearing the whole cache).
+	Skipped int `json:"skipped,omitempty"`
 }
 
 func runClear(cmd *cobra.Command, args []string) error {
@@ -86,27 +89,22 @@ func runClear(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Determine what to clear
-	var modulesToClear []string
-	if len(args) > 0 {
-		// Clear specific modules
-		modulesToClear = args
-	} else {
-		// Clear all modules
-		entries, err := os.ReadDir(modulesDir)
-		if err != nil {
-			return fmt.Errorf("failed to read cache directory: %w", err)
-		}
-		for _, entry := range entries {
-			if entry.IsDir() {
-				modulesToClear = append(modulesToClear, entry.Name())
-			}
-		}
+	if err := checkModulesDirSafe(modulesDir); err != nil {
+		return err
+	}
+
+	modulesToClear, skipped, err := selectClearTargets(modulesDir, args)
+	if err != nil {
+		return err
+	}
+	if skipped > 0 && !clearJSON {
+		fmt.Fprintf(out, "Skipping %d entr%s in %s that %s not module names.\n",
+			skipped, plural(skipped, "y", "ies"), modulesDir, plural(skipped, "is", "are"))
 	}
 
 	if len(modulesToClear) == 0 {
 		if clearJSON {
-			return printClearJSON(out, clearResult{})
+			return printClearJSON(out, clearResult{Skipped: skipped})
 		}
 		fmt.Fprintln(out, "Cache already empty.")
 		fmt.Fprintln(out, cli.Success("Cache cleared."))
@@ -132,6 +130,7 @@ func runClear(cmd *cobra.Command, args []string) error {
 	result := clearResult{
 		BytesCleared: totalSize,
 		SizeCleared:  formatSize(totalSize),
+		Skipped:      skipped,
 	}
 
 	// Deletes go through os.Root so that nothing outside modulesDir can be
@@ -165,6 +164,73 @@ func runClear(cmd *cobra.Command, args []string) error {
 	fmt.Fprintln(out, cli.Success("Cache cleared."))
 
 	return nil
+}
+
+// selectClearTargets returns the module directories to remove. Explicit
+// arguments (already validated) are used as given. When clearing the whole
+// cache, only directories whose names are valid module names are selected;
+// anything else (for example ".git" or stray user directories) is left in
+// place and counted in skipped.
+func selectClearTargets(modulesDir string, args []string) (names []string, skipped int, err error) {
+	if len(args) > 0 {
+		return args, 0, nil
+	}
+	entries, err := os.ReadDir(modulesDir)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to read cache directory: %w", err)
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		if coord.ValidateModuleName(entry.Name()) != nil {
+			skipped++
+			continue
+		}
+		names = append(names, entry.Name())
+	}
+	return names, skipped, nil
+}
+
+// checkModulesDirSafe refuses to clear when the modules directory resolves
+// (after following symlinks) to a filesystem root, the user's home
+// directory, or a parent of it.
+func checkModulesDirSafe(modulesDir string) error {
+	resolved, err := filepath.EvalSymlinks(modulesDir)
+	if err != nil {
+		return fmt.Errorf("resolve cache directory: %w", err)
+	}
+	resolved, err = filepath.Abs(resolved)
+	if err != nil {
+		return fmt.Errorf("resolve cache directory: %w", err)
+	}
+	if filepath.Dir(resolved) == resolved {
+		return fmt.Errorf("refusing to clear %s: it resolves to the filesystem root", modulesDir)
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" && containsPath(resolved, home) {
+		return fmt.Errorf("refusing to clear %s: it resolves to the home directory or one of its parents (%s)", modulesDir, resolved)
+	}
+	return nil
+}
+
+// containsPath reports whether dir is target or one of its parents, after
+// resolving symlinks in target.
+func containsPath(dir, target string) bool {
+	if t, err := filepath.EvalSymlinks(target); err == nil {
+		target = t
+	}
+	rel, err := filepath.Rel(dir, target)
+	if err != nil {
+		return false
+	}
+	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
+}
+
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
 }
 
 // validateClearArgs rejects module arguments that are not valid module
