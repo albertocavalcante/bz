@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -62,32 +62,11 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	content, err := os.ReadFile(modulePath)
-	if err != nil {
-		return fmt.Errorf("failed to read MODULE.bazel: %w", err)
-	}
-
-	f, err := module.LoadContent(modulePath, content)
+	ws, err := module.OpenWorkspace(modulePath)
 	if err != nil {
 		return err
 	}
-
-	included, err := includedDeps(f, modulePath)
-	if err != nil {
-		return err
-	}
-	for _, arg := range args {
-		name, _ := parseModuleArg(arg)
-		if o, ok := included[name]; ok {
-			return includedEditError(name, o)
-		}
-	}
-
-	// Build set of existing deps
-	existingDeps := make(map[string]bool)
-	for _, dep := range f.Deps {
-		existingDeps[dep.Name.String()] = true
-	}
+	defer ws.Close()
 
 	// Parse and validate modules to add
 	type depToAdd struct {
@@ -109,7 +88,10 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("version required: use %s@<version>", name)
 		}
 
-		if existingDeps[name] {
+		if decls := ws.File.Declarations(name); len(decls) > 0 {
+			if file := ws.RelPath(decls[0]); file != filepath.Base(modulePath) {
+				return fmt.Errorf("%s is already declared in %s:%d", name, file, decls[0].Pos.Start.Line)
+			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Skipping %s: already exists in MODULE.bazel\n", name)
 			continue
 		}
@@ -150,13 +132,8 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	for _, dep := range toAdd {
 		specs = append(specs, module.DepSpec{Name: dep.name, Version: dep.version, Dev: addDev})
 	}
-	newContent, err := module.AppendDeps(content, specs)
-	if err != nil {
-		return fmt.Errorf("failed to add to MODULE.bazel: %w", err)
-	}
-
-	if err := module.WriteFileIfUnchanged(modulePath, content, newContent); err != nil {
-		return fmt.Errorf("failed to write MODULE.bazel: %w", err)
+	if err := ws.AddDeps(specs); err != nil {
+		return err
 	}
 
 	for _, dep := range toAdd {

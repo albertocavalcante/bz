@@ -136,29 +136,44 @@ func TestRun_IncludeFailures(t *testing.T) {
 	}
 }
 
-func TestRun_EditingGuardsForIncludedDeps(t *testing.T) {
+func TestRun_EditingFollowsIncludes(t *testing.T) {
 	tests := []struct {
-		name string
-		args []string
-		want string
+		name     string
+		args     []string
+		wantOut  string
+		wantFile string // file that must change
+		wantErr  string // "" for success
 	}{
-		{"add duplicate", []string{"mod", "add", "--no-verify", "zlib@1.0"}, "zlib is declared in deps/nested/b.MODULE.bazel:1; editing included files is not supported yet"},
-		{"rm", []string{"mod", "rm", "gazelle"}, "gazelle is declared in deps/a.MODULE.bazel:1; editing included files is not supported yet"},
-		{"update", []string{"mod", "update", "gazelle"}, "gazelle is declared in deps/a.MODULE.bazel:1; editing included files is not supported yet"},
+		{"rm in nested include", []string{"mod", "rm", "zlib"}, "Removed zlib (from deps/nested/b.MODULE.bazel)", "deps/nested/b.MODULE.bazel", ""},
+		{"rm in include", []string{"mod", "rm", "gazelle"}, "Removed gazelle (from deps/a.MODULE.bazel)", "deps/a.MODULE.bazel", ""},
+		{"rm dry run", []string{"mod", "rm", "--dry-run", "zlib"}, "Would remove zlib (deps/nested/b.MODULE.bazel line 1)", "", ""},
+		{"add already declared", []string{"mod", "add", "--no-verify", "zlib@1.0"}, "", "", "zlib is already declared in deps/nested/b.MODULE.bazel:1"},
+		{"add new goes to root", []string{"mod", "add", "--no-verify", "newdep@1.0"}, "Added newdep@1.0", "MODULE.bazel", ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := includeWorkspace(t)
-			before := mustRead(t, filepath.Join(dir, "MODULE.bazel"))
-			_, stderr, code := runCLI(t, tt.args...)
-			if code == 0 {
-				t.Fatal("expected non-zero exit")
+			names := []string{"MODULE.bazel", "deps/a.MODULE.bazel", "deps/nested/b.MODULE.bazel"}
+			before := map[string]string{}
+			for _, n := range names {
+				before[n] = mustRead(t, filepath.Join(dir, filepath.FromSlash(n)))
 			}
-			if n := countErrorLines(stderr); n != 1 || !strings.Contains(stderr, tt.want) {
-				t.Errorf("stderr = %q, want one Error: line containing %q", stderr, tt.want)
+			stdout, stderr, code := runCLI(t, tt.args...)
+			if tt.wantErr != "" {
+				if code == 0 || countErrorLines(stderr) != 1 || !strings.Contains(stderr, tt.wantErr) {
+					t.Errorf("want one Error: line containing %q, got code %d stderr %q", tt.wantErr, code, stderr)
+				}
+			} else if code != 0 {
+				t.Fatalf("exit %d: %s", code, stderr)
 			}
-			if after := mustRead(t, filepath.Join(dir, "MODULE.bazel")); after != before {
-				t.Errorf("MODULE.bazel was modified:\n%s", after)
+			if !strings.Contains(stdout, tt.wantOut) {
+				t.Errorf("stdout = %q, want %q", stdout, tt.wantOut)
+			}
+			for _, n := range names {
+				changed := mustRead(t, filepath.Join(dir, filepath.FromSlash(n))) != before[n]
+				if changed != (n == tt.wantFile) {
+					t.Errorf("%s changed = %v, want %v", n, changed, n == tt.wantFile)
+				}
 			}
 		})
 	}

@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/albertocavalcante/bz/internal/module"
@@ -229,4 +232,35 @@ func TestInitModule(t *testing.T) {
 			t.Fatalf("ModuleInitializedMsg.Path = %q, want %q", initMsg.Path, "/tmp/work/MODULE.bazel")
 		}
 	})
+}
+
+func TestAddDependency_RefusesModuleDeclaredInIncludedFile(t *testing.T) {
+	dir := t.TempDir()
+	root := "module(name = \"m\")\ninclude(\"//d:x.MODULE.bazel\")\n"
+	if err := os.MkdirAll(filepath.Join(dir, "d"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "MODULE.bazel"), []byte(root), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "d", "x.MODULE.bazel"), []byte("bazel_dep(name = \"b\", version = \"1\")\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+
+	errMsg, ok := AddDependency("b", "2", false)().(ErrMsg)
+	if !ok || !strings.Contains(errMsg.Err.Error(), "b is already declared in d/x.MODULE.bazel:1") {
+		t.Fatalf("want already-declared ErrMsg, got %#v", errMsg)
+	}
+
+	if _, ok := AddDependency("c", "3", false)().(DepAddedMsg); !ok {
+		t.Fatal("adding a new module must succeed")
+	}
+	got, err := os.ReadFile(filepath.Join(dir, "MODULE.bazel"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := root + "bazel_dep(name = \"c\", version = \"3\")\n"; string(got) != want {
+		t.Errorf("MODULE.bazel = %q, want %q", got, want)
+	}
 }
