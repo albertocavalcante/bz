@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -34,14 +35,25 @@ func TestOpenNoFollow(t *testing.T) {
 
 	t.Run("a FIFO opens without blocking and is refused", func(t *testing.T) {
 		fifo := filepath.Join(dir, "fifo.toml")
-		require.NoError(t, syscall.Mkfifo(fifo, 0o600))
+		if err := syscall.Mkfifo(fifo, 0o600); err != nil {
+			t.Skipf("cannot create a FIFO here: %v", err)
+		}
 		resolved, err := filepath.EvalSymlinks(fifo)
 		require.NoError(t, err)
 		where := fifo
 		if resolved != fifo {
 			where = fifo + " (resolved to " + resolved + ")"
 		}
-		_, _, err = OSEnvironment().readConfigFile(LayerProject, fifo, nil)
+		done := make(chan error, 1)
+		go func() {
+			_, _, err := OSEnvironment().readConfigFile(LayerProject, fifo, nil)
+			done <- err
+		}()
+		select {
+		case err = <-done:
+		case <-time.After(5 * time.Second):
+			t.Fatal("opening a FIFO blocked waiting for a writer: is O_NONBLOCK missing from openNoFollow?")
+		}
 		require.EqualError(t, err, "untrusted project config "+where+": not a regular file; fix: replace it with a regular file, "+
 			"or list "+filepath.Dir(resolved)+" in BZ_TRUSTED_CONFIG_DIRS if the shared setup is intended")
 	})

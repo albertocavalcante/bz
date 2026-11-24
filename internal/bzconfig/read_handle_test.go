@@ -31,12 +31,14 @@ func TestReadConfigFile_ReadsTheCheckedHandle(t *testing.T) {
 	f, opened := newEnv(1000)
 	data, ok, err := f.env().readConfigFile(LayerProject, handleTestFile, nil)
 	require.NoError(t, err)
+	assert.Equal(t, 1, f.closes, "the handle is closed")
 	assert.True(t, ok)
 	assert.Equal(t, "from handle", string(data))
 	assert.Equal(t, []string{handleTestFile}, *opened)
 
 	f, _ = newEnv(2000)
 	_, _, err = f.env().readConfigFile(LayerProject, handleTestFile, nil)
+	assert.Equal(t, 1, f.closes, "a refused handle is closed too")
 	require.EqualError(t, err, "untrusted project config /work/proj/.bz.toml: owned by uid 2000, not you (uid 1000) or root; "+
 		"fix: recreate it as yourself, or have an administrator change its owner (it belongs to uid 2000), "+
 		"or list /work/proj in BZ_TRUSTED_CONFIG_DIRS if the shared setup is intended")
@@ -106,6 +108,20 @@ func TestReadConfigFile(t *testing.T) {
 			wantErr: "reading user config /u/config.toml: not a regular file",
 		},
 		{
+			name: "read error after the open", kind: LayerProject, path: handleTestFile,
+			setup: func(f *fakeEnv) {
+				f.files[handleTestFile] = ""
+				f.openHook = func(path string) (fs.File, error) {
+					fi, err := f.stat(path)
+					if err != nil {
+						return nil, err
+					}
+					return failingRead{info: fi}, nil
+				}
+			},
+			wantErr: "reading project config /work/proj/.bz.toml: read failed",
+		},
+		{
 			name: "oversized file", kind: LayerProject, path: handleTestFile,
 			setup:   func(f *fakeEnv) { f.files[handleTestFile] = strings.Repeat("#", maxConfigSize+1) },
 			wantErr: "reading project config /work/proj/.bz.toml: larger than 1048576 bytes",
@@ -124,6 +140,7 @@ func TestReadConfigFile(t *testing.T) {
 			f := newFakeEnv()
 			tt.setup(f)
 			data, ok, err := f.env().readConfigFile(tt.kind, tt.path, nil)
+			assert.Equal(t, f.opens, f.closes, "every opened handle is closed exactly once")
 			if tt.wantErr != "" {
 				require.EqualError(t, err, tt.wantErr)
 				return
@@ -135,12 +152,31 @@ func TestReadConfigFile(t *testing.T) {
 	}
 }
 
-func TestReadConfigFile_NoOpenFailsClosed(t *testing.T) {
-	env := newFakeEnv().env()
-	env.Open = nil
-	_, _, err := env.readConfigFile(LayerProject, handleTestFile, nil)
-	require.EqualError(t, err, "cannot read configuration: the environment does not provide Open")
+func TestReadConfigFile_IncompleteEnvironmentFailsClosed(t *testing.T) {
+	tests := []struct {
+		name string
+		drop func(e *Environment)
+		want string
+	}{
+		{"no Open", func(e *Environment) { e.Open = nil }, "cannot read configuration: the environment does not provide Open"},
+		{"no EvalSymlinks", func(e *Environment) { e.EvalSymlinks = nil }, "cannot read configuration: the environment does not provide EvalSymlinks"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env := newFakeEnv().env()
+			tt.drop(&env)
+			_, _, err := env.readConfigFile(LayerProject, handleTestFile, nil)
+			require.EqualError(t, err, tt.want)
+		})
+	}
 }
+
+// failingRead is a handle whose Read fails after a successful open.
+type failingRead struct{ info fs.FileInfo }
+
+func (h failingRead) Stat() (fs.FileInfo, error) { return h.info, nil }
+func (failingRead) Read([]byte) (int, error)     { return 0, errors.New("read failed") }
+func (failingRead) Close() error                 { return nil }
 
 func TestTrustedDirs_MissingEntryWarns(t *testing.T) {
 	f := newFakeEnv()

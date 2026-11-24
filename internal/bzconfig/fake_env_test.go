@@ -27,6 +27,8 @@ type fakeEnv struct {
 	links  map[string]string
 	// openHook, when set, replaces Open (the seam for handle tests).
 	openHook func(string) (fs.File, error)
+	// opens and closes count handles, so tests can catch a leaked one.
+	opens, closes int
 }
 
 func newFakeEnv() *fakeEnv {
@@ -150,10 +152,29 @@ func (h fakeFile) Stat() (fs.FileInfo, error) { return h.info, nil }
 func (h fakeFile) Close() error               { return nil }
 
 func (f *fakeEnv) open(path string) (fs.File, error) {
+	var h fs.File
+	var err error
 	if f.openHook != nil {
-		return f.openHook(path)
+		h, err = f.openHook(path)
+	} else {
+		h, err = f.openPlain(path)
 	}
-	return f.openPlain(path)
+	if err != nil {
+		return nil, err
+	}
+	f.opens++
+	return countedFile{File: h, closed: &f.closes}, nil
+}
+
+// countedFile counts Close calls on the handle it wraps.
+type countedFile struct {
+	fs.File
+	closed *int
+}
+
+func (c countedFile) Close() error {
+	*c.closed++
+	return c.File.Close()
 }
 
 // openPlain opens without the hook, for hooks that delegate.

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"strings"
 )
 
 // maxConfigSize bounds how much of a config file is read.
@@ -18,8 +19,15 @@ const maxConfigSize = 1 << 20
 // must pass [CheckProjectConfigTrust]; system and user files must be
 // regular files. It reports ok=false when the file does not exist.
 func (e Environment) readConfigFile(kind LayerKind, path string, trusted []fs.FileInfo) (data []byte, ok bool, err error) {
+	var missing []string
 	if e.Open == nil {
-		return nil, false, errors.New("cannot read configuration: the environment does not provide Open")
+		missing = append(missing, "Open")
+	}
+	if e.EvalSymlinks == nil {
+		missing = append(missing, "EvalSymlinks")
+	}
+	if len(missing) > 0 {
+		return nil, false, fmt.Errorf("cannot read configuration: the environment does not provide %s", strings.Join(missing, ", "))
 	}
 	target, err := e.resolve(path)
 	if errors.Is(err, fs.ErrNotExist) {
