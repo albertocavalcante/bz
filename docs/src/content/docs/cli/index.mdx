@@ -329,7 +329,7 @@ bz audit --allow-unchecked       # do not fail on modules with no OSV mapping
 | `--ecosystem` | OSV ecosystem to query (e.g., `Go`, `PyPI`, `crates.io`, `npm`, `Maven`) |
 | `--allow-unchecked` | Do not fail when modules could not be checked (no ecosystem mapping). Failed queries and vulnerabilities still fail |
 
-Most Bazel modules cannot yet be matched to OSV records. `bz audit` always prints `Checked N of M modules` and lists every module that was not checked, with the reason. It exits 1 when vulnerabilities are found, when any OSV query fails, or when any module was not checked (unless `--allow-unchecked`). `--severity` accepts only `critical`, `high`, `medium` or `low`; findings of unknown severity are never filtered out. See the [security guide](/bz/guides/security/) for the exit-code table and JSON schema.
+Most Bazel modules cannot yet be matched to OSV records, and transitive dependencies are not audited. `bz audit` always prints `Checked N of M direct dependencies` and lists every one that was not checked, with the reason. It exits 1 when vulnerabilities are found, when any OSV query fails, or when any direct dependency was not checked (unless `--allow-unchecked`). `--severity` accepts only `critical`, `high`, `medium` or `low`; findings of unknown severity are never filtered out. See the [security guide](/bz/guides/security/) for the exit-code table and JSON schema.
 
 <Aside type="note">
 OSV does not have a "Bazel" ecosystem. bz maps known Bazel modules to their underlying ecosystems:
@@ -352,7 +352,7 @@ Suggested fixes:
   bz mod update protobuf --version=25.4
 ```
 
-The command returns a non-zero exit code if vulnerabilities are found, a query fails, or a module was not checked (see above).
+The command returns a non-zero exit code if vulnerabilities are found, a query fails, or a direct dependency was not checked (see above).
 
 ### `bz mod licenses`
 

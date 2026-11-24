@@ -42,9 +42,10 @@ modules to their underlying ecosystems:
   rules_nodejs          -> npm
   rules_java            -> Maven
 
-Most Bazel modules cannot yet be matched to OSV records. Every run reports
-"Checked N of M modules" and lists each module that was not checked, with the
-reason. Use --ecosystem to manually specify an ecosystem for all modules.
+Only the direct dependencies in MODULE.bazel are audited; transitive
+dependencies are not. Most Bazel modules cannot yet be matched to OSV records.
+Every run reports "Checked N of M direct dependencies" and lists each one that
+was not checked, with the reason. Use --ecosystem to manually specify an ecosystem for all modules.
 
 Exit status is non-zero when vulnerabilities are found, when any OSV query
 fails, or when any module could not be checked. --allow-unchecked accepts
@@ -118,6 +119,27 @@ func severityFiltered(found, threshold osv.Severity) bool {
 	return found.Order() < threshold.Order()
 }
 
+// auditScope is reported in the JSON summary: transitive dependencies are not audited.
+const auditScope = "direct"
+
+// plural returns "1 thing" or "N things".
+func plural(n int, singular, pluralForm string) string {
+	if n == 1 {
+		return fmt.Sprintf("1 %s", singular)
+	}
+	return fmt.Sprintf("%d %s", n, pluralForm)
+}
+
+func deps(n int) string   { return plural(n, "direct dependency", "direct dependencies") }
+func vulnsN(n int) string { return plural(n, "vulnerability", "vulnerabilities") }
+
+func wasWere(n int) string {
+	if n == 1 {
+		return "was"
+	}
+	return "were"
+}
+
 // UncheckedModule is a module for which no vulnerability data was obtained.
 type UncheckedModule struct {
 	Module  string `json:"module"`
@@ -129,10 +151,14 @@ type UncheckedModule struct {
 // Unchecked counts every module without vulnerability data, including the
 // Failed ones.
 type AuditSummary struct {
-	Total     int `json:"total"`
-	Checked   int `json:"checked"`
-	Unchecked int `json:"unchecked"`
-	Failed    int `json:"failed"`
+	// Scope says what Total counts: only direct dependencies are audited.
+	Scope     string `json:"scope"`
+	Total     int    `json:"total"`
+	Checked   int    `json:"checked"`
+	Unchecked int    `json:"unchecked"`
+	Failed    int    `json:"failed"`
+	// Hidden counts findings below the --severity threshold (text output only).
+	Hidden int `json:"-"`
 }
 
 func runAudit(cmd *cobra.Command, args []string) error {
@@ -164,7 +190,7 @@ func runAudit(cmd *cobra.Command, args []string) error {
 
 	if len(f.Deps) == 0 {
 		if auditJSON {
-			return printAuditJSON(out, nil, nil, AuditSummary{})
+			return printAuditJSON(out, nil, nil, AuditSummary{Scope: auditScope})
 		}
 		fmt.Fprintln(out, "No dependencies found in MODULE.bazel")
 		return nil
@@ -174,7 +200,7 @@ func runAudit(cmd *cobra.Command, args []string) error {
 
 	var allVulns []AuditVuln
 	var unchecked []UncheckedModule
-	summary := AuditSummary{Total: len(f.Deps)}
+	summary := AuditSummary{Scope: auditScope, Total: len(f.Deps)}
 
 	for _, dep := range f.Deps {
 		name := dep.Name.String()
@@ -195,6 +221,7 @@ func runAudit(cmd *cobra.Command, args []string) error {
 		for i := range vulns {
 			v := &vulns[i]
 			if severityFiltered(v.Severity, minSeverity) {
+				summary.Hidden++
 				continue
 			}
 
@@ -220,7 +247,7 @@ func runAudit(cmd *cobra.Command, args []string) error {
 		if err := printAuditTable(out, allVulns, auditFix); err != nil {
 			return err
 		}
-		printAuditCoverage(out, allVulns, unchecked, summary)
+		printAuditCoverage(out, allVulns, unchecked, summary, minSeverity)
 	}
 
 	return auditVerdict(len(allVulns), summary)
@@ -247,13 +274,13 @@ func uncheckedFor(name, version string, err error) UncheckedModule {
 func auditVerdict(vulns int, s AuditSummary) error {
 	var parts []string
 	if vulns > 0 {
-		parts = append(parts, fmt.Sprintf("%d vulnerabilities found", vulns))
+		parts = append(parts, vulnsN(vulns)+" found")
 	}
 	if s.Failed > 0 {
-		parts = append(parts, fmt.Sprintf("%d of %d module queries failed", s.Failed, s.Total))
+		parts = append(parts, fmt.Sprintf("OSV queries failed for %d of %s", s.Failed, deps(s.Total)))
 	}
 	if n := s.Unchecked - s.Failed; n > 0 && !auditAllowUnchecked {
-		parts = append(parts, fmt.Sprintf("%d of %d modules were not checked (use --allow-unchecked to accept this)", n, s.Total))
+		parts = append(parts, fmt.Sprintf("%d of %s %s not checked (use --allow-unchecked to accept this)", n, deps(s.Total), wasWere(n)))
 	}
 	if len(parts) == 0 {
 		return nil
@@ -263,33 +290,41 @@ func auditVerdict(vulns int, s AuditSummary) error {
 
 // printAuditCoverage states what was and was not checked, so a clean-looking
 // result can never be mistaken for full coverage.
-func printAuditCoverage(w io.Writer, vulns []AuditVuln, unchecked []UncheckedModule, s AuditSummary) {
+func printAuditCoverage(w io.Writer, vulns []AuditVuln, unchecked []UncheckedModule, s AuditSummary, threshold osv.Severity) {
 	if len(vulns) > 0 {
 		fmt.Fprintln(w)
 	}
-	fmt.Fprintf(w, "Checked %d of %d modules.\n", s.Checked, s.Total)
+	fmt.Fprintf(w, "Checked %d of %s.\n", s.Checked, deps(s.Total))
 	if s.Unchecked > 0 {
 		fmt.Fprintf(w, "Not checked (%d):\n", s.Unchecked)
 		for _, u := range unchecked {
 			fmt.Fprintf(w, "  - %s@%s: %s\n", u.Module, u.Version, u.Reason)
 		}
 	}
+	if s.Hidden > 0 {
+		fmt.Fprintf(w, "%s below the %s threshold %s not shown.\n", vulnsN(s.Hidden), threshold, wasWere(s.Hidden))
+	}
 	if len(vulns) > 0 {
 		return
 	}
+	none := "No vulnerabilities found"
+	if threshold != osv.SeverityUnknown {
+		none = fmt.Sprintf("No vulnerabilities at or above %s found", threshold)
+	}
 	switch {
 	case s.Unchecked == 0:
-		fmt.Fprintln(w, cli.Success("No vulnerabilities found"))
+		fmt.Fprintln(w, cli.Success(none))
 	case s.Checked == 0:
-		fmt.Fprintln(w, cli.Warning("No module could be checked; no vulnerability data was obtained."))
+		fmt.Fprintln(w, cli.Warning("No direct dependency could be checked; no vulnerability data was obtained."))
 	default:
 		fmt.Fprintln(w, cli.Warning(fmt.Sprintf(
-			"No vulnerabilities found in the %d modules that could be checked; %d modules were not checked.",
-			s.Checked, s.Unchecked)))
+			"%s in the %s that could be checked; %s %s not checked.",
+			none, deps(s.Checked), deps(s.Unchecked), wasWere(s.Unchecked))))
 	}
 }
 
 func printAuditJSON(w io.Writer, vulns []AuditVuln, unchecked []UncheckedModule, summary AuditSummary) error {
+	summary.Scope = auditScope
 	// Count unique vulnerable modules
 	vulnModules := make(map[string]bool)
 	for i := range vulns {

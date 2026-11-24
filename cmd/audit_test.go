@@ -374,7 +374,7 @@ bazel_dep(name = "rules_go", version = "0.46.0")
 
 	err := auditCmd.RunE(auditCmd, []string{})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "vulnerabilities found")
+	assert.Contains(t, err.Error(), "vulnerability found")
 }
 
 func TestAuditCmd_ExitCode_NoVulnerabilities(t *testing.T) {
@@ -605,7 +605,7 @@ bazel_dep(name = "unknown_module", version = "1.0.0")
 	outOutput := outBuf.String()
 	assert.Contains(t, outOutput, "unknown_module@1.0.0")
 	assert.Contains(t, outOutput, "--ecosystem")
-	assert.Contains(t, outOutput, "No module could be checked")
+	assert.Contains(t, outOutput, "No direct dependency could be checked")
 	assert.NotContains(t, outOutput, "No vulnerabilities found")
 	assert.Empty(t, errBuf.String())
 }
@@ -676,7 +676,7 @@ bazel_dep(name = "unknown_module", version = "1.0.0")
 	// Should report the unchecked module and still report the vulnerability
 	outOutput := outBuf.String()
 	assert.Contains(t, outOutput, "unknown_module@1.0.0")
-	assert.Contains(t, outOutput, "Checked 1 of 2 modules")
+	assert.Contains(t, outOutput, "Checked 1 of 2 direct dependencies")
 	assert.Contains(t, outOutput, "GHSA-test")
 }
 
