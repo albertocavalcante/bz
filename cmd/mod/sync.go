@@ -1,6 +1,7 @@
 package mod
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -19,16 +20,20 @@ defined in bz.star configuration.
 
 Examples:
   # Run the "mirror-essential" workflow
+  bz mod sync --workflow mirror-essential
+  bz mod sync -w mirror-essential
+
+  # The workflow name may also be given as a positional argument
   bz mod sync mirror-essential
 
   # Dry run to see what would be synced
-  bz mod sync mirror-essential --dry-run
+  bz mod sync -w mirror-essential --dry-run
 
   # List available workflows
   bz mod sync --list
 
   # Override modules to sync
-  bz mod sync mirror-essential --modules rules_go,rules_python
+  bz mod sync -w mirror-essential --modules rules_go,rules_python
 `,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runSync,
@@ -40,13 +45,16 @@ var (
 	syncList    bool
 	syncModules []string
 	syncConfig  string
+
+	syncWorkflowFlag string
 )
 
 func configureSyncCmd() {
-	syncCmd.Flags().BoolVar(&syncDryRun, "dry-run", false, "Show what would be synced without making changes")
+	syncCmd.Flags().BoolVarP(&syncDryRun, "dry-run", "n", false, "Show what would be synced without making changes")
 	syncCmd.Flags().BoolVarP(&syncVerbose, "verbose", "v", false, "Print detailed progress")
 	syncCmd.Flags().BoolVarP(&syncList, "list", "l", false, "List available workflows")
-	syncCmd.Flags().StringSliceVar(&syncModules, "modules", nil, "Override modules to sync (comma-separated)")
+	syncCmd.Flags().StringSliceVarP(&syncModules, "modules", "m", nil, "Override modules to sync (comma-separated)")
+	syncCmd.Flags().StringVarP(&syncWorkflowFlag, "workflow", "w", "", "Workflow name to run (alternative to the positional argument)")
 	syncCmd.Flags().StringVarP(&syncConfig, "config", "c", "", "Path to config file (default: bz.star)")
 
 	Cmd.AddCommand(syncCmd)
@@ -95,12 +103,10 @@ func runSync(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Workflow name is required if not listing
-	if len(args) == 0 {
-		return fmt.Errorf("workflow name is required (use --list to see available workflows)")
+	workflowName, err := resolveWorkflowName(syncWorkflowFlag, cmd.Flags().Changed("workflow"), args)
+	if err != nil {
+		return err
 	}
-
-	workflowName := args[0]
 
 	// Build options
 	opts := modsync.Options{
@@ -126,11 +132,38 @@ func runSync(cmd *cobra.Command, args []string) error {
 	fmt.Fprintf(cmd.OutOrStdout(), "  Modules skipped:   %d\n", result.ModulesSkipped)
 
 	if len(result.Errors) > 0 {
-		fmt.Fprintf(cmd.OutOrStdout(), "  Errors:            %d\n", len(result.Errors))
+		fmt.Fprintf(cmd.ErrOrStderr(), "  Failed:            %d\n", len(result.Errors))
+		fmt.Fprintln(cmd.ErrOrStderr(), "Failures:")
 		for _, e := range result.Errors {
-			fmt.Fprintf(cmd.ErrOrStderr(), "    - %v\n", e)
+			fmt.Fprintf(cmd.ErrOrStderr(), "  - %v\n", e)
 		}
+		return cmdutil.AlreadyReported(fmt.Errorf("sync workflow %q: %d failure(s)", workflowName, len(result.Errors)))
 	}
 
 	return nil
 }
+
+// resolveWorkflowName combines the --workflow flag with the optional
+// positional argument. Giving both is allowed only when they agree; an
+// explicitly empty name from either source is an error.
+func resolveWorkflowName(flagValue string, flagSet bool, args []string) (string, error) {
+	var names []string
+	if flagSet {
+		names = append(names, flagValue)
+	}
+	names = append(names, args...)
+	if len(names) == 0 || names[0] == "" {
+		return "", errWorkflowRequired
+	}
+	for _, n := range names[1:] {
+		if n == "" {
+			return "", errWorkflowRequired
+		}
+		if n != names[0] {
+			return "", fmt.Errorf("conflicting workflow names: --workflow %q and positional %q", names[0], n)
+		}
+	}
+	return names[0], nil
+}
+
+var errWorkflowRequired = errors.New("workflow name is required (use --workflow NAME, or --list to see available workflows)")

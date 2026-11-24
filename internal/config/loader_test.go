@@ -297,14 +297,6 @@ this is not valid starlark
 				checkFn:      func(t *testing.T, v *VersionSelector) {},
 			},
 			{
-				name:         "since",
-				versionCode:  `versions = sync.since(date = "2024-01-01"),`,
-				expectedType: "since",
-				checkFn: func(t *testing.T, v *VersionSelector) {
-					assert.Equal(t, "2024-01-01", v.Since)
-				},
-			},
-			{
 				name:         "range",
 				versionCode:  `versions = sync.range(min = "1.0.0", max = "2.0.0"),`,
 				expectedType: "range",

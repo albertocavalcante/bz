@@ -62,6 +62,10 @@ This guide shows you how to create a local mirror of the [Bazel Central Registry
 
 3. **Configure Bazel to use the mirror**
 
+   <Aside type="caution">
+   The mirrored tree is not yet in the `modules/` registry layout that Bazel expects, so Bazel cannot consume it as is. This is being fixed.
+   </Aside>
+
    Add to your `.bazelrc`:
 
    ```bash
