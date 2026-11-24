@@ -32,6 +32,17 @@ type Environment struct {
 	UserHomeDir func() (string, error)
 	ReadFile    func(string) ([]byte, error)
 	Stat        func(string) (fs.FileInfo, error)
+	// EvalSymlinks resolves symbolic links (filepath.EvalSymlinks); nil
+	// means paths are used as given.
+	EvalSymlinks func(string) (string, error)
+	// SameFile reports whether two FileInfos describe the same file
+	// (os.SameFile); nil disables the home-directory rule.
+	SameFile func(a, b fs.FileInfo) bool
+	// Getuid returns the current user id (os.Getuid).
+	Getuid func() int
+	// FileOwner returns the owner uid of a file, and false when the
+	// platform does not expose one.
+	FileOwner func(fs.FileInfo) (int, bool)
 	// SystemConfigPath is the system-wide file; empty means none.
 	SystemConfigPath string
 }
@@ -45,6 +56,11 @@ func OSEnvironment() Environment {
 		UserHomeDir: os.UserHomeDir,
 		ReadFile:    os.ReadFile,
 		Stat:        os.Stat,
+
+		EvalSymlinks: filepath.EvalSymlinks,
+		SameFile:     os.SameFile,
+		Getuid:       os.Getuid,
+		FileOwner:    fileOwner,
 	}
 	env.SystemConfigPath = SystemConfigPath(env.GOOS, env.LookupEnv)
 	return env
@@ -175,6 +191,13 @@ func DefaultCacheDir(e Environment) string {
 
 // FindProjectConfig searches for the project config file.
 //
+// The search follows the physical path: the working directory is resolved
+// with EvalSymlinks first. The user's home directory and its ancestors are
+// never a workspace root (compared by file identity): reaching one ends the
+// walk as "outside a workspace", so a stray ~/MODULE.bazel or /WORKSPACE
+// cannot widen the search. A file that is found must pass the trust rules
+// of [CheckProjectConfigTrust]; an untrusted file is an error.
+//
 // When the working directory is inside a Bazel workspace (a directory
 // containing MODULE.bazel, REPO.bazel, WORKSPACE.bazel or WORKSPACE), every
 // directory from the working directory up to and including the workspace
@@ -191,7 +214,14 @@ func FindProjectConfig(e Environment) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("finding project config: %w", err)
 	}
-	dirs, err := projectSearchDirs(e, wd)
+	if wd, err = e.resolve(wd); err != nil {
+		return "", fmt.Errorf("finding project config: %w", err)
+	}
+	homeDirs, err := e.homeAndAncestors()
+	if err != nil {
+		return "", err
+	}
+	dirs, err := projectSearchDirs(e, wd, homeDirs)
 	if err != nil {
 		return "", err
 	}
@@ -211,9 +241,9 @@ func FindProjectConfig(e Environment) (string, error) {
 			return "", fmt.Errorf("both %s and %s exist; keep only one (%s is preferred)",
 				primary, legacy, ProjectConfigName)
 		case hasPrimary:
-			return primary, nil
+			return primary, CheckProjectConfigTrust(e, primary)
 		case hasLegacy:
-			return legacy, nil
+			return legacy, CheckProjectConfigTrust(e, legacy)
 		}
 	}
 	return "", nil
@@ -222,9 +252,18 @@ func FindProjectConfig(e Environment) (string, error) {
 // projectSearchDirs returns the directories to search, nearest first. The
 // innermost directory with a workspace marker is the root, so a nested
 // workspace (a MODULE.bazel below the repository root) ends the search.
-func projectSearchDirs(e Environment, wd string) ([]string, error) {
+// Reaching the home directory or one of its ancestors ends the walk as
+// "outside a workspace".
+func projectSearchDirs(e Environment, wd string, homeDirs []fs.FileInfo) ([]string, error) {
 	var dirs []string
 	for dir := wd; ; {
+		home, err := e.isAnyOf(dir, homeDirs)
+		if err != nil {
+			return nil, err
+		}
+		if home {
+			return []string{wd}, nil
+		}
 		dirs = append(dirs, dir)
 		root, err := isWorkspaceRoot(e, dir)
 		if err != nil {

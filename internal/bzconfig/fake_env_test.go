@@ -20,6 +20,11 @@ type fakeEnv struct {
 	// permission bits); statErrs makes Stat fail for a path.
 	modes    map[string]fs.FileMode
 	statErrs map[string]error
+	// uid is the current user; owners overrides a path's owner (default
+	// uid). links maps a symlink path to its target for EvalSymlinks.
+	uid    int
+	owners map[string]int
+	links  map[string]string
 }
 
 func newFakeEnv() *fakeEnv {
@@ -33,13 +38,19 @@ func newFakeEnv() *fakeEnv {
 
 		modes:    map[string]fs.FileMode{},
 		statErrs: map[string]error{},
+
+		uid:    1000,
+		owners: map[string]int{},
+		links:  map[string]string{},
 	}
 }
 
 type fakeInfo struct {
 	name string
+	path string
 	dir  bool
 	mode fs.FileMode
+	uid  int
 }
 
 func (i fakeInfo) Name() string       { return i.name }
@@ -64,7 +75,18 @@ func (f *fakeEnv) env() Environment {
 			}
 			return nil, fs.ErrNotExist
 		},
-		Stat:             f.stat,
+		Stat:         f.stat,
+		EvalSymlinks: f.evalSymlinks,
+		SameFile: func(a, b fs.FileInfo) bool {
+			fa, okA := a.(fakeInfo)
+			fb, okB := b.(fakeInfo)
+			return okA && okB && fa.path == fb.path
+		},
+		Getuid: func() int { return f.uid },
+		FileOwner: func(fi fs.FileInfo) (int, bool) {
+			info, ok := fi.(fakeInfo)
+			return info.uid, ok
+		},
 		SystemConfigPath: "/etc/bz/config.toml",
 	}
 }
@@ -78,12 +100,16 @@ func (f *fakeEnv) stat(path string) (fs.FileInfo, error) {
 		if !ok {
 			mode = def
 		}
-		return fakeInfo{name: filepath.Base(path), dir: mode.IsDir(), mode: mode}, nil
+		uid, ok := f.owners[path]
+		if !ok {
+			uid = f.uid
+		}
+		return fakeInfo{name: filepath.Base(path), path: path, dir: mode.IsDir(), mode: mode, uid: uid}, nil
 	}
 	if _, ok := f.files[path]; ok {
 		return info(false, 0o644)
 	}
-	if f.dirs[path] || path == "/" {
+	if f.dirs[path] || path == "/" || path == f.home {
 		return info(true, fs.ModeDir|0o755)
 	}
 	for p := range f.files {
@@ -92,4 +118,26 @@ func (f *fakeEnv) stat(path string) (fs.FileInfo, error) {
 		}
 	}
 	return nil, fs.ErrNotExist
+}
+
+// evalSymlinks rewrites the longest symlinked prefix of path, repeatedly.
+func (f *fakeEnv) evalSymlinks(path string) (string, error) {
+	for range 10 {
+		changed := false
+		for dir := path; ; dir = filepath.Dir(dir) {
+			if target, ok := f.links[dir]; ok {
+				rest := strings.TrimPrefix(path, dir)
+				path = filepath.Clean(target + rest)
+				changed = true
+				break
+			}
+			if dir == filepath.Dir(dir) {
+				break
+			}
+		}
+		if !changed {
+			return path, nil
+		}
+	}
+	return "", fs.ErrInvalid
 }
