@@ -393,3 +393,49 @@ func TestAddCmd_DryRunMultiple(t *testing.T) {
 	assert.NotContains(t, string(content), "rules_go")
 	assert.NotContains(t, string(content), "rules_python")
 }
+
+func TestAddCmd_RefusesInvalidArgument(t *testing.T) {
+	const moduleContent = "module(name = \"test_module\", version = \"1.0.0\")\n"
+	const rule = `must match RELEASE[-PRERELEASE][+BUILD] using only A-Z, a-z, 0-9, '.', '-' and '+'`
+	const help = "\nhelp: write <module>@<version>, for example rules_go@0.50.1"
+	tests := []struct {
+		name     string
+		arg      string
+		noVerify bool
+		want     string
+	}{
+		{
+			"hostile version", `x@9.9.9", repo_name = "evil`, true,
+			`refusing to write module "x": invalid module version "9.9.9\", repo_name = \"evil": ` + rule + help,
+		},
+		{
+			"hostile version with registry check", `x@9.9.9", repo_name = "evil`, false,
+			`refusing to write module "x": invalid module version "9.9.9\", repo_name = \"evil": ` + rule + help,
+		},
+		{
+			"newline in version", "x@1.0\nevil", true,
+			`refusing to write module "x": invalid module version "1.0\nevil": ` + rule + help,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			modulePath := filepath.Join(tmpDir, "MODULE.bazel")
+			require.NoError(t, os.WriteFile(modulePath, []byte(moduleContent), 0o644))
+			t.Chdir(tmpDir)
+
+			oldRegistry := registryFlag
+			registryFlag = filepath.Join(tmpDir, "no-such-registry")
+			defer func() { registryFlag = oldRegistry }()
+			addNoVerify, addDev, addDryRun = tc.noVerify, false, false
+			defer func() { addNoVerify = false }()
+
+			err := addCmd.RunE(addCmd, []string{tc.arg})
+			require.EqualError(t, err, tc.want)
+
+			got, rerr := os.ReadFile(modulePath)
+			require.NoError(t, rerr)
+			assert.Equal(t, moduleContent, string(got))
+		})
+	}
+}

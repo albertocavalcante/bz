@@ -2,6 +2,7 @@ package mod
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -651,4 +652,47 @@ bazel_dep(name = "rules_go", version = "0.46.0")
 	require.NoError(t, err)
 	assert.Contains(t, string(content), `version = "0.50.0"`)
 	assert.NotContains(t, string(content), `version = "0.50.1"`)
+}
+
+// TestUpdateCmd_RefusesInvalidRegistryVersion: a version string from the
+// registry must never reach MODULE.bazel; the run is all-or-nothing.
+func TestUpdateCmd_RefusesInvalidRegistryVersion(t *testing.T) {
+	tmpDir := t.TempDir()
+	registryDir := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{
+		"a": {Versions: []string{"1.0.0"}},
+		"b": {Versions: []string{"1.0.0", "2.0.0"}},
+	})
+	meta := `{"versions": ["1.0.0", "9.9.9\", repo_name = \"evil"]}`
+	require.NoError(t, os.WriteFile(filepath.Join(registryDir, "modules", "a", "metadata.json"), []byte(meta), 0o644))
+
+	moduleContent := `module(name = "test_module", version = "1.0.0")
+
+bazel_dep(name = "a", version = "1.0.0")
+bazel_dep(name = "b", version = "1.0.0")
+`
+	modulePath := filepath.Join(tmpDir, "MODULE.bazel")
+	require.NoError(t, os.WriteFile(modulePath, []byte(moduleContent), 0o644))
+	t.Chdir(tmpDir)
+
+	oldRegistry := registryFlag
+	registryFlag = registryDir
+	defer func() { registryFlag = oldRegistry }()
+	updateDryRun = false
+
+	var buf bytes.Buffer
+	updateCmd.SetOut(&buf)
+	defer updateCmd.SetOut(os.Stdout)
+
+	err := updateCmd.RunE(updateCmd, []string{})
+	want := `cannot update "a": registry returned invalid module version "9.9.9\", repo_name = \"evil": ` +
+		`must match RELEASE[-PRERELEASE][+BUILD] using only A-Z, a-z, 0-9, '.', '-' and '+'` + "\n" +
+		fmt.Sprintf("  registry: %q\n", registryDir) +
+		"  note: nothing was written to MODULE.bazel\n" +
+		"  help: check the registry's metadata for \"a\", or update the other modules by name: bz mod update <module>"
+	require.EqualError(t, err, want)
+	assert.Empty(t, buf.String())
+
+	got, err := os.ReadFile(modulePath)
+	require.NoError(t, err)
+	assert.Equal(t, moduleContent, string(got))
 }

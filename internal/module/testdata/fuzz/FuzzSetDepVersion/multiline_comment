@@ -1,0 +1,4 @@
+go test fuzz v1
+[]byte("# header\nbazel_dep(\n    name = \"a\",  # why\n    version = \"1.0.0\",\n    dev_dependency = True,\n)\nbazel_dep(name = \"b\", version = \"2\")\n")
+string("a")
+string("1.0.1")

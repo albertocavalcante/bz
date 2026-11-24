@@ -88,6 +88,12 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("version required: use %s@<version>", name)
 		}
 
+		// Validated before any registry call and under --no-verify too: the
+		// argument is written to MODULE.bazel.
+		if err := module.ValidateDep(name, version); err != nil {
+			return fmt.Errorf("%w\nhelp: write <module>@<version>, for example rules_go@0.50.1", err)
+		}
+
 		if decls := ws.File.Declarations(name); len(decls) > 0 {
 			if file := ws.RelPath(decls[0]); file != filepath.Base(modulePath) {
 				return fmt.Errorf("%s is already declared in %s:%d", name, file, decls[0].Pos.Start.Line)
