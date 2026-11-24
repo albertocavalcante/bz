@@ -53,6 +53,16 @@ func runRm(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	included, err := includedDeps(f, modulePath)
+	if err != nil {
+		return err
+	}
+	for _, arg := range args {
+		if o, ok := included[arg]; ok {
+			return includedEditError(arg, o)
+		}
+	}
+
 	// Build set of modules to remove
 	toRemove := make(map[string]bool)
 	for _, arg := range args {

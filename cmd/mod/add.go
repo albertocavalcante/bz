@@ -72,6 +72,17 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	included, err := includedDeps(f, modulePath)
+	if err != nil {
+		return err
+	}
+	for _, arg := range args {
+		name, _ := parseModuleArg(arg)
+		if o, ok := included[name]; ok {
+			return includedEditError(name, o)
+		}
+	}
+
 	// Build set of existing deps
 	existingDeps := make(map[string]bool)
 	for _, dep := range f.Deps {

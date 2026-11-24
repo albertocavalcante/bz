@@ -74,6 +74,19 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	included, err := includedDeps(f, modulePath)
+	if err != nil {
+		return err
+	}
+	for _, arg := range args {
+		if o, ok := included[arg]; ok {
+			return includedEditError(arg, o)
+		}
+	}
+	if len(args) == 0 && len(included) > 0 {
+		fmt.Fprintf(cmd.ErrOrStderr(), "Warning: %d dependencies declared in included files are not updated; editing included files is not supported yet\n", len(included))
+	}
+
 	out := cmd.OutOrStdout()
 
 	if len(f.Deps) == 0 {
