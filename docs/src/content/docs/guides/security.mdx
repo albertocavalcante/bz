@@ -35,16 +35,39 @@ bz audit --severity=high       # Only high and critical
 bz audit --severity=critical   # Only critical
 ```
 
+### Coverage
+
+<Aside type="caution">
+Most Bazel modules cannot yet be matched to OSV records. OSV has no "Bazel" ecosystem, and bz only knows a small set of module-to-ecosystem mappings (see below). A module that cannot be matched is **not checked**, which is different from "no known vulnerabilities".
+</Aside>
+
+Every run states how much of your dependency set was actually checked, and lists each module that was not, with the reason:
+
+```
+Checked 3 of 7 modules.
+Not checked (4):
+  - abseil-cpp@20240116.2: no known OSV ecosystem mapping (use --ecosystem to force one)
+  - protobuf@27.1: no known OSV ecosystem mapping (use --ecosystem to force one)
+  - rules_cc@0.0.9: no OSV equivalent for this module
+  - zlib@1.3.1: no known OSV ecosystem mapping (use --ecosystem to force one)
+No vulnerabilities found in the 3 modules that could be checked; 4 modules were not checked.
+Error: 4 of 7 modules were not checked (use --allow-unchecked to accept this)
+```
+
+The plain message `No vulnerabilities found` is printed only when every module was checked. A module is also reported as not checked when its OSV query fails (`query failed: ...`).
+
 ### Example Output
 
 ```
 Module      Version  ID              Severity  Summary
 ------      -------  --              --------  -------
-protobuf    25.3     GHSA-8r3f-844c  HIGH      Buffer overflow in...
 rules_go    0.49.0   GHSA-xyzw-1234  MEDIUM    Path traversal in...
 
-2 vulnerabilities found
+Checked 1 of 1 modules.
+Error: 1 vulnerabilities found
 ```
+
+A finding whose severity could not be determined is shown as `UNKNOWN` and is never hidden by `--severity`.
 
 ### Show Fix Suggestions
 
@@ -86,11 +109,25 @@ bz audit --ecosystem=Go
 bz audit --ecosystem=PyPI
 ```
 
-Modules without a mapping and no `--ecosystem` flag will be skipped with a warning.
+Modules without a mapping and no `--ecosystem` flag are reported as not checked.
 
 ### CI/CD Integration
 
-The `bz audit` command returns a non-zero exit code when vulnerabilities are found:
+### Exit Codes
+
+| Situation | Exit code |
+|-----------|-----------|
+| Every module checked, no vulnerabilities at or above `--severity` | 0 |
+| Vulnerabilities found | 1 |
+| Any OSV query failed | 1 (also with `--allow-unchecked`) |
+| Any module not checked (no ecosystem mapping) | 1, unless `--allow-unchecked` |
+| Invalid `--severity` value | 1 |
+
+`--allow-unchecked` accepts modules that have no ecosystem mapping. They are still listed, but do not fail the run. A failed lookup is never accepted. Because most modules currently cannot be matched, a project that passes only with `--allow-unchecked` has been checked only partially: read the `Checked N of M modules` line, or the `summary` object in the JSON output.
+
+### CI/CD Integration
+
+The job fails whenever vulnerabilities are found, a query fails, or a module could not be checked:
 
 ```yaml
 # GitHub Actions example
@@ -104,6 +141,8 @@ jobs:
       - name: Security audit
         run: bz audit --severity=high
 ```
+
+Adding `--allow-unchecked` lets the job pass while some modules remain unchecked. Use it only when you accept that those modules are not audited:
 
 ```yaml
 # GitLab CI example
@@ -121,7 +160,7 @@ security_scan:
 ```json
 {
   "total": 5,
-  "vulnerable": 2,
+  "vulnerable": 1,
   "vulnerabilities": [
     {
       "module": "protobuf",
@@ -133,9 +172,16 @@ security_scan:
       "link": "https://osv.dev/vulnerability/GHSA-8r3f-844c-2wh3",
       "aliases": ["CVE-2024-12345"]
     }
+  ],
+  "summary": { "total": 5, "checked": 3, "unchecked": 2, "failed": 0 },
+  "unchecked": [
+    { "module": "zlib", "version": "1.3.1", "reason": "no known OSV ecosystem mapping (use --ecosystem to force one)" },
+    { "module": "rules_cc", "version": "0.0.9", "reason": "no OSV equivalent for this module" }
   ]
 }
 ```
+
+`summary.unchecked` counts every module without vulnerability data, including the `summary.failed` ones whose query failed. The `unchecked` array lists them with the reason. JSON is written to stdout on every path, including failures; the exit status carries the verdict.
 
 ---
 
@@ -376,9 +422,9 @@ jobs:
 
       - name: Vulnerability scan
         run: bz audit --json > audit-report.json
-        continue-on-error: true
 
       - name: License compliance
+        if: ${{ !cancelled() }}
         run: bz mod licenses --check --deny=GPL-2.0,GPL-3.0,LGPL-3.0
 
       - name: Generate SBOM
@@ -387,6 +433,7 @@ jobs:
           bz sbom --format=cyclonedx --output=sbom.cdx.json
 
       - name: Upload security artifacts
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: security-reports
@@ -394,14 +441,6 @@ jobs:
             audit-report.json
             sbom.spdx.json
             sbom.cdx.json
-
-      - name: Fail on critical vulnerabilities
-        run: |
-          critical=$(jq '[.vulnerabilities[] | select(.severity == "CRITICAL")] | length' audit-report.json)
-          if [ "$critical" -gt 0 ]; then
-            echo "Found $critical critical vulnerabilities"
-            exit 1
-          fi
 ```
 
 ---

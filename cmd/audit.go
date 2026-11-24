@@ -20,6 +20,8 @@ var (
 	auditSeverity  string
 	auditFix       bool
 	auditEcosystem string
+
+	auditAllowUnchecked bool
 )
 
 // osvClient is the OSV API client, can be overridden for testing.
@@ -40,15 +42,20 @@ modules to their underlying ecosystems:
   rules_nodejs          -> npm
   rules_java            -> Maven
 
-Modules without a known mapping will be skipped with a warning.
-Use --ecosystem to manually specify an ecosystem for all modules.
+Most Bazel modules cannot yet be matched to OSV records. Every run reports
+"Checked N of M modules" and lists each module that was not checked, with the
+reason. Use --ecosystem to manually specify an ecosystem for all modules.
 
-Returns a non-zero exit code if vulnerabilities are found.
+Exit status is non-zero when vulnerabilities are found, when any OSV query
+fails, or when any module could not be checked. --allow-unchecked accepts
+modules that have no known mapping; failed queries and vulnerabilities still
+fail the run.
 
 Examples:
   bz audit                        # Scan with automatic ecosystem mapping
   bz audit --json                 # Output as JSON
   bz audit --severity=high        # Only show high/critical vulnerabilities
+  bz audit --allow-unchecked      # Do not fail on modules with no OSV mapping
   bz audit --fix                  # Show suggested updates
   bz audit --ecosystem=Go         # Force all modules to query Go ecosystem`,
 	RunE:          runAudit,
@@ -61,14 +68,17 @@ func configureAuditCmd() {
 	auditCmd.Flags().StringVar(&auditSeverity, "severity", "", "Minimum severity to report (critical, high, medium, low)")
 	auditCmd.Flags().BoolVar(&auditFix, "fix", false, "Show suggested updates to fix vulnerabilities")
 	auditCmd.Flags().StringVar(&auditEcosystem, "ecosystem", "", "OSV ecosystem to query (e.g., Go, PyPI, crates.io, npm, Maven)")
+	auditCmd.Flags().BoolVar(&auditAllowUnchecked, "allow-unchecked", false, "Do not fail when modules could not be checked (failed queries and vulnerabilities still fail)")
 	rootCmd.AddCommand(auditCmd)
 }
 
 // AuditResult represents the JSON output structure for audit results.
 type AuditResult struct {
-	Total           int         `json:"total"`
-	Vulnerable      int         `json:"vulnerable"`
-	Vulnerabilities []AuditVuln `json:"vulnerabilities"`
+	Total           int               `json:"total"`
+	Vulnerable      int               `json:"vulnerable"`
+	Vulnerabilities []AuditVuln       `json:"vulnerabilities"`
+	Summary         AuditSummary      `json:"summary"`
+	Unchecked       []UncheckedModule `json:"unchecked"`
 }
 
 // AuditVuln represents a single vulnerability finding.
@@ -83,7 +93,48 @@ type AuditVuln struct {
 	Aliases  []string `json:"aliases,omitempty"`
 }
 
-//nolint:gocyclo // CLI command handler with sequential steps
+// validSeverities lists the values accepted by --severity.
+var validSeverities = []string{"critical", "high", "medium", "low"}
+
+// parseSeverityFlag validates the --severity value. An empty value means no filter.
+func parseSeverityFlag(value string) (osv.Severity, error) {
+	if value == "" {
+		return osv.SeverityUnknown, nil
+	}
+	sev := osv.ParseSeverity(value)
+	if sev == osv.SeverityUnknown {
+		return sev, fmt.Errorf("invalid --severity %q: must be one of %s", value, strings.Join(validSeverities, ", "))
+	}
+	return sev, nil
+}
+
+// severityFiltered reports whether a finding is hidden by the threshold.
+// A finding whose severity could not be determined is never hidden: it could
+// be anything, so a threshold must not silently drop it.
+func severityFiltered(found, threshold osv.Severity) bool {
+	if threshold == osv.SeverityUnknown || found == osv.SeverityUnknown {
+		return false
+	}
+	return found.Order() < threshold.Order()
+}
+
+// UncheckedModule is a module for which no vulnerability data was obtained.
+type UncheckedModule struct {
+	Module  string `json:"module"`
+	Version string `json:"version"`
+	Reason  string `json:"reason"`
+}
+
+// AuditSummary states how much of the dependency set was actually checked.
+// Unchecked counts every module without vulnerability data, including the
+// Failed ones.
+type AuditSummary struct {
+	Total     int `json:"total"`
+	Checked   int `json:"checked"`
+	Unchecked int `json:"unchecked"`
+	Failed    int `json:"failed"`
+}
+
 func runAudit(cmd *cobra.Command, args []string) error {
 	// Check if command is disabled
 	if err := cli.CheckCommandAllowed("audit"); err != nil {
@@ -99,6 +150,11 @@ func runAudit(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	minSeverity, err := parseSeverityFlag(auditSeverity)
+	if err != nil {
+		return err
+	}
+
 	f, err := module.FindAndLoad()
 	if err != nil {
 		return err
@@ -107,23 +163,18 @@ func runAudit(cmd *cobra.Command, args []string) error {
 	out := cmd.OutOrStdout()
 
 	if len(f.Deps) == 0 {
+		if auditJSON {
+			return printAuditJSON(out, nil, nil, AuditSummary{})
+		}
 		fmt.Fprintln(out, "No dependencies found in MODULE.bazel")
 		return nil
 	}
 
 	ctx := cmdutil.CommandContext(cmd)
 
-	// Determine minimum severity filter
-	minSeverity := osv.SeverityUnknown
-	if auditSeverity != "" {
-		minSeverity = osv.ParseSeverity(auditSeverity)
-	}
-
-	// Collect all vulnerabilities
 	var allVulns []AuditVuln
-	var skippedModules []string
-	var queryErrors []error
-	queriedCount := 0
+	var unchecked []UncheckedModule
+	summary := AuditSummary{Total: len(f.Deps)}
 
 	for _, dep := range f.Deps {
 		name := dep.Name.String()
@@ -131,22 +182,19 @@ func runAudit(cmd *cobra.Command, args []string) error {
 
 		vulns, err := osvClient.Query(ctx, name, version, auditEcosystem)
 		if err != nil {
-			// Handle ecosystem mapping errors specially
+			unchecked = append(unchecked, uncheckedFor(name, version, err))
 			var noEcoErr *osv.ErrNoEcosystem
-			if errors.As(err, &noEcoErr) {
-				skippedModules = append(skippedModules, name)
-				continue
+			if !errors.As(err, &noEcoErr) {
+				summary.Failed++
 			}
-			queryErrors = append(queryErrors, fmt.Errorf("%s@%s: %w", name, version, err))
 			continue
 		}
 
-		queriedCount++
+		summary.Checked++
 
 		for i := range vulns {
 			v := &vulns[i]
-			// Apply severity filter
-			if minSeverity != osv.SeverityUnknown && v.Severity.Order() < minSeverity.Order() {
+			if severityFiltered(v.Severity, minSeverity) {
 				continue
 			}
 
@@ -162,59 +210,86 @@ func runAudit(cmd *cobra.Command, args []string) error {
 			})
 		}
 	}
+	summary.Unchecked = len(unchecked)
 
-	// Report skipped modules (unless JSON output)
-	if len(skippedModules) > 0 && !auditJSON {
-		fmt.Fprintf(cmd.ErrOrStderr(), "Skipped %d module(s) with no OSV ecosystem mapping:\n", len(skippedModules))
-		for _, m := range skippedModules {
-			eco, known := osv.MapModuleToEcosystem(m)
-			if known && eco == "" {
-				fmt.Fprintf(cmd.ErrOrStderr(), "  - %s (no OSV equivalent)\n", m)
-			} else {
-				fmt.Fprintf(cmd.ErrOrStderr(), "  - %s (use --ecosystem to specify)\n", m)
-			}
-		}
-		fmt.Fprintln(cmd.ErrOrStderr())
-	}
-
-	// Handle query errors
-	if len(queryErrors) > 0 {
-		for _, err := range queryErrors {
-			fmt.Fprintf(cmd.ErrOrStderr(), "Warning: %v\n", err)
-		}
-		// Only fail if we couldn't query any modules successfully
-		if queriedCount == 0 && len(skippedModules) == 0 {
-			return fmt.Errorf("failed to query vulnerabilities: %w", queryErrors[0])
-		}
-	}
-
-	// If all modules were skipped, show a helpful message
-	if queriedCount == 0 && len(skippedModules) > 0 {
-		fmt.Fprintln(out, "No modules could be checked for vulnerabilities.")
-		fmt.Fprintln(out, "Use --ecosystem to specify an OSV ecosystem (e.g., Go, PyPI, npm, Maven)")
-		return nil
-	}
-
-	// Output results
 	if auditJSON {
-		if err := printAuditJSON(out, len(f.Deps), allVulns); err != nil {
+		if err := printAuditJSON(out, allVulns, unchecked, summary); err != nil {
 			return err
 		}
 	} else {
 		if err := printAuditTable(out, allVulns, auditFix); err != nil {
 			return err
 		}
+		printAuditCoverage(out, allVulns, unchecked, summary)
 	}
 
-	// Return error if vulnerabilities found (for non-zero exit code)
-	if len(allVulns) > 0 {
-		return fmt.Errorf("%d vulnerabilities found", len(allVulns))
-	}
-
-	return nil
+	return auditVerdict(len(allVulns), summary)
 }
 
-func printAuditJSON(w io.Writer, total int, vulns []AuditVuln) error {
+// uncheckedFor builds the report entry explaining why a module was not checked.
+func uncheckedFor(name, version string, err error) UncheckedModule {
+	u := UncheckedModule{Module: name, Version: version}
+	var noEcoErr *osv.ErrNoEcosystem
+	switch {
+	case errors.As(err, &noEcoErr) && noEcoErr.Known:
+		u.Reason = "no OSV equivalent for this module"
+	case errors.As(err, &noEcoErr):
+		u.Reason = "no known OSV ecosystem mapping (use --ecosystem to force one)"
+	default:
+		u.Reason = "query failed: " + err.Error()
+	}
+	return u
+}
+
+// auditVerdict turns the findings and coverage into the command's exit status.
+// Vulnerabilities and failed queries always fail the run; modules with no
+// ecosystem mapping fail it unless --allow-unchecked is set.
+func auditVerdict(vulns int, s AuditSummary) error {
+	var parts []string
+	if vulns > 0 {
+		parts = append(parts, fmt.Sprintf("%d vulnerabilities found", vulns))
+	}
+	if s.Failed > 0 {
+		parts = append(parts, fmt.Sprintf("%d of %d module queries failed", s.Failed, s.Total))
+	}
+	if n := s.Unchecked - s.Failed; n > 0 && !auditAllowUnchecked {
+		parts = append(parts, fmt.Sprintf("%d of %d modules were not checked (use --allow-unchecked to accept this)", n, s.Total))
+	}
+	if len(parts) == 0 {
+		return nil
+	}
+	return errors.New(strings.Join(parts, "; "))
+}
+
+// printAuditCoverage states what was and was not checked, so a clean-looking
+// result can never be mistaken for full coverage.
+func printAuditCoverage(w io.Writer, vulns []AuditVuln, unchecked []UncheckedModule, s AuditSummary) {
+	if len(vulns) > 0 {
+		fmt.Fprintln(w)
+	}
+	fmt.Fprintf(w, "Checked %d of %d modules.\n", s.Checked, s.Total)
+	if s.Unchecked > 0 {
+		fmt.Fprintf(w, "Not checked (%d):\n", s.Unchecked)
+		for _, u := range unchecked {
+			fmt.Fprintf(w, "  - %s@%s: %s\n", u.Module, u.Version, u.Reason)
+		}
+	}
+	if len(vulns) > 0 {
+		return
+	}
+	switch {
+	case s.Unchecked == 0:
+		fmt.Fprintln(w, cli.Success("No vulnerabilities found"))
+	case s.Checked == 0:
+		fmt.Fprintln(w, cli.Warning("No module could be checked; no vulnerability data was obtained."))
+	default:
+		fmt.Fprintln(w, cli.Warning(fmt.Sprintf(
+			"No vulnerabilities found in the %d modules that could be checked; %d modules were not checked.",
+			s.Checked, s.Unchecked)))
+	}
+}
+
+func printAuditJSON(w io.Writer, vulns []AuditVuln, unchecked []UncheckedModule, summary AuditSummary) error {
 	// Count unique vulnerable modules
 	vulnModules := make(map[string]bool)
 	for i := range vulns {
@@ -223,9 +298,14 @@ func printAuditJSON(w io.Writer, total int, vulns []AuditVuln) error {
 	}
 
 	result := AuditResult{
-		Total:           total,
+		Total:           summary.Total,
 		Vulnerable:      len(vulnModules),
 		Vulnerabilities: vulns,
+		Summary:         summary,
+		Unchecked:       unchecked,
+	}
+	if result.Unchecked == nil {
+		result.Unchecked = []UncheckedModule{}
 	}
 
 	if result.Vulnerabilities == nil {
@@ -237,7 +317,6 @@ func printAuditJSON(w io.Writer, total int, vulns []AuditVuln) error {
 
 func printAuditTable(w io.Writer, vulns []AuditVuln, showFix bool) error {
 	if len(vulns) == 0 {
-		fmt.Fprintln(w, cli.Success("No vulnerabilities found"))
 		return nil
 	}
 

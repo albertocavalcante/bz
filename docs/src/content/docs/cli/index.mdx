@@ -318,6 +318,7 @@ bz audit --json                  # output as JSON
 bz audit --severity=high         # only high/critical vulnerabilities
 bz audit --fix                   # show suggested updates
 bz audit --ecosystem=Go          # specify ecosystem manually
+bz audit --allow-unchecked       # do not fail on modules with no OSV mapping
 ```
 
 | Flag | Description |
@@ -326,6 +327,9 @@ bz audit --ecosystem=Go          # specify ecosystem manually
 | `--severity` | Minimum severity to report: `critical`, `high`, `medium`, `low` |
 | `--fix` | Show suggested updates to fix vulnerabilities |
 | `--ecosystem` | OSV ecosystem to query (e.g., `Go`, `PyPI`, `crates.io`, `npm`, `Maven`) |
+| `--allow-unchecked` | Do not fail when modules could not be checked (no ecosystem mapping). Failed queries and vulnerabilities still fail |
+
+Most Bazel modules cannot yet be matched to OSV records. `bz audit` always prints `Checked N of M modules` and lists every module that was not checked, with the reason. It exits 1 when vulnerabilities are found, when any OSV query fails, or when any module was not checked (unless `--allow-unchecked`). `--severity` accepts only `critical`, `high`, `medium` or `low`; findings of unknown severity are never filtered out. See the [security guide](/bz/guides/security/) for the exit-code table and JSON schema.
 
 <Aside type="note">
 OSV does not have a "Bazel" ecosystem. bz maps known Bazel modules to their underlying ecosystems:
@@ -335,7 +339,7 @@ OSV does not have a "Bazel" ecosystem. bz maps known Bazel modules to their unde
 - `rules_nodejs` → npm
 - `rules_java` → Maven
 
-Modules without a known mapping will be skipped. Use `--ecosystem` to manually specify.
+Modules without a known mapping are reported as not checked. Use `--ecosystem` to manually specify.
 </Aside>
 
 **Example output:**
@@ -348,7 +352,7 @@ Suggested fixes:
   bz mod update protobuf --version=25.4
 ```
 
-The command returns a non-zero exit code if vulnerabilities are found.
+The command returns a non-zero exit code if vulnerabilities are found, a query fails, or a module was not checked (see above).
 
 ### `bz mod licenses`
 
@@ -626,7 +630,7 @@ bz version --json
 | 0 | Success |
 | 1 | General error (command failed, invalid arguments, etc.) |
 
-Commands that perform checks (`audit`, `cache verify`, `mod licenses --check`) return non-zero exit codes when issues are found, making them suitable for CI/CD pipelines.
+Commands that perform checks (`audit`, `cache verify`, `mod licenses --check`) return non-zero exit codes when issues are found, making them suitable for CI/CD pipelines. `audit` also returns non-zero when it could not check every module.
 
 ---
 

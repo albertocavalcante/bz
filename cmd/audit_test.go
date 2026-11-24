@@ -35,6 +35,7 @@ func resetAuditFlags() {
 	auditSeverity = ""
 	auditFix = false
 	auditEcosystem = ""
+	auditAllowUnchecked = false
 }
 
 func TestAuditCmd_NoVulnerabilities(t *testing.T) {
@@ -598,16 +599,15 @@ bazel_dep(name = "unknown_module", version = "1.0.0")
 	})
 
 	err := auditCmd.RunE(auditCmd, []string{})
-	require.NoError(t, err)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not checked")
 
-	// Should show message about skipped modules
-	errOutput := errBuf.String()
-	assert.Contains(t, errOutput, "Skipped")
-	assert.Contains(t, errOutput, "unknown_module")
-
-	// Should show helpful message about using --ecosystem
 	outOutput := outBuf.String()
-	assert.Contains(t, outOutput, "No modules could be checked")
+	assert.Contains(t, outOutput, "unknown_module@1.0.0")
+	assert.Contains(t, outOutput, "--ecosystem")
+	assert.Contains(t, outOutput, "No module could be checked")
+	assert.NotContains(t, outOutput, "No vulnerabilities found")
+	assert.Empty(t, errBuf.String())
 }
 
 func TestAuditCmd_EcosystemFlag(t *testing.T) {
@@ -671,13 +671,12 @@ bazel_dep(name = "unknown_module", version = "1.0.0")
 	// Should return error because vulnerability found
 	require.Error(t, err)
 
-	// Should report skipped module
-	errOutput := errBuf.String()
-	assert.Contains(t, errOutput, "Skipped")
-	assert.Contains(t, errOutput, "unknown_module")
+	assert.Empty(t, errBuf.String())
 
-	// Should still report vulnerability for known module
+	// Should report the unchecked module and still report the vulnerability
 	outOutput := outBuf.String()
+	assert.Contains(t, outOutput, "unknown_module@1.0.0")
+	assert.Contains(t, outOutput, "Checked 1 of 2 modules")
 	assert.Contains(t, outOutput, "GHSA-test")
 }
 
@@ -703,12 +702,13 @@ bazel_dep(name = "rules_cc", version = "0.0.9")
 	})
 
 	err := auditCmd.RunE(auditCmd, []string{})
-	require.NoError(t, err)
+	require.Error(t, err)
 
 	// Should show message about module with no OSV equivalent
-	errOutput := errBuf.String()
-	assert.Contains(t, errOutput, "rules_cc")
-	assert.Contains(t, errOutput, "no OSV equivalent")
+	outOutput := outBuf.String()
+	assert.Contains(t, outOutput, "rules_cc")
+	assert.Contains(t, outOutput, "no OSV equivalent")
+	assert.Empty(t, errBuf.String())
 }
 
 func TestAuditCmd_OfflineMode(t *testing.T) {
