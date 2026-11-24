@@ -312,8 +312,10 @@ func RedactURL(raw string) string {
 // registryHelp follows every malformed-URL message.
 const registryHelp = "help: want https://host[:port]/path, file:///abs/path or an absolute path"
 
-// urlProblem names a url.Parse failure without its text, which quotes parts
-// of the value.
+// urlProblem names a url.Parse failure without its message, which quotes
+// the value. It uses typed errors where Go provides them; the port case is
+// matched on the parser's inner cause, never on the full message, and falls
+// back to "not a valid URL" if that wording changes.
 func urlProblem(err error) string {
 	var esc url.EscapeError
 	var host url.InvalidHostError
@@ -322,11 +324,12 @@ func urlProblem(err error) string {
 		return "bad percent-escape"
 	case errors.As(err, &host):
 		return "invalid character in host"
-	case strings.Contains(err.Error(), "invalid port"):
-		return "invalid port"
-	default:
-		return "not a valid URL"
 	}
+	var uerr *url.Error
+	if errors.As(err, &uerr) && uerr.Err != nil && strings.HasPrefix(uerr.Err.Error(), "invalid port") {
+		return "invalid port"
+	}
+	return "not a valid URL"
 }
 
 // checkRegistryURL validates a registry value and returns it with

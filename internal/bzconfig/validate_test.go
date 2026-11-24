@@ -125,6 +125,8 @@ func TestMerge_RegistryErrorMessages(t *testing.T) {
 		{"question mark in password", "https://user:pa?ss@host", prefix + `"https://<redacted>": invalid port` + help},
 		{"hash in password", "https://user:pa#ss@host", prefix + `"https://<redacted>": invalid port` + help},
 		{"invalid character in host", "https://user:s3cret@ho^st/", prefix + `"https://<redacted>": invalid character in host` + help},
+		{"words in the value do not pick the category", "https://[::1/invalid port", prefix + `"https://[::1/invalid port": not a valid URL` + help},
+		{"credentials and @ in the path", "ftp://user:s3cret@host/@scope/reg", prefix + `"ftp://xxxxx@host/@scope/reg": want an https://, http:// or file:// URL or an absolute path`},
 		{"unsupported scheme", "ftp://user:s3cret@host/registry", prefix + `"ftp://xxxxx@host/registry": want an https://, http:// or file:// URL or an absolute path`},
 		{"no scheme", "user:s3cret@host", prefix + `"<redacted>": want an https://, http:// or file:// URL or an absolute path`},
 		{"control character", "https://user:s3cret@host/a\nb", prefix + `"https://<redacted>": contains control or non-printable characters`},
