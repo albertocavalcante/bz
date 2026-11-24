@@ -142,9 +142,9 @@ func TestHTTPPublisher_Exists(t *testing.T) {
 		}
 
 		switch r.URL.Path {
-		case "/exists.txt":
+		case "/exists/metadata.json":
 			w.WriteHeader(http.StatusOK)
-		case "/notfound.txt":
+		case "/notfound/metadata.json":
 			w.WriteHeader(http.StatusNotFound)
 		default:
 			http.NotFound(w, r)
@@ -160,7 +160,7 @@ func TestHTTPPublisher_Exists(t *testing.T) {
 	ctx := context.Background()
 
 	// File exists
-	exists, err := pub.Exists(ctx, "exists.txt")
+	exists, err := pub.Exists(ctx, "exists/metadata.json")
 	if err != nil {
 		t.Fatalf("Exists() error = %v", err)
 	}
@@ -169,7 +169,7 @@ func TestHTTPPublisher_Exists(t *testing.T) {
 	}
 
 	// File doesn't exist
-	exists, err = pub.Exists(ctx, "notfound.txt")
+	exists, err = pub.Exists(ctx, "notfound/metadata.json")
 	if err != nil {
 		t.Fatalf("Exists() error = %v", err)
 	}
@@ -200,7 +200,7 @@ func TestHTTPPublisher_BasicAuth(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	err = pub.Put(ctx, "test.txt", []byte("content"))
+	err = pub.Put(ctx, "rules_go/metadata.json", []byte("content"))
 	if err != nil {
 		t.Fatalf("Put() error = %v", err)
 	}
@@ -233,7 +233,7 @@ func TestHTTPPublisher_BearerAuth(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	err = pub.Put(ctx, "test.txt", []byte("content"))
+	err = pub.Put(ctx, "rules_go/metadata.json", []byte("content"))
 	if err != nil {
 		t.Fatalf("Put() error = %v", err)
 	}
@@ -267,7 +267,7 @@ func TestHTTPPublisher_BearerAuthFromEnv(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	err = pub.Put(ctx, "test.txt", []byte("content"))
+	err = pub.Put(ctx, "rules_go/metadata.json", []byte("content"))
 	if err != nil {
 		t.Fatalf("Put() error = %v", err)
 	}
@@ -300,7 +300,7 @@ func TestHTTPPublisher_CustomHeaderAuth(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	err = pub.Put(ctx, "test.txt", []byte("content"))
+	err = pub.Put(ctx, "rules_go/metadata.json", []byte("content"))
 	if err != nil {
 		t.Fatalf("Put() error = %v", err)
 	}
@@ -370,13 +370,13 @@ func TestHTTPPublisher_URLNormalization(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	err = pub.Put(ctx, "test.txt", []byte("content"))
+	err = pub.Put(ctx, "rules_go/metadata.json", []byte("content"))
 	if err != nil {
 		t.Fatalf("Put() error = %v", err)
 	}
 
 	// Should not have double slashes
-	if receivedPath != "/test.txt" {
-		t.Errorf("received path = %q, want %q", receivedPath, "/test.txt")
+	if receivedPath != "/rules_go/metadata.json" {
+		t.Errorf("received path = %q, want %q", receivedPath, "/rules_go/metadata.json")
 	}
 }

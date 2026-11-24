@@ -13,6 +13,7 @@ import (
 
 	"github.com/albertocavalcante/bz/internal/cli"
 	"github.com/albertocavalcante/bz/internal/cmdutil"
+	"github.com/albertocavalcante/bz/internal/coord"
 )
 
 var (
@@ -64,6 +65,14 @@ func runClear(cmd *cobra.Command, args []string) error {
 	out := cmd.OutOrStdout()
 	in := cmd.InOrStdin()
 
+	// Module arguments become path segments under the cache; reject anything
+	// that is not a valid module name before touching the filesystem.
+	for _, arg := range args {
+		if err := coord.ValidateModuleName(arg); err != nil {
+			return fmt.Errorf("refusing to clear %q: %w", arg, err)
+		}
+	}
+
 	cacheDir, err := resolveCacheDir(clearCacheDir)
 	if err != nil {
 		return err
@@ -108,16 +117,24 @@ func runClear(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Calculate size before clearing
+	// Calculate size before clearing. Every target must resolve strictly
+	// inside modulesDir.
 	var totalSize int64
 	for _, moduleName := range modulesToClear {
-		moduleDir := filepath.Join(modulesDir, moduleName)
-		size := calculateDirSize(moduleDir)
-		totalSize += size
+		moduleDir, err := coord.Join(modulesDir, moduleName)
+		if err != nil {
+			return fmt.Errorf("refusing to clear %q: %w", moduleName, err)
+		}
+		totalSize += calculateDirSize(moduleDir)
+	}
+
+	// --json cannot prompt, so it never implies consent.
+	if !clearForce && clearJSON {
+		return fmt.Errorf("refusing to clear %d module(s) without confirmation: pass --force with --json", len(modulesToClear))
 	}
 
 	// Confirm if not forced
-	if !clearForce && !clearJSON {
+	if !clearForce {
 		fmt.Fprintf(out, "This will clear %d module(s) (%s) from the cache.\n", len(modulesToClear), formatSize(totalSize))
 		fmt.Fprint(out, "Continue? [y/N] ")
 
@@ -139,9 +156,16 @@ func runClear(cmd *cobra.Command, args []string) error {
 		SizeCleared:  formatSize(totalSize),
 	}
 
+	// Deletes go through os.Root so that nothing outside modulesDir can be
+	// removed, even through a symlinked path component.
+	root, err := os.OpenRoot(modulesDir)
+	if err != nil {
+		return fmt.Errorf("open cache directory: %w", err)
+	}
+	defer root.Close()
+
 	for _, moduleName := range modulesToClear {
-		moduleDir := filepath.Join(modulesDir, moduleName)
-		if err := os.RemoveAll(moduleDir); err != nil {
+		if err := root.RemoveAll(moduleName); err != nil {
 			if !clearJSON {
 				fmt.Fprintf(out, "  %s Failed to clear %s: %v\n", cli.ErrorIcon(), moduleName, err)
 			}

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/albertocavalcante/bz/internal/config/modules"
+	"github.com/albertocavalcante/bz/internal/coord"
 )
 
 // HTTP client configuration.
@@ -71,8 +72,13 @@ func NewHTTPPublisher(baseURL string, auth *Auth) (*HTTPPublisher, error) {
 }
 
 // Put sends an HTTP PUT request to write content.
+// The path must be a valid registry path (see coord.ValidateRegistryPath);
+// invalid paths fail before any request is sent.
 func (p *HTTPPublisher) Put(ctx context.Context, filePath string, content []byte) error {
-	url := p.baseURL + "/" + filePath
+	url, err := p.url(filePath)
+	if err != nil {
+		return err
+	}
 
 	// Try to create parent directories via MKCOL (WebDAV)
 	if err := p.ensureDirectories(ctx, filePath); err != nil {
@@ -107,7 +113,10 @@ func (p *HTTPPublisher) Put(ctx context.Context, filePath string, content []byte
 
 // Exists checks if a path exists via HTTP HEAD request.
 func (p *HTTPPublisher) Exists(ctx context.Context, filePath string) (bool, error) {
-	url := p.baseURL + "/" + filePath
+	url, err := p.url(filePath)
+	if err != nil {
+		return false, err
+	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodHead, url, nil)
 	if err != nil {
@@ -145,6 +154,16 @@ func (p *HTTPPublisher) Type() string {
 // Close releases any resources (no-op for HTTP publisher).
 func (p *HTTPPublisher) Close() error {
 	return nil
+}
+
+// url validates a registry path and appends it to the base URL. Validated
+// segments contain only characters that need no escaping and are never
+// empty, "." or "..", so the request cannot address anything above baseURL.
+func (p *HTTPPublisher) url(filePath string) (string, error) {
+	if err := coord.ValidateRegistryPath(filePath); err != nil {
+		return "", err
+	}
+	return p.baseURL + "/" + filePath, nil
 }
 
 // addAuth adds authentication headers to a request.
@@ -193,7 +212,7 @@ func (p *HTTPPublisher) ensureDirectories(ctx context.Context, filePath string) 
 	dirs := p.parentDirs(filePath)
 
 	for _, dir := range dirs {
-		url := p.baseURL + "/" + dir
+		url := p.baseURL + "/" + dir // dir is a prefix of a path already validated by Put
 
 		req, err := http.NewRequestWithContext(ctx, "MKCOL", url, nil)
 		if err != nil {

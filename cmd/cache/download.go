@@ -12,6 +12,7 @@ import (
 
 	"github.com/albertocavalcante/bz/internal/cli"
 	"github.com/albertocavalcante/bz/internal/cmdutil"
+	"github.com/albertocavalcante/bz/internal/coord"
 	"github.com/albertocavalcante/bz/internal/depgraph"
 	"github.com/albertocavalcante/bz/internal/module"
 	"github.com/albertocavalcante/bz/internal/modulearg"
@@ -106,6 +107,12 @@ func runDownload(cmd *cobra.Command, args []string) error {
 		}
 
 		for _, name := range modules {
+			// Listed names are registry data; report invalid ones as failures
+			// instead of skipping them silently.
+			if err := coord.ValidateModuleName(name); err != nil {
+				modulesToDownload = append(modulesToDownload, moduleVersion{name: name, err: err})
+				continue
+			}
 			meta, err := reg.GetMetadata(ctx, name)
 			if err != nil {
 				continue // Skip modules we can't fetch metadata for
@@ -119,6 +126,14 @@ func runDownload(cmd *cobra.Command, args []string) error {
 		// Download specified modules
 		for _, arg := range args {
 			name, version := parseModuleArg(arg)
+			if err := coord.ValidateModuleName(name); err != nil {
+				return fmt.Errorf("invalid module argument %q: %w", arg, err)
+			}
+			if version != "" {
+				if err := coord.ValidateVersion(version); err != nil {
+					return fmt.Errorf("invalid module argument %q: %w", arg, err)
+				}
+			}
 			if version == "" {
 				// No version specified, get latest
 				meta, err := reg.GetMetadata(ctx, name)
@@ -164,12 +179,16 @@ func runDownload(cmd *cobra.Command, args []string) error {
 	}
 
 	for _, mv := range modulesToDownload {
-		err := downloadModule(ctx, reg, cacheDir, mv.name, mv.version)
+		err := mv.err
+		if err == nil {
+			err = downloadModule(ctx, reg, cacheDir, mv.name, mv.version)
+		}
 		if err != nil {
 			result.Failed++
-			result.Errors = append(result.Errors, fmt.Sprintf("%s@%s: %v", mv.name, mv.version, err))
+			label := mv.label()
+			result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", label, err))
 			if !downloadJSON {
-				fmt.Fprintf(out, "  %s %s@%s: %v\n", errorIcon(), mv.name, mv.version, err)
+				fmt.Fprintf(out, "  %s %s: %v\n", errorIcon(), label, err)
 			}
 		} else {
 			result.Downloaded++
@@ -198,6 +217,16 @@ func runDownload(cmd *cobra.Command, args []string) error {
 type moduleVersion struct {
 	name    string
 	version string
+	err     error // set when the coordinate was rejected before download
+}
+
+// label renders the coordinate for messages. Invalid coordinates are quoted
+// so registry-supplied text cannot inject control characters.
+func (mv moduleVersion) label() string {
+	if coord.Validate(mv.name, mv.version) == nil {
+		return mv.name + "@" + mv.version
+	}
+	return fmt.Sprintf("%q@%q", mv.name, mv.version)
 }
 
 // resolveTransitiveDeps resolves all transitive dependencies for the given modules.
@@ -217,11 +246,28 @@ func resolveTransitiveDeps(ctx context.Context, reg registry.Registry, initial [
 }
 
 // downloadModule downloads a single module to the cache.
+// Name and version may come from the registry or a MODULE.bazel, so they are
+// validated before any filesystem access, and every write goes through an
+// os.Root opened on the cache's modules directory.
 func downloadModule(ctx context.Context, reg registry.Registry, cacheDir, name, version string) error {
-	// Create module directory structure
-	moduleDir := filepath.Join(cacheDir, "modules", name)
-	versionDir := filepath.Join(moduleDir, version)
-	if err := os.MkdirAll(versionDir, 0o755); err != nil {
+	if err := coord.Validate(name, version); err != nil {
+		return err
+	}
+
+	modulesDir := filepath.Join(cacheDir, "modules")
+	if err := os.MkdirAll(modulesDir, 0o755); err != nil {
+		return fmt.Errorf("create directory: %w", err)
+	}
+	root, err := os.OpenRoot(modulesDir)
+	if err != nil {
+		return fmt.Errorf("open cache directory: %w", err)
+	}
+	defer root.Close()
+
+	// Create module directory structure (paths relative to modulesDir)
+	moduleDir := name
+	versionDir := filepath.Join(name, version)
+	if err := root.MkdirAll(versionDir, 0o755); err != nil {
 		return fmt.Errorf("create directory: %w", err)
 	}
 
@@ -234,7 +280,7 @@ func downloadModule(ctx context.Context, reg registry.Registry, cacheDir, name, 
 	if err != nil {
 		return fmt.Errorf("marshal metadata: %w", err)
 	}
-	if err := os.WriteFile(filepath.Join(moduleDir, "metadata.json"), metaBytes, 0o644); err != nil {
+	if err := root.WriteFile(filepath.Join(moduleDir, "metadata.json"), metaBytes, 0o644); err != nil {
 		return fmt.Errorf("write metadata: %w", err)
 	}
 
@@ -243,7 +289,7 @@ func downloadModule(ctx context.Context, reg registry.Registry, cacheDir, name, 
 	if err != nil {
 		return fmt.Errorf("get MODULE.bazel: %w", err)
 	}
-	if err := os.WriteFile(filepath.Join(versionDir, "MODULE.bazel"), moduleBazel, 0o644); err != nil {
+	if err := root.WriteFile(filepath.Join(versionDir, "MODULE.bazel"), moduleBazel, 0o644); err != nil {
 		return fmt.Errorf("write MODULE.bazel: %w", err)
 	}
 
@@ -251,7 +297,7 @@ func downloadModule(ctx context.Context, reg registry.Registry, cacheDir, name, 
 	if sourceReg, ok := reg.(registry.SourceGetter); ok {
 		sourceJSON, err := sourceReg.GetSource(ctx, name, version)
 		if err == nil {
-			_ = os.WriteFile(filepath.Join(versionDir, "source.json"), sourceJSON, 0o644) // non-fatal: optional metadata
+			_ = root.WriteFile(filepath.Join(versionDir, "source.json"), sourceJSON, 0o644) // non-fatal: optional metadata
 		}
 	}
 

@@ -11,6 +11,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/albertocavalcante/bz/internal/coord"
 )
 
 // HTTPRegistry implements Registry for HTTP/HTTPS registries.
@@ -63,7 +65,13 @@ func (r *HTTPRegistry) String() string {
 
 // GetMetadata fetches the metadata.json for a module.
 func (r *HTTPRegistry) GetMetadata(ctx context.Context, module string) (*Metadata, error) {
-	url := r.baseURL + "/" + MetadataPath(module)
+	if err := coord.ValidateModuleName(module); err != nil {
+		return nil, err
+	}
+	url, err := r.url(MetadataPath(module))
+	if err != nil {
+		return nil, err
+	}
 
 	data, err := r.fetch(ctx, url)
 	if err != nil {
@@ -80,13 +88,20 @@ func (r *HTTPRegistry) GetMetadata(ctx context.Context, module string) (*Metadat
 
 // GetModuleBazel fetches the MODULE.bazel content for a specific version.
 func (r *HTTPRegistry) GetModuleBazel(ctx context.Context, module, version string) ([]byte, error) {
+	if err := coord.Validate(module, version); err != nil {
+		return nil, err
+	}
+
 	// First verify module exists by checking metadata
 	_, err := r.GetMetadata(ctx, module)
 	if err != nil {
 		return nil, err
 	}
 
-	url := r.baseURL + "/" + ModuleBazelPath(module, version)
+	url, err := r.url(ModuleBazelPath(module, version))
+	if err != nil {
+		return nil, err
+	}
 	data, err := r.fetch(ctx, url)
 	if err != nil {
 		// If module exists but version doesn't, return ErrVersionNotFound
@@ -271,13 +286,20 @@ func (r *HTTPRegistry) fetch(ctx context.Context, url string) ([]byte, error) {
 
 // GetSource fetches the source.json content for a specific version.
 func (r *HTTPRegistry) GetSource(ctx context.Context, module, version string) ([]byte, error) {
+	if err := coord.Validate(module, version); err != nil {
+		return nil, err
+	}
+
 	// First verify module exists by checking metadata
 	_, err := r.GetMetadata(ctx, module)
 	if err != nil {
 		return nil, err
 	}
 
-	url := r.baseURL + "/" + SourcePath(module, version)
+	url, err := r.url(SourcePath(module, version))
+	if err != nil {
+		return nil, err
+	}
 	data, err := r.fetch(ctx, url)
 	if err != nil {
 		// If module exists but version doesn't, return ErrVersionNotFound
@@ -288,6 +310,16 @@ func (r *HTTPRegistry) GetSource(ctx context.Context, module, version string) ([
 	}
 
 	return data, nil
+}
+
+// url appends a slash-separated registry path (built from validated
+// coordinates) to the base URL, refusing any path that is not under the
+// modules directory so a request can never address a location above it.
+func (r *HTTPRegistry) url(rel string) (string, error) {
+	if err := checkModulesRel(rel); err != nil {
+		return "", err
+	}
+	return r.baseURL + "/" + rel, nil
 }
 
 // Verify HTTPRegistry implements Registry and SourceGetter.
