@@ -11,6 +11,7 @@ package bzconfig
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -227,15 +228,27 @@ func (e *Effective) apply(l Layer) []error {
 		e.Network.Mode = *s.Mode
 		e.sources[KeyMode] = l.source(KeyMode)
 	}
-	if s.Registry != nil && strings.TrimSpace(*s.Registry) == "" {
-		errs = append(errs, fmt.Errorf("empty registry in %s", l.source(KeyRegistry)))
-	} else if s.Registry != nil {
-		e.Network.Registry = *s.Registry
-		e.sources[KeyRegistry] = l.source(KeyRegistry)
+	if s.Registry != nil {
+		if err := checkRegistryURL(*s.Registry); err != nil {
+			errs = append(errs, fmt.Errorf("invalid registry in %s: %w", l.source(KeyRegistry), err))
+		} else {
+			e.Network.Registry = *s.Registry
+			e.sources[KeyRegistry] = l.source(KeyRegistry)
+		}
 	}
 	if s.FallbackRegistries != nil {
-		e.Network.FallbackRegistries = slices.Clone(*s.FallbackRegistries)
-		e.sources[KeyFallbackRegistries] = l.source(KeyFallbackRegistries)
+		var bad []error
+		for _, r := range *s.FallbackRegistries {
+			if err := checkRegistryURL(r); err != nil {
+				bad = append(bad, fmt.Errorf("invalid fallback_registries entry in %s: %w", l.source(KeyFallbackRegistries), err))
+			}
+		}
+		if len(bad) > 0 {
+			errs = append(errs, bad...)
+		} else {
+			e.Network.FallbackRegistries = slices.Clone(*s.FallbackRegistries)
+			e.sources[KeyFallbackRegistries] = l.source(KeyFallbackRegistries)
+		}
 	}
 	if s.Timeout != nil {
 		d, err := time.ParseDuration(*s.Timeout)
@@ -255,12 +268,54 @@ func (e *Effective) apply(l Layer) []error {
 		e.sources[KeyCacheDir] = l.source(KeyCacheDir)
 	}
 	if s.CacheTTL != nil {
-		e.Cache.TTL = *s.CacheTTL
-		e.sources[KeyCacheTTL] = l.source(KeyCacheTTL)
+		if d, err := time.ParseDuration(*s.CacheTTL); *s.CacheTTL != "" && (err != nil || d < 0) {
+			errs = append(errs, fmt.Errorf("invalid cache ttl %q in %s (want a Go duration such as \"24h\", or \"\" for no expiry)",
+				*s.CacheTTL, l.source(KeyCacheTTL)))
+		} else {
+			e.Cache.TTL = *s.CacheTTL
+			e.sources[KeyCacheTTL] = l.source(KeyCacheTTL)
+		}
 	}
 	if s.Disabled != nil {
 		e.Commands.Disabled = slices.Clone(*s.Disabled)
 		e.sources[KeyDisabled] = l.source(KeyDisabled)
 	}
 	return errs
+}
+
+// checkRegistryURL accepts the registry forms bz supports: http:// or
+// https:// URLs with a host, file:// URLs with a path, and absolute
+// filesystem paths (Unix or Windows drive paths).
+func checkRegistryURL(raw string) error {
+	v := strings.TrimSpace(raw)
+	switch {
+	case v == "":
+		return errors.New("empty registry URL")
+	case strings.HasPrefix(v, "https://"), strings.HasPrefix(v, "http://"):
+		u, err := url.Parse(v)
+		if err != nil {
+			return fmt.Errorf("%q: %w", raw, err)
+		}
+		if u.Host == "" {
+			return fmt.Errorf("%q: missing host", raw)
+		}
+		return nil
+	case strings.HasPrefix(v, "file://"):
+		if strings.TrimPrefix(v, "file://") == "" {
+			return fmt.Errorf("%q: missing path", raw)
+		}
+		return nil
+	case strings.HasPrefix(v, "/"), isWindowsDrivePath(v):
+		return nil
+	default:
+		return fmt.Errorf("%q: want an https://, http:// or file:// URL or an absolute path", raw)
+	}
+}
+
+func isWindowsDrivePath(p string) bool {
+	if len(p) < 3 || (p[2] != '\\' && p[2] != '/') || p[1] != ':' {
+		return false
+	}
+	c := p[0] | 0x20
+	return c >= 'a' && c <= 'z'
 }

@@ -106,7 +106,7 @@ func TestMerge_InvalidValuesAreSkippedAndReported(t *testing.T) {
 		{name: "timeout without unit", data: "[network]\ntimeout = \"30\"\n", want: `"30"`},
 		{name: "zero timeout", data: "[network]\ntimeout = \"0s\"\n", want: `"0s"`},
 		{
-			name: "empty registry", data: "[network]\nregistry = \"\"\n", want: "empty registry in project config /p/.bzconfig.toml",
+			name: "empty registry", data: "[network]\nregistry = \"\"\n", want: "invalid registry in project config /p/.bzconfig.toml: empty registry URL",
 			check: func(t *testing.T, e *Effective) { assert.Equal(t, DefaultRegistry, e.Network.Registry) },
 		},
 		{
