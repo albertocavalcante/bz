@@ -3,6 +3,8 @@ package osv
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -331,64 +333,6 @@ func TestHTTPClient_Query_SeverityParsing(t *testing.T) {
 	}
 }
 
-func TestMockClient_Query(t *testing.T) {
-	t.Parallel()
-	mockVulns := []Vulnerability{
-		{
-			ID:       "GHSA-mock-1234",
-			Summary:  "Mock vulnerability",
-			Severity: SeverityHigh,
-			Fixed:    "2.0.0",
-		},
-	}
-
-	client := &MockClient{
-		Vulnerabilities: map[string][]Vulnerability{
-			"rules_go@0.50.0": mockVulns,
-		},
-	}
-
-	// Query with matching key (rules_go is in the mapping)
-	vulns, err := client.Query(context.Background(), "rules_go", "0.50.0", "")
-	require.NoError(t, err)
-	assert.Len(t, vulns, 1)
-	assert.Equal(t, "GHSA-mock-1234", vulns[0].ID)
-
-	// Query without match (rules_python is also in the mapping)
-	vulns, err = client.Query(context.Background(), "rules_python", "1.0.0", "")
-	require.NoError(t, err)
-	assert.Nil(t, vulns)
-}
-
-func TestMockClient_Query_WithError(t *testing.T) {
-	t.Parallel()
-	client := &MockClient{
-		Error: assert.AnError,
-	}
-
-	vulns, err := client.Query(context.Background(), "rules_go", "1.0.0", "")
-	require.Error(t, err)
-	assert.Nil(t, vulns)
-}
-
-func TestMockClient_Query_ByNameOnly(t *testing.T) {
-	t.Parallel()
-	mockVulns := []Vulnerability{
-		{ID: "GHSA-all-versions"},
-	}
-
-	client := &MockClient{
-		Vulnerabilities: map[string][]Vulnerability{
-			"rules_go": mockVulns,
-		},
-	}
-
-	// Query matches by name when no version-specific entry exists
-	vulns, err := client.Query(context.Background(), "rules_go", "any-version", "")
-	require.NoError(t, err)
-	assert.Len(t, vulns, 1)
-}
-
 func TestNewClient_Options(t *testing.T) {
 	t.Parallel()
 	customHTTP := &http.Client{}
@@ -411,138 +355,26 @@ func TestNewClient_Defaults(t *testing.T) {
 	assert.Equal(t, http.DefaultClient, client.httpClient)
 }
 
-func TestMapModuleToEcosystem(t *testing.T) {
+func TestHTTPClient_Query_SendsPackageAsGiven(t *testing.T) {
 	t.Parallel()
-	tests := []struct {
-		module    string
-		ecosystem string
-		known     bool
-	}{
-		// Exact matches
-		{"rules_go", "Go", true},
-		{"gazelle", "Go", true},
-		{"rules_python", "PyPI", true},
-		{"rules_rust", "crates.io", true},
-		{"rules_nodejs", "npm", true},
-		{"rules_java", "Maven", true},
-		{"rules_kotlin", "Maven", true},
-		{"rules_scala", "Maven", true},
-		{"rules_ruby", "RubyGems", true},
-		{"rules_dotnet", "NuGet", true},
-		{"rules_swift", "SwiftURL", true},
-		// Known but no OSV equivalent
-		{"rules_cc", "", true},
-		{"rules_pkg", "", true},
-		{"rules_proto", "", true},
-		// Prefix matches
-		{"com_github_foo_bar", "Go", true},
-		{"pip_install", "PyPI", true},
-		{"crate_foo", "crates.io", true},
-		{"crates_io_bar", "crates.io", true},
-		{"npm_react", "npm", true},
-		{"maven_junit", "Maven", true},
-		{"rules_jvm_external", "Maven", true},
-		// Unknown modules
-		{"unknown_module", "", false},
-		{"my_custom_rules", "", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.module, func(t *testing.T) {
-			t.Parallel()
-			eco, known := MapModuleToEcosystem(tt.module)
-			assert.Equal(t, tt.ecosystem, eco, "ecosystem mismatch for %s", tt.module)
-			assert.Equal(t, tt.known, known, "known mismatch for %s", tt.module)
-		})
-	}
-}
-
-func TestErrNoEcosystem(t *testing.T) {
-	t.Parallel(
-	// Unknown module
-	)
-
-	err := &ErrNoEcosystem{Module: "unknown_module"}
-	assert.Contains(t, err.Error(), "unknown module")
-	assert.Contains(t, err.Error(), "unknown_module")
-	assert.Contains(t, err.Error(), "--ecosystem")
-
-	// Known module with no OSV equivalent
-	err = &ErrNoEcosystem{Module: "rules_cc", Known: true}
-	assert.Contains(t, err.Error(), "rules_cc")
-	assert.Contains(t, err.Error(), "no OSV ecosystem equivalent")
-}
-
-func TestHTTPClient_Query_EcosystemMapping(t *testing.T) {
-	t.Parallel(
-	// Test that the client correctly maps modules to ecosystems
-	)
-
+	var got string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var req QueryRequest
-		json.NewDecoder(r.Body).Decode(&req)
-
-		// Verify the ecosystem was correctly mapped
-		assert.Equal(t, "Go", req.Package.Ecosystem)
-
-		json.NewEncoder(w).Encode(QueryResponse{Vulns: nil})
+		b, _ := io.ReadAll(r.Body)
+		got = string(b)
+		fmt.Fprint(w, `{}`)
 	}))
 	defer server.Close()
 
-	client := NewClient(WithAPIURL(server.URL))
+	_, err := NewClient(WithAPIURL(server.URL)).Query(context.Background(), "rules_go", "0.50.0", "PyPI")
 
-	// rules_go should map to Go ecosystem
-	_, err := client.Query(context.Background(), "rules_go", "0.50.0", "")
 	require.NoError(t, err)
+	assert.JSONEq(t, `{"package":{"name":"rules_go","ecosystem":"PyPI"},"version":"0.50.0"}`, got)
 }
 
-func TestHTTPClient_Query_UnknownModule(t *testing.T) {
+func TestHTTPClient_Query_RequiresEcosystem(t *testing.T) {
 	t.Parallel()
-	client := NewClient()
 
-	// Unknown module should return ErrNoEcosystem
-	_, err := client.Query(context.Background(), "unknown_module", "1.0.0", "")
-	require.Error(t, err)
+	_, err := NewClient(WithAPIURL("http://127.0.0.1:1")).Query(context.Background(), "rules_go", "0.50.0", "")
 
-	var noEcoErr *ErrNoEcosystem
-	require.ErrorAs(t, err, &noEcoErr)
-	assert.Equal(t, "unknown_module", noEcoErr.Module)
-	assert.False(t, noEcoErr.Known)
-}
-
-func TestHTTPClient_Query_KnownModuleNoOSV(t *testing.T) {
-	t.Parallel()
-	client := NewClient()
-
-	// rules_cc is known but has no OSV equivalent
-	_, err := client.Query(context.Background(), "rules_cc", "0.0.9", "")
-	require.Error(t, err)
-
-	var noEcoErr *ErrNoEcosystem
-	require.ErrorAs(t, err, &noEcoErr)
-	assert.Equal(t, "rules_cc", noEcoErr.Module)
-	assert.True(t, noEcoErr.Known)
-}
-
-func TestHTTPClient_Query_ExplicitEcosystem(t *testing.T) {
-	t.Parallel(
-	// Test that explicit ecosystem overrides mapping
-	)
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var req QueryRequest
-		json.NewDecoder(r.Body).Decode(&req)
-
-		// Should use the explicitly provided ecosystem, not the mapping
-		assert.Equal(t, "PyPI", req.Package.Ecosystem)
-
-		json.NewEncoder(w).Encode(QueryResponse{Vulns: nil})
-	}))
-	defer server.Close()
-
-	client := NewClient(WithAPIURL(server.URL))
-
-	// Even though rules_go maps to Go, explicit PyPI should be used
-	_, err := client.Query(context.Background(), "rules_go", "0.50.0", "PyPI")
-	require.NoError(t, err)
+	require.EqualError(t, err, "ecosystem is required")
 }

@@ -313,12 +313,12 @@ protobuf is required by:
 Scan dependencies for security vulnerabilities using the [OSV](https://osv.dev/) database.
 
 ```bash
-bz audit                         # scan all dependencies
+bz audit                         # lists every module as not checked (no mapping yet)
 bz audit --json                  # output as JSON
 bz audit --severity=high         # only high/critical vulnerabilities
 bz audit --fix                   # show suggested updates
-bz audit --ecosystem=Go          # specify ecosystem manually
-bz audit --allow-unchecked       # do not fail on modules with no OSV mapping
+bz audit --ecosystem=Go          # query every module as a Go package named after the module
+bz audit --allow-unchecked       # do not fail on modules with no package mapping
 ```
 
 | Flag | Description |
@@ -326,20 +326,13 @@ bz audit --allow-unchecked       # do not fail on modules with no OSV mapping
 | `--json` | Output as JSON |
 | `--severity` | Minimum severity to report: `critical`, `high`, `medium`, `low` |
 | `--fix` | Show suggested updates to fix vulnerabilities |
-| `--ecosystem` | OSV ecosystem to query (e.g., `Go`, `PyPI`, `crates.io`, `npm`, `Maven`) |
-| `--allow-unchecked` | Do not fail when modules could not be checked (no ecosystem mapping). Failed queries and vulnerabilities still fail |
+| `--ecosystem` | OSV ecosystem to query for every module, using the module name as the package name (e.g., `Go`, `PyPI`, `crates.io`, `npm`, `Maven`) |
+| `--allow-unchecked` | Do not fail when modules could not be checked (no package mapping). Failed queries and vulnerabilities still fail |
 
-Most Bazel modules cannot yet be matched to OSV records, and transitive dependencies are not audited. `bz audit` always prints `Checked N of M direct dependencies` and lists every one that was not checked, with the reason. It exits 1 when vulnerabilities are found, when any OSV query fails, or when any direct dependency was not checked (unless `--allow-unchecked`). `--severity` accepts only `critical`, `high`, `medium` or `low`; findings of unknown severity are never filtered out. See the [security guide](/bz/guides/security/) for the exit-code table and JSON schema.
+No Bazel module can yet be matched to OSV records without `--ecosystem`, and transitive dependencies are not audited. `bz audit` always prints `Checked N of M direct dependencies` and lists every one that was not checked, with the reason. It exits 1 when vulnerabilities are found, when any OSV query fails, or when any direct dependency was not checked (unless `--allow-unchecked`). `--severity` accepts only `critical`, `high`, `medium` or `low`; findings of unknown severity are never filtered out. See the [security guide](/bz/guides/security/) for the exit-code table and JSON schema.
 
 <Aside type="note">
-OSV does not have a "Bazel" ecosystem. bz maps known Bazel modules to their underlying ecosystems:
-- `rules_go`, `gazelle` → Go
-- `rules_python` → PyPI
-- `rules_rust` → crates.io
-- `rules_nodejs` → npm
-- `rules_java` → Maven
-
-Modules without a known mapping are reported as not checked. Use `--ecosystem` to manually specify.
+OSV files records under upstream package names, not Bazel module names, and bz has no module-to-upstream mapping yet. Without `--ecosystem` every module is reported as not checked. With it, bz queries that ecosystem using the module name as the package name, which only finds modules named exactly like their upstream package.
 </Aside>
 
 **Example output:**

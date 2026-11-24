@@ -1,103 +1,23 @@
 // Package osv provides a client for querying the Open Source Vulnerabilities (OSV) API.
-// It supports checking Bazel modules for known security vulnerabilities.
 //
-// Note: OSV does not have a "Bazel" ecosystem. This package maps known Bazel modules
-// to their underlying ecosystems (e.g., rules_go -> Go, rules_python -> PyPI).
+// OSV has no Bazel ecosystem: records are filed under upstream package names
+// (https://ossf.github.io/osv-schema/#affectedpackage-field), so the caller must
+// supply one; a Bazel module name is generally not an upstream package name.
 package osv
 
 import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
 )
 
-// EcosystemMapping maps Bazel module name prefixes to OSV ecosystems.
-// OSV supported ecosystems include: Go, PyPI, crates.io, npm, Maven, NuGet, etc.
-// See https://ossf.github.io/osv-schema/ for the full list.
-var EcosystemMapping = map[string]string{
-	// Go ecosystem mappings
-	"rules_go":    "Go",
-	"gazelle":     "Go",
-	"com_github_": "Go", // Common Go modules from GitHub
-
-	// Python ecosystem mappings
-	"rules_python": "PyPI",
-	"pip_":         "PyPI",
-
-	// Rust ecosystem mappings
-	"rules_rust": "crates.io",
-	"crate_":     "crates.io",
-	"crates_io_": "crates.io",
-
-	// JavaScript/Node ecosystem mappings
-	"rules_nodejs": "npm",
-	"npm_":         "npm",
-
-	// Java/JVM ecosystem mappings
-	"rules_java":   "Maven",
-	"rules_jvm_":   "Maven",
-	"maven_":       "Maven",
-	"rules_kotlin": "Maven",
-	"rules_scala":  "Maven",
-
-	// Other ecosystems
-	"rules_ruby":   "RubyGems",
-	"rules_dotnet": "NuGet",
-	"rules_swift":  "SwiftURL",
-	"rules_pkg":    "", // No direct mapping
-	"rules_proto":  "", // No direct mapping
-	"rules_cc":     "", // No direct mapping (C/C++ not in OSV)
-}
-
-// MapModuleToEcosystem attempts to map a Bazel module name to an OSV ecosystem.
-// It returns the ecosystem name and a boolean indicating if a mapping was found.
-// An empty ecosystem string with true means the module is known but has no OSV equivalent.
-func MapModuleToEcosystem(moduleName string) (ecosystem string, known bool) {
-	// Check for exact match first
-	if eco, ok := EcosystemMapping[moduleName]; ok {
-		return eco, true
-	}
-
-	// Check for prefix matches
-	for prefix, eco := range EcosystemMapping {
-		if strings.HasPrefix(moduleName, prefix) {
-			return eco, true
-		}
-	}
-
-	return "", false
-}
-
-// ExtractPackageName attempts to extract the underlying package name from a Bazel module.
-// For example, "rules_go" might map to "golang.org/x/..." packages.
-// Currently returns the module name as-is since Bazel modules don't always have
-// a direct 1:1 mapping to package names.
-func ExtractPackageName(moduleName string) string {
-	// For now, return the module name as-is
-	// In the future, this could be enhanced to extract actual package names
-	// from extension tags or other sources
-	return moduleName
-}
-
 // DefaultAPIURL is the default OSV API endpoint.
 const DefaultAPIURL = "https://api.osv.dev/v1/query"
-
-// ErrNoEcosystem is returned when a module cannot be mapped to an OSV ecosystem.
-type ErrNoEcosystem struct {
-	Module string
-	Known  bool // true if module is known but has no OSV ecosystem mapping
-}
-
-func (e *ErrNoEcosystem) Error() string {
-	if e.Known {
-		return fmt.Sprintf("module %q has no OSV ecosystem equivalent", e.Module)
-	}
-	return fmt.Sprintf("unknown module %q: cannot determine OSV ecosystem (use --ecosystem flag to specify)", e.Module)
-}
 
 // Severity levels for vulnerabilities.
 type Severity string
@@ -215,9 +135,7 @@ type osvRef struct {
 // Client is the interface for querying vulnerabilities.
 type Client interface {
 	// Query checks a package for known vulnerabilities.
-	// The ecosystem parameter specifies the OSV ecosystem to query.
-	// If ecosystem is empty, the client will attempt to map the module name
-	// to an appropriate ecosystem using MapModuleToEcosystem.
+	// name is the OSV package name within the given, non-empty ecosystem.
 	Query(ctx context.Context, name, version, ecosystem string) ([]Vulnerability, error)
 }
 
@@ -256,26 +174,15 @@ func NewClient(opts ...ClientOption) *HTTPClient {
 	return c
 }
 
-// Query checks a package for known vulnerabilities.
-// If ecosystem is empty, the method attempts to map the module name to an ecosystem.
-// Returns ErrNoEcosystem if no ecosystem mapping exists for the module.
+// Query checks a package for known vulnerabilities. The ecosystem is required.
 func (c *HTTPClient) Query(ctx context.Context, name, version, ecosystem string) ([]Vulnerability, error) {
-	// If no ecosystem specified, try to map from module name
 	if ecosystem == "" {
-		mapped, known := MapModuleToEcosystem(name)
-		if !known {
-			return nil, &ErrNoEcosystem{Module: name}
-		}
-		if mapped == "" {
-			// Known module but no OSV ecosystem (e.g., rules_cc)
-			return nil, &ErrNoEcosystem{Module: name, Known: true}
-		}
-		ecosystem = mapped
+		return nil, errors.New("ecosystem is required")
 	}
 
 	req := QueryRequest{
 		Package: Package{
-			Name:      ExtractPackageName(name),
+			Name:      name,
 			Ecosystem: ecosystem,
 		},
 		Version: version,
@@ -419,41 +326,4 @@ func findFixedVersion(affected []osvAffected) string {
 		}
 	}
 	return ""
-}
-
-// MockClient is a mock implementation for testing.
-type MockClient struct {
-	Vulnerabilities map[string][]Vulnerability
-	Error           error
-	// SkipEcosystemCheck when true, bypasses ecosystem validation
-	SkipEcosystemCheck bool
-}
-
-// Query returns mock vulnerabilities for testing.
-// The ecosystem parameter is ignored in the mock client for backwards compatibility.
-func (m *MockClient) Query(ctx context.Context, name, version, ecosystem string) ([]Vulnerability, error) {
-	if m.Error != nil {
-		return nil, m.Error
-	}
-
-	// Simulate ecosystem mapping behavior unless skipped
-	if !m.SkipEcosystemCheck && ecosystem == "" {
-		mapped, known := MapModuleToEcosystem(name)
-		if !known {
-			return nil, &ErrNoEcosystem{Module: name}
-		}
-		if mapped == "" {
-			return nil, &ErrNoEcosystem{Module: name, Known: true}
-		}
-	}
-
-	key := name + "@" + version
-	if vulns, ok := m.Vulnerabilities[key]; ok {
-		return vulns, nil
-	}
-	// Also check without version
-	if vulns, ok := m.Vulnerabilities[name]; ok {
-		return vulns, nil
-	}
-	return nil, nil
 }

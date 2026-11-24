@@ -7,7 +7,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -73,57 +72,11 @@ func auditProject(t *testing.T, content string) {
 	}
 }
 
-func TestAudit_MixedProjectIsNotClean(t *testing.T) {
-	auditProject(t, sevenModules)
-	osvServer(t, http.StatusOK, `{}`)
-
-	stdout, stderr, code := runCLI(t, "audit")
-
-	assert.Equal(t, 1, code)
-	assert.Contains(t, stdout, "Checked 3 of 7 direct dependencies")
-	for _, m := range []string{"abseil-cpp@20240116.2", "protobuf@27.1", "rules_cc@0.0.9", "zlib@1.3.1"} {
-		assert.Contains(t, stdout, m)
-	}
-	assert.Contains(t, stdout, "No vulnerabilities found in the 3 direct dependencies that could be checked; 4 direct dependencies were not checked.")
-	assert.NotContains(t, strings.ReplaceAll(stdout, "found in the 3 modules", ""), "No vulnerabilities found\n")
-	assert.Equal(t, 1, countErrorLines(stderr), stderr)
-	assert.Contains(t, stderr, "4 of 7 direct dependencies were not checked")
-}
-
-func TestAudit_AllUnchecked(t *testing.T) {
-	auditProject(t, unmappedModules)
-	hits := osvServer(t, http.StatusOK, `{}`)
-
-	stdout, stderr, code := runCLI(t, "audit")
-
-	assert.Equal(t, 1, code)
-	assert.Zero(t, hits.Load())
-	assert.Contains(t, stdout, "Checked 0 of 4 direct dependencies")
-	assert.Contains(t, stdout, "No direct dependency could be checked")
-	assert.NotContains(t, stdout, "No vulnerabilities found")
-	assert.Equal(t, 1, countErrorLines(stderr), stderr)
-}
-
-func TestAudit_AllowUnchecked(t *testing.T) {
-	auditProject(t, sevenModules)
-	osvServer(t, http.StatusOK, `{}`)
-
-	stdout, stderr, code := runCLI(t, "audit", "--allow-unchecked")
-
-	assert.Equal(t, 0, code, stderr)
-	assert.Contains(t, stdout, "Checked 3 of 7 direct dependencies")
-	assert.Contains(t, stdout, "Not checked (4):")
-	assert.Contains(t, stdout, "zlib@1.3.1: no known OSV ecosystem mapping")
-	assert.Contains(t, stdout, "rules_cc@0.0.9: no OSV equivalent")
-	assert.Contains(t, stdout, "4 direct dependencies were not checked")
-	assert.Empty(t, stderr)
-}
-
 func TestAudit_AllowUncheckedStillFailsOnVulnerabilities(t *testing.T) {
 	auditProject(t, sevenModules)
 	osvServer(t, http.StatusOK, `{"vulns":[{"id":"GHSA-x","summary":"bad"}]}`)
 
-	stdout, stderr, code := runCLI(t, "audit", "--allow-unchecked")
+	stdout, stderr, code := runCLI(t, "audit", "--ecosystem=Go", "--allow-unchecked")
 
 	assert.Equal(t, 1, code)
 	assert.Contains(t, stdout, "GHSA-x")
@@ -136,14 +89,14 @@ func TestAudit_AllQueriesFail(t *testing.T) {
 	osvServer(t, http.StatusInternalServerError, "boom")
 
 	for _, allow := range []bool{false, true} {
-		args := []string{"audit"}
+		args := []string{"audit", "--ecosystem=Go"}
 		if allow {
 			args = append(args, "--allow-unchecked")
 		}
 		stdout, stderr, code := runCLI(t, args...)
 
 		assert.Equal(t, 1, code, "allow-unchecked=%v", allow)
-		assert.Contains(t, stdout, "Checked 0 of 2 direct dependencies")
+		assert.Contains(t, stdout, "Checked 0 of 2 direct dependencies as Go packages named after the module.")
 		assert.Contains(t, stdout, "query failed:")
 		assert.NotContains(t, stdout, "No vulnerabilities found")
 		assert.Equal(t, 1, countErrorLines(stderr), stderr)
@@ -155,38 +108,20 @@ func TestAudit_AllQueriesFailJSON(t *testing.T) {
 	auditProject(t, mappedModules)
 	osvServer(t, http.StatusInternalServerError, "boom")
 
-	stdout, stderr, code := runCLI(t, "audit", "--json")
+	stdout, stderr, code := runCLI(t, "audit", "--json", "--ecosystem=Go")
 
 	assert.Equal(t, 1, code)
 	assert.Equal(t, 1, countErrorLines(stderr), stderr)
 
 	var got AuditResult
 	require.NoError(t, json.Unmarshal([]byte(stdout), &got), stdout)
-	assert.Equal(t, AuditSummary{Scope: "direct", Total: 2, Checked: 0, Unchecked: 2, Failed: 2}, got.Summary)
+	assert.Equal(t, AuditSummary{Scope: "direct", Ecosystem: "Go", Total: 2, Checked: 0, Unchecked: 2, Failed: 2}, got.Summary)
 	require.Len(t, got.Unchecked, 2)
 	assert.Equal(t, "rules_go", got.Unchecked[0].Module)
 	assert.Equal(t, "0.50.1", got.Unchecked[0].Version)
 	assert.Contains(t, got.Unchecked[0].Reason, "query failed:")
 	assert.Equal(t, 2, got.Total)
 	assert.NotNil(t, got.Vulnerabilities)
-}
-
-func TestAudit_AllUncheckedJSON(t *testing.T) {
-	auditProject(t, unmappedModules)
-	osvServer(t, http.StatusOK, `{}`)
-
-	stdout, _, code := runCLI(t, "audit", "--json")
-
-	assert.Equal(t, 1, code)
-	var got AuditResult
-	require.NoError(t, json.Unmarshal([]byte(stdout), &got), stdout)
-	assert.Equal(t, AuditSummary{Scope: "direct", Total: 4, Checked: 0, Unchecked: 4, Failed: 0}, got.Summary)
-	assert.Len(t, got.Unchecked, 4)
-
-	stdout, stderr, code := runCLI(t, "audit", "--json", "--allow-unchecked")
-	assert.Equal(t, 0, code, stderr)
-	require.NoError(t, json.Unmarshal([]byte(stdout), &got), stdout)
-	assert.Equal(t, 4, got.Summary.Unchecked)
 }
 
 func TestAudit_PartialFailure(t *testing.T) {
@@ -204,10 +139,10 @@ func TestAudit_PartialFailure(t *testing.T) {
 	osvClient = osv.NewClient(osv.WithAPIURL(srv.URL))
 	t.Cleanup(func() { osvClient = old })
 
-	stdout, stderr, code := runCLI(t, "audit", "--allow-unchecked")
+	stdout, stderr, code := runCLI(t, "audit", "--ecosystem=Go", "--allow-unchecked")
 
 	assert.Equal(t, 1, code)
-	assert.Contains(t, stdout, "Checked 1 of 2 direct dependencies")
+	assert.Contains(t, stdout, "Checked 1 of 2 direct dependencies as Go packages named after the module.")
 	assert.NotContains(t, stdout, "No vulnerabilities found\n")
 	assert.Equal(t, 1, countErrorLines(stderr), stderr)
 	assert.Contains(t, stderr, "OSV queries failed for 1 of 2 direct dependencies")
@@ -217,19 +152,19 @@ func TestAudit_FullyCheckedAndClean(t *testing.T) {
 	auditProject(t, mappedModules)
 	osvServer(t, http.StatusOK, `{}`)
 
-	stdout, stderr, code := runCLI(t, "audit")
+	stdout, stderr, code := runCLI(t, "audit", "--ecosystem=Go")
 
 	assert.Equal(t, 0, code, stderr)
-	assert.Contains(t, stdout, "Checked 2 of 2 direct dependencies")
+	assert.Contains(t, stdout, "Checked 2 of 2 direct dependencies as Go packages named after the module.")
 	assert.Contains(t, stdout, "No vulnerabilities found")
 	assert.NotContains(t, stdout, "not checked")
 	assert.Empty(t, stderr)
 
-	stdout, _, code = runCLI(t, "audit", "--json")
+	stdout, _, code = runCLI(t, "audit", "--json", "--ecosystem=Go")
 	assert.Equal(t, 0, code)
 	var got AuditResult
 	require.NoError(t, json.Unmarshal([]byte(stdout), &got), stdout)
-	assert.Equal(t, AuditSummary{Scope: "direct", Total: 2, Checked: 2}, got.Summary)
+	assert.Equal(t, AuditSummary{Scope: "direct", Ecosystem: "Go", Total: 2, Checked: 2}, got.Summary)
 	assert.Empty(t, got.Unchecked)
 	assert.Contains(t, stdout, `"unchecked": []`)
 }
@@ -252,17 +187,17 @@ func TestAudit_FileRegistryProject(t *testing.T) {
 	auditProject(t, mappedModules)
 	osvServer(t, http.StatusOK, `{}`)
 
-	stdout, stderr, code := runCLI(t, "audit", "--registry", "file://"+reg)
+	stdout, stderr, code := runCLI(t, "audit", "--ecosystem=Go", "--registry", "file://"+reg)
 
 	assert.Equal(t, 0, code, stderr)
-	assert.Contains(t, stdout, "Checked 2 of 2 direct dependencies")
+	assert.Contains(t, stdout, "Checked 2 of 2 direct dependencies as Go packages named after the module.")
 }
 
 func TestAudit_InvalidSeverity(t *testing.T) {
 	auditProject(t, mappedModules)
 	hits := osvServer(t, http.StatusOK, `{}`)
 
-	stdout, stderr, code := runCLI(t, "audit", "--severity=bogus")
+	stdout, stderr, code := runCLI(t, "audit", "--ecosystem=Go", "--severity=bogus")
 
 	assert.Equal(t, 1, code)
 	assert.Zero(t, hits.Load())
@@ -280,7 +215,7 @@ bazel_dep(name = "rules_go", version = "0.50.1")
 	// No severity data: the finding's severity cannot be determined.
 	osvServer(t, http.StatusOK, `{"vulns":[{"id":"GHSA-unrated","summary":"unrated"}]}`)
 
-	stdout, _, code := runCLI(t, "audit", "--severity=high")
+	stdout, _, code := runCLI(t, "audit", "--ecosystem=Go", "--severity=high")
 
 	assert.Equal(t, 1, code)
 	assert.Contains(t, stdout, "GHSA-unrated")
@@ -295,30 +230,24 @@ func TestSeverityFiltered(t *testing.T) {
 }
 
 func TestAudit_Grammar(t *testing.T) {
-	auditProject(t, `module(name = "app", version = "1.0.0")
+	const one = `module(name = "app", version = "1.0.0")
 
 bazel_dep(name = "rules_go", version = "0.50.1")
-bazel_dep(name = "zlib", version = "1.3.1")
-`)
+`
+	auditProject(t, one)
 	osvServer(t, http.StatusOK, `{"vulns":[{"id":"GHSA-one","summary":"one"}]}`)
 
-	stdout, stderr, code := runCLI(t, "audit", "--allow-unchecked")
+	stdout, stderr, code := runCLI(t, "audit", "--ecosystem=Go")
 
 	assert.Equal(t, 1, code)
-	assert.Contains(t, stdout, "Checked 1 of 2 direct dependencies.")
-	assert.Contains(t, stderr, "Error: 1 vulnerability found\n")
-	assert.NotContains(t, stderr, "1 vulnerabilities")
+	assert.Contains(t, stdout, "Checked 1 of 1 direct dependency as Go packages named after the module.")
+	assert.Equal(t, "Error: 1 vulnerability found\n", stderr)
 
-	auditProject(t, `module(name = "app", version = "1.0.0")
-
-bazel_dep(name = "rules_go", version = "0.50.1")
-bazel_dep(name = "zlib", version = "1.3.1")
-`)
 	osvServer(t, http.StatusOK, `{}`)
 	stdout, stderr, code = runCLI(t, "audit")
 	assert.Equal(t, 1, code)
-	assert.Contains(t, stdout, "No vulnerabilities found in the 1 direct dependency that could be checked; 1 direct dependency was not checked.")
-	assert.Contains(t, stderr, "1 of 2 direct dependencies was not checked")
+	assert.Contains(t, stdout, "Checked 0 of 1 direct dependency.\nNot checked (1):\n")
+	assert.Equal(t, "Error: 1 of 1 direct dependency was not checked (use --allow-unchecked to accept this)\n", stderr)
 }
 
 func TestAudit_SeverityThresholdWording(t *testing.T) {
@@ -332,19 +261,19 @@ bazel_dep(name = "rules_go", version = "0.50.1")
 
 	auditProject(t, proj)
 	osvServer(t, http.StatusOK, two)
-	stdout, stderr, code := runCLI(t, "audit", "--severity=high")
+	stdout, stderr, code := runCLI(t, "audit", "--ecosystem=Go", "--severity=high")
 	assert.Equal(t, 0, code, stderr)
 	assert.Contains(t, stdout, "No vulnerabilities at or above HIGH found")
 	assert.NotContains(t, stdout, "No vulnerabilities found")
 	assert.Contains(t, stdout, "2 vulnerabilities below the HIGH threshold were not shown.")
 
 	osvServer(t, http.StatusOK, one)
-	stdout, _, code = runCLI(t, "audit", "--severity=high")
+	stdout, _, code = runCLI(t, "audit", "--ecosystem=Go", "--severity=high")
 	assert.Equal(t, 0, code)
 	assert.Contains(t, stdout, "1 vulnerability below the HIGH threshold was not shown.")
 
 	// Threshold low: the finding is shown and fails the run.
-	stdout, _, code = runCLI(t, "audit", "--severity=low")
+	stdout, _, code = runCLI(t, "audit", "--ecosystem=Go", "--severity=low")
 	assert.Equal(t, 1, code)
 	assert.Contains(t, stdout, "LOW")
 }
