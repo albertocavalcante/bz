@@ -140,6 +140,7 @@ func (p *GitPublisher) clone() error {
 	args := []string{"clone", "--depth", "1", "--branch", p.branch, "--", p.repoURL, p.workDir}
 
 	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Env = gitEnv()
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 
@@ -155,6 +156,7 @@ func (p *GitPublisher) clone() error {
 func (p *GitPublisher) runGitCommand(ctx context.Context, args ...string) error {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = p.workDir
+	cmd.Env = gitEnv()
 
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -168,6 +170,43 @@ func (p *GitPublisher) runGitCommand(ctx context.Context, args ...string) error 
 	}
 
 	return nil
+}
+
+// repoSelectingEnv lists environment variables that make git operate on a
+// repository other than the one in the command's working directory. They are
+// set, for example, while git hooks run.
+var repoSelectingEnv = []string{
+	"GIT_DIR",
+	"GIT_WORK_TREE",
+	"GIT_INDEX_FILE",
+	"GIT_OBJECT_DIRECTORY",
+	"GIT_ALTERNATE_OBJECT_DIRECTORIES",
+	"GIT_COMMON_DIR",
+	"GIT_NAMESPACE",
+	"GIT_PREFIX",
+}
+
+// gitEnv returns the current environment without repository-selecting
+// variables, so git subprocesses act only on the publisher's clone.
+func gitEnv() []string {
+	env := os.Environ()
+	out := make([]string, 0, len(env))
+	for _, kv := range env {
+		name, _, _ := strings.Cut(kv, "=")
+		if !isRepoSelectingEnv(name) {
+			out = append(out, kv)
+		}
+	}
+	return out
+}
+
+func isRepoSelectingEnv(name string) bool {
+	for _, v := range repoSelectingEnv {
+		if strings.EqualFold(name, v) {
+			return true
+		}
+	}
+	return false
 }
 
 // Verify GitPublisher implements Publisher.
