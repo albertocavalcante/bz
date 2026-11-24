@@ -34,7 +34,7 @@ type fileSchema struct {
 func ParseFile(kind LayerKind, path string, data []byte, home string) (Layer, error) {
 	var s fileSchema
 	if _, err := toml.Decode(string(data), &s); err != nil {
-		return Layer{}, fmt.Errorf("parsing %s %s: %w", kind, path, err)
+		return Layer{}, fmt.Errorf("parsing %s %s: %w", kind, DisplayPath(path), err)
 	}
 
 	l := Layer{Kind: kind, Origin: path}

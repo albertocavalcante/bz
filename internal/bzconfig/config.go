@@ -138,7 +138,7 @@ func (s Source) String() string {
 	if s.Origin == "" {
 		return s.Layer.String()
 	}
-	return s.Layer.String() + " " + s.Origin
+	return s.Layer.String() + " " + DisplayPath(s.Origin)
 }
 
 // Settings holds the values one layer sets explicitly. A nil field means the
@@ -286,6 +286,25 @@ func (e *Effective) apply(l Layer) []error {
 	return errs
 }
 
+// RedactURL masks credentials for messages: when the value has an "@"
+// before any "?" or "#", everything before the last such "@" (after the
+// scheme, if any) becomes "xxxxx". Over-masking is fine; leaking is not.
+func RedactURL(raw string) string {
+	end := len(raw)
+	if i := strings.IndexAny(raw, "?#"); i >= 0 {
+		end = i
+	}
+	at := strings.LastIndex(raw[:end], "@")
+	if at < 0 {
+		return raw
+	}
+	prefix := ""
+	if i := strings.Index(raw[:at], "://"); i >= 0 {
+		prefix = raw[:i+3]
+	}
+	return prefix + "xxxxx" + raw[at:]
+}
+
 // checkRegistryURL validates a registry value and returns it with
 // surrounding whitespace removed, which is the form callers store (the
 // registry client matches URL prefixes on the raw string). It accepts the
@@ -299,25 +318,27 @@ func checkRegistryURL(raw string) (string, error) {
 	case v == "":
 		return "", errors.New("empty registry URL")
 	case !printable(v):
-		return "", fmt.Errorf("%q: contains control or non-printable characters", raw)
+		return "", fmt.Errorf("%q: contains control or non-printable characters", RedactURL(raw))
 	case strings.HasPrefix(v, "https://"), strings.HasPrefix(v, "http://"):
 		u, err := url.Parse(v)
 		if err != nil {
-			return "", fmt.Errorf("%q: %w", raw, err)
+			// url.Parse errors quote fragments of the value (a port, a host),
+			// which can be credentials, so none of their text is shown.
+			return "", fmt.Errorf("%q: not a valid URL", RedactURL(raw))
 		}
 		if u.Hostname() == "" {
-			return "", fmt.Errorf("%q: missing host", raw)
+			return "", fmt.Errorf("%q: missing host", RedactURL(raw))
 		}
 		return v, nil
 	case strings.HasPrefix(v, "file://"):
 		if strings.TrimPrefix(v, "file://") == "" {
-			return "", fmt.Errorf("%q: missing path", raw)
+			return "", fmt.Errorf("%q: missing path", RedactURL(raw))
 		}
 		return v, nil
 	case strings.HasPrefix(v, "/"), isWindowsDrivePath(v):
 		return v, nil
 	default:
-		return "", fmt.Errorf("%q: want an https://, http:// or file:// URL or an absolute path", raw)
+		return "", fmt.Errorf("%q: want an https://, http:// or file:// URL or an absolute path", RedactURL(raw))
 	}
 }
 

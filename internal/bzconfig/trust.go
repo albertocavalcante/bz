@@ -74,12 +74,12 @@ type UntrustedConfigError struct {
 }
 
 func (e *UntrustedConfigError) Error() string {
-	where := displayPath(e.Path)
+	where := DisplayPath(e.Path)
 	if e.Target != e.Path {
-		where = fmt.Sprintf("%s (resolved to %s)", where, displayPath(e.Target))
+		where = fmt.Sprintf("%s (resolved to %s)", where, DisplayPath(e.Target))
 	}
 	return fmt.Sprintf("untrusted project config %s: %s; fix: %s, or list %s in %s if the shared setup is intended",
-		where, e.Detail, e.Fix, displayPath(e.Dir), EnvTrustedConfigDirs)
+		where, e.Detail, e.Fix, DisplayPath(e.Dir), EnvTrustedConfigDirs)
 }
 
 // Is makes errors.Is(err, ErrUntrustedConfig) match.
@@ -129,7 +129,7 @@ func CheckProjectConfigTrust(e Environment, path string) ([]string, error) {
 func (e Environment) checkTrust(path string, trusted []fs.FileInfo) error {
 	target, err := e.resolve(path)
 	if err != nil {
-		return fmt.Errorf("checking project config %s: %w", displayPath(path), cleanErr(err))
+		return fmt.Errorf("checking project config %s: %w", DisplayPath(path), cleanErr(err))
 	}
 	dir := filepath.Dir(target)
 	refuse := func(reason UntrustedReason, detail, fix string) error {
@@ -152,7 +152,7 @@ func (e Environment) checkTrust(path string, trusted []fs.FileInfo) error {
 		return err
 	}
 	if !ok {
-		return fmt.Errorf("checking project config %s: directory %s does not exist", displayPath(path), displayPath(dir))
+		return fmt.Errorf("checking project config %s: directory %s does not exist", DisplayPath(path), DisplayPath(dir))
 	}
 	inTrusted, err := e.isAnyOf(dir, trusted)
 	if err != nil || inTrusted {
@@ -171,11 +171,11 @@ func (e Environment) checkTrust(path string, trusted []fs.FileInfo) error {
 	}
 	dirOwner, known := e.FileOwner(dfi)
 	if !known {
-		return refuse(ReasonOwnerUnknown, fmt.Sprintf("the owner of its directory %s cannot be determined", displayPath(dir)), "check the directory's ownership")
+		return refuse(ReasonOwnerUnknown, fmt.Sprintf("the owner of its directory %s cannot be determined", DisplayPath(dir)), "check the directory's ownership")
 	}
 	if dirOwner != uid && dirOwner != 0 {
 		return refuse(ReasonDirOwner,
-			fmt.Sprintf("its directory %s is owned by uid %d, not you (uid %d) or root, so that user can replace the file", displayPath(dir), dirOwner, uid),
+			fmt.Sprintf("its directory %s is owned by uid %d, not you (uid %d) or root, so that user can replace the file", DisplayPath(dir), dirOwner, uid),
 			"keep the project in a directory you own")
 	}
 
@@ -228,13 +228,13 @@ func writableRefusal(refuse func(UntrustedReason, string, string) error, fi, dfi
 	switch {
 	case fileWritable && dirWritable:
 		return refuse(ReasonFileWritable,
-			fmt.Sprintf("the file and its directory %s are writable by group or others (modes %s, %s)", displayPath(dir), fi.Mode().Perm(), dfi.Mode().Perm()),
+			fmt.Sprintf("the file and its directory %s are writable by group or others (modes %s, %s)", DisplayPath(dir), fi.Mode().Perm(), dfi.Mode().Perm()),
 			fix)
 	case fileWritable:
 		return refuse(ReasonFileWritable, fmt.Sprintf("writable by group or others (mode %s)", fi.Mode().Perm()), fix)
 	case dirWritable:
 		return refuse(ReasonDirWritable,
-			fmt.Sprintf("its directory %s is writable by group or others (mode %s) and is not a sticky directory holding a file you own", displayPath(dir), dfi.Mode().Perm()),
+			fmt.Sprintf("its directory %s is writable by group or others (mode %s) and is not a sticky directory holding a file you own", DisplayPath(dir), dfi.Mode().Perm()),
 			fix)
 	}
 	return nil

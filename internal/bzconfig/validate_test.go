@@ -73,3 +73,52 @@ func TestParseFile_DisabledEntriesAreTrimmed(t *testing.T) {
 	l := parse(t, LayerProject, "/p/.bzconfig.toml", "[commands]\ndisabled = [\" audit \", \"\", \"registry ping\"]\n")
 	assert.Equal(t, []string{"audit", "registry ping"}, *l.Settings.Disabled)
 }
+
+func TestRedactURL(t *testing.T) {
+	tests := []struct{ name, in, want string }{
+		{"no credentials", "https://bcr.bazel.build/x", "https://bcr.bazel.build/x"},
+		{"user and password", "https://user:s3cret@host.example/p", "https://xxxxx@host.example/p"},
+		{"token only", "https://tok3n@host.example", "https://xxxxx@host.example"},
+		{"slash in password", "https://user:pa/ss@host", "https://xxxxx@host"},
+		{"at signs in userinfo", "https://a@b:c@host/x", "https://xxxxx@host/x"},
+		{"no scheme", "user:s3cret@host", "xxxxx@host"},
+		{"no scheme with port", "s3cret@host:80", "xxxxx@host:80"},
+		{"at in query is kept", "https://host/p?u=a@b", "https://host/p?u=a@b"},
+		{"at in fragment is kept", "https://host/p#a@b", "https://host/p#a@b"},
+		{"path", "/opt/registry", "/opt/registry"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, RedactURL(tt.in))
+		})
+	}
+}
+
+// TestMerge_RegistryCredentialsNeverPrinted: credentials are accepted and
+// kept for use, but no error shows them.
+func TestMerge_RegistryCredentialsNeverPrinted(t *testing.T) {
+	good := "https://user:s3cret@registry.example/bcr"
+	eff, err := Merge(Defaults("/c"), Layer{Kind: LayerProject, Origin: "/p", Settings: Settings{Registry: &good}})
+	require.NoError(t, err)
+	assert.Equal(t, good, eff.Network.Registry)
+
+	const prefix = "invalid registry in project config /p: "
+	tests := []struct{ name, in, want string }{
+		{"missing host", "https://user:s3cret@", prefix + `"https://xxxxx@": missing host`},
+		{"bad escape", "https://user:s3cret@host/%zz", prefix + `"https://xxxxx@host/%zz": not a valid URL`},
+		{"slash in password", "https://user:pa/ss@host", prefix + `"https://xxxxx@host": not a valid URL`},
+		{"bad port", "https://user:s3cret@host:pa", prefix + `"https://xxxxx@host:pa": not a valid URL`},
+		{"unsupported scheme", "ftp://user:s3cret@host/registry", prefix + `"ftp://xxxxx@host/registry": want an https://, http:// or file:// URL or an absolute path`},
+		{"no scheme", "user:s3cret@host", prefix + `"xxxxx@host": want an https://, http:// or file:// URL or an absolute path`},
+		{"no scheme with port", "s3cret@host:80", prefix + `"xxxxx@host:80": want an https://, http:// or file:// URL or an absolute path`},
+		{"control character", "https://user:s3cret@host/a\nb", prefix + `"https://xxxxx@host/a\nb": contains control or non-printable characters`},
+		{"token without host name", "https://s3cret@:443/bcr", prefix + `"https://xxxxx@:443/bcr": missing host`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reg := tt.in
+			_, err := Merge(Defaults("/c"), Layer{Kind: LayerProject, Origin: "/p", Settings: Settings{Registry: &reg}})
+			require.EqualError(t, err, tt.want)
+		})
+	}
+}
