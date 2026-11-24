@@ -145,11 +145,19 @@ func (r *FileRegistry) modulesName(rel string) (string, error) {
 	return name, nil
 }
 
-// openModules opens the registry's modules directory as an os.Root, so
-// symlinks inside the registry cannot redirect a read outside it. Symlinks
-// whose targets stay inside the modules directory still resolve.
+// openModules opens the registry root and then descends into its modules
+// directory, both as os.Root, so neither a "modules" entry that is itself a
+// symlink leaving the registry nor symlinks below it can redirect a read
+// outside the registry. Symlinks whose targets stay inside the registry
+// root still resolve. The caller closes the returned root; the registry
+// root handle is closed before returning.
 func (r *FileRegistry) openModules() (*os.Root, error) {
-	return os.OpenRoot(filepath.Join(r.root, ModulesDir))
+	base, err := os.OpenRoot(r.root)
+	if err != nil {
+		return nil, err
+	}
+	defer base.Close()
+	return base.OpenRoot(ModulesDir)
 }
 
 // readFile reads a registry file confined to the modules directory.

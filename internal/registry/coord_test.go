@@ -185,3 +185,42 @@ func TestFileRegistry_SymlinksCannotEscape(t *testing.T) {
 		t.Errorf("internal directory symlink metadata: %v", err)
 	}
 }
+
+// TestFileRegistry_ModulesDirSymlink covers the base of the confinement: a
+// "modules" entry that is a symlink leaving the registry is refused, while a
+// "modules" link to a directory inside the registry still works.
+func TestFileRegistry_ModulesDirSymlink(t *testing.T) {
+	t.Parallel()
+
+	parent := t.TempDir()
+	secret := "OUTSIDE-PRIVATE"
+	writeTestFile(t, filepath.Join(parent, "outside", "victim", "metadata.json"), `{"versions":["1.0"]}`)
+	writeTestFile(t, filepath.Join(parent, "outside", "victim", "1.0", "MODULE.bazel"), secret)
+
+	escaping := filepath.Join(parent, "escaping")
+	if err := os.MkdirAll(escaping, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(parent, "outside"), filepath.Join(escaping, "modules")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	reg := NewFileRegistry(escaping)
+	ctx := context.Background()
+	if data, err := reg.GetModuleBazel(ctx, "victim", "1.0"); err == nil || strings.Contains(string(data), secret) {
+		t.Errorf("read through an escaping modules link: data=%q err=%v", data, err)
+	}
+	if _, err := reg.GetMetadata(ctx, "victim"); err == nil {
+		t.Error("metadata read through an escaping modules link succeeded")
+	}
+
+	internal := filepath.Join(parent, "internal")
+	writeTestFile(t, filepath.Join(internal, "data", "rules_go", "metadata.json"), `{"versions":["1.0"]}`)
+	writeTestFile(t, filepath.Join(internal, "data", "rules_go", "1.0", "MODULE.bazel"), "module()")
+	if err := os.Symlink("data", filepath.Join(internal, "modules")); err != nil {
+		t.Fatal(err)
+	}
+	reg = NewFileRegistry(internal)
+	if data, err := reg.GetModuleBazel(ctx, "rules_go", "1.0"); err != nil || string(data) != "module()" {
+		t.Errorf("internal modules link: data=%q err=%v", data, err)
+	}
+}
