@@ -173,7 +173,7 @@ func TestInitCmd_InvalidModuleName(t *testing.T) {
 			name:        "contains space",
 			moduleName:  "my module",
 			wantErr:     true,
-			errContains: "invalid characters",
+			errContains: "invalid module name \"my module\": must start with a lowercase letter, end with a lowercase letter or digit, and contain only a-z, 0-9, '.', '-' and '_'\nhelp: pass a --name such as my_module",
 		},
 		{
 			name:       "empty name",
@@ -253,36 +253,6 @@ func TestSanitizeModuleName(t *testing.T) {
 		t.Run(tt.input, func(t *testing.T) {
 			result := module.SanitizeModuleName(tt.input)
 			assert.Equal(t, tt.expected, result)
-		})
-	}
-}
-
-func TestValidateModuleName(t *testing.T) {
-	tests := []struct {
-		name    string
-		wantErr bool
-	}{
-		{"valid", false},
-		{"my_module", false},
-		{"my-module", false},
-		{"my.module", false},
-		{"module123", false},
-		{"a", false},
-		{"", true},          // empty
-		{"1module", true},   // starts with number
-		{"_module", true},   // starts with underscore
-		{"Module", true},    // starts with uppercase
-		{"my Module", true}, // contains space
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := module.ValidateModuleName(tt.name)
-			if tt.wantErr {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-			}
 		})
 	}
 }
@@ -404,4 +374,41 @@ func TestInitCmd_ModuleFileFormat(t *testing.T) {
 )
 `
 	assert.Equal(t, expected, string(content))
+}
+
+func TestInitCmd_RefusalHelp(t *testing.T) {
+	const nameRule = `must start with a lowercase letter, end with a lowercase letter or digit, and contain only a-z, 0-9, '.', '-' and '_'`
+	const versionRule = `must match RELEASE[-PRERELEASE][+BUILD] using only A-Z, a-z, 0-9, '.', '-' and '+'`
+
+	tests := []struct {
+		desc, dir, name, version, want string
+	}{
+		{"name from directory", "proj-", "", "0.0.0", `invalid module name "proj-": ` + nameRule + " (derived from the directory name)\nhelp: pass --name to choose a valid module name"},
+		{"version with newline", "d", "app", "1.0\nFAKE", `invalid module version "1.0\nFAKE": ` + versionRule + "\nhelp: pass a --version such as 1.0.0 or 1.0.0-rc1, or omit it to use 0.0.0"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.desc, func(t *testing.T) {
+			dir := filepath.Join(t.TempDir(), tt.dir)
+			require.NoError(t, os.Mkdir(dir, 0o755))
+			t.Chdir(dir)
+			initName, initVersion, initForce = tt.name, tt.version, false
+			t.Cleanup(func() { initName, initVersion, initForce = "", "0.0.0", false })
+
+			err := initCmd.RunE(initCmd, nil)
+			require.EqualError(t, err, tt.want)
+			assert.NoFileExists(t, filepath.Join(dir, "MODULE.bazel"))
+		})
+	}
+}
+
+func TestInitCmd_EmptyVersionUsesDefault(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	initName, initVersion, initForce = "app", "", false
+	t.Cleanup(func() { initName, initVersion, initForce = "", "0.0.0", false })
+
+	require.NoError(t, initCmd.RunE(initCmd, nil))
+	content, err := os.ReadFile(filepath.Join(dir, "MODULE.bazel"))
+	require.NoError(t, err)
+	assert.Contains(t, string(content), `version = "0.0.0"`)
 }

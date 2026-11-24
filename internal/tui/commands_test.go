@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/albertocavalcante/bz/internal/coord"
 	"github.com/albertocavalcante/bz/internal/module"
 	"github.com/albertocavalcante/bz/internal/registry"
 )
@@ -194,6 +195,24 @@ func TestInitModule(t *testing.T) {
 		}
 		if !errors.Is(errMsg.Err, wantErr) {
 			t.Fatalf("ErrMsg.Err = %v, want wrapped %v", errMsg.Err, wantErr)
+		}
+	})
+
+	t.Run("derived invalid name gets TUI help", func(t *testing.T) {
+		getWorkingDir = func() (string, error) {
+			return "/tmp/work", nil
+		}
+		initModuleInDir = func(_, _, _ string, _ bool) (string, string, error) {
+			return "", "", fmt.Errorf("%w \"proj-\" (%w)", coord.ErrInvalidModuleName, module.ErrNameFromDir)
+		}
+
+		errMsg, ok := InitModule("", "", false)().(ErrMsg)
+		if !ok {
+			t.Fatal("InitModule()() is not ErrMsg")
+		}
+		want := "invalid module name \"proj-\" (derived from the directory name)\nhelp: rename the directory, or run `bz init --name <name>`"
+		if errMsg.Err.Error() != want {
+			t.Fatalf("ErrMsg.Err = %q, want %q", errMsg.Err, want)
 		}
 	})
 

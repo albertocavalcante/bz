@@ -49,6 +49,9 @@ func InitModule(name, version string, force bool) tea.Cmd {
 
 		path, resolvedName, err := initModuleInDir(wd, name, version, force)
 		if err != nil {
+			if errors.Is(err, module.ErrNameFromDir) {
+				err = fmt.Errorf("%w\nhelp: rename the directory, or run `bz init --name <name>`", err)
+			}
 			return ErrMsg{Err: err}
 		}
 

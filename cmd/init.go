@@ -1,12 +1,14 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
 
 	"github.com/albertocavalcante/bz/internal/cli"
+	"github.com/albertocavalcante/bz/internal/coord"
 	"github.com/albertocavalcante/bz/internal/module"
 )
 
@@ -52,7 +54,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 	_, name, err := module.InitInDir(wd, initName, initVersion, initForce)
 	if err != nil {
-		return err
+		return withInitHelp(err)
 	}
 
 	version := initVersion
@@ -62,4 +64,17 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 	fmt.Fprintf(cmd.OutOrStdout(), "Created MODULE.bazel for module %q (version %s)\n", name, version)
 	return nil
+}
+
+// withInitHelp appends a help line naming the flag that fixes the refusal.
+func withInitHelp(err error) error {
+	switch {
+	case errors.Is(err, module.ErrNameFromDir):
+		return fmt.Errorf("%w\nhelp: pass --name to choose a valid module name", err)
+	case errors.Is(err, coord.ErrInvalidModuleName):
+		return fmt.Errorf("%w\nhelp: pass a --name such as my_module", err)
+	case errors.Is(err, coord.ErrInvalidVersion):
+		return fmt.Errorf("%w\nhelp: pass a --version such as 1.0.0 or 1.0.0-rc1, or omit it to use %s", err, module.DefaultModuleVersion)
+	}
+	return err
 }

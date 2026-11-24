@@ -1,19 +1,23 @@
 package module
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
+
+	"github.com/albertocavalcante/bz/internal/coord"
 )
+
+// ErrNameFromDir marks an invalid module name that InitInDir derived from the
+// directory name rather than receiving it, so callers can add surface-specific help.
+var ErrNameFromDir = errors.New("derived from the directory name")
 
 const (
 	// DefaultModuleVersion is used when creating a new MODULE.bazel without an explicit version.
 	DefaultModuleVersion = "0.0.0"
 )
-
-var validModuleNamePattern = regexp.MustCompile(`^[a-z][a-z0-9._-]*$`)
 
 // InitInDir creates a MODULE.bazel in dir.
 // If name is empty, the directory name is sanitized and used.
@@ -24,16 +28,23 @@ func InitInDir(dir, name, version string, force bool) (string, string, error) {
 		return "", "", fmt.Errorf("MODULE.bazel already exists (use --force to overwrite)")
 	}
 
-	if name == "" {
+	fromDir := name == ""
+	if fromDir {
 		name = SanitizeModuleName(filepath.Base(dir))
 	}
-
-	if err := ValidateModuleName(name); err != nil {
-		return "", "", err
-	}
-
 	if version == "" {
 		version = DefaultModuleVersion
+	}
+
+	// Validate before writing anything, so a refusal leaves the directory untouched.
+	if err := coord.ValidateModuleName(name); err != nil {
+		if fromDir {
+			return "", "", fmt.Errorf("%w (%w)", err, ErrNameFromDir)
+		}
+		return "", "", err
+	}
+	if err := coord.ValidateVersion(version); err != nil {
+		return "", "", err
 	}
 
 	content := FormatModuleFile(name, version)
@@ -75,23 +86,6 @@ func SanitizeModuleName(name string) string {
 	}
 
 	return sanitized
-}
-
-// ValidateModuleName checks if a module name is valid.
-func ValidateModuleName(name string) error {
-	if name == "" {
-		return fmt.Errorf("module name cannot be empty")
-	}
-
-	if name[0] < 'a' || name[0] > 'z' {
-		return fmt.Errorf("module name must start with a lowercase letter: %q", name)
-	}
-
-	if !validModuleNamePattern.MatchString(name) {
-		return fmt.Errorf("module name contains invalid characters: %q (allowed: lowercase letters, digits, underscore, dot, dash)", name)
-	}
-
-	return nil
 }
 
 // FormatModuleFile generates MODULE.bazel content.
