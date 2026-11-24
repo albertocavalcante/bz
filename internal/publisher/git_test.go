@@ -31,8 +31,6 @@ func setupTestGitRepo(t *testing.T) string {
 	// Create a working repository and push initial commit
 	workDir := t.TempDir()
 	runGit(t, workDir, "init")
-	runGit(t, workDir, "config", "user.email", "test@example.com")
-	runGit(t, workDir, "config", "user.name", "Test User")
 
 	// Create initial file and commit
 	readmePath := filepath.Join(workDir, "README.md")
@@ -49,22 +47,14 @@ func setupTestGitRepo(t *testing.T) string {
 	return remoteDir
 }
 
-// runGit runs a git command in the specified directory.
+// runGit runs a git command in the specified directory. It uses the same
+// scrubbed environment as the publisher, and TestMain isolates identity and
+// global/system configuration, so it can only affect repositories under dir.
 func runGit(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(),
-		"GIT_AUTHOR_NAME=Test User",
-		"GIT_AUTHOR_EMAIL=test@example.com",
-		"GIT_COMMITTER_NAME=Test User",
-		"GIT_COMMITTER_EMAIL=test@example.com",
-		"GIT_CONFIG_COUNT=2",
-		"GIT_CONFIG_KEY_0=commit.gpgSign",
-		"GIT_CONFIG_VALUE_0=false",
-		"GIT_CONFIG_KEY_1=tag.gpgSign",
-		"GIT_CONFIG_VALUE_1=false",
-	)
+	cmd.Env = gitEnv()
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %v failed: %v\n%s", args, err, output)
@@ -170,10 +160,6 @@ func TestGitPublisher_Finalize(t *testing.T) {
 		t.Fatalf("NewGitPublisher() error = %v", err)
 	}
 	defer pub.Close()
-
-	// Configure git user in work directory
-	runGit(t, pub.workDir, "config", "user.email", "test@example.com")
-	runGit(t, pub.workDir, "config", "user.name", "Test User")
 
 	ctx := context.Background()
 
