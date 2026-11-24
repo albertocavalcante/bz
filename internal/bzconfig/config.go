@@ -286,23 +286,47 @@ func (e *Effective) apply(l Layer) []error {
 	return errs
 }
 
-// RedactURL masks credentials for messages: when the value has an "@"
-// before any "?" or "#", everything before the last such "@" (after the
-// scheme, if any) becomes "xxxxx". Over-masking is fine; leaking is not.
+// RedactURL masks credentials for messages. A URL that parses with a host
+// keeps everything but its userinfo. Any other value containing "@" prints
+// as its scheme plus "<redacted>", because a "?", "#" or "/" there may belong
+// to a password; messages always name the key and its source, so the value
+// can still be found.
 func RedactURL(raw string) string {
-	end := len(raw)
-	if i := strings.IndexAny(raw, "?#"); i >= 0 {
-		end = i
-	}
-	at := strings.LastIndex(raw[:end], "@")
-	if at < 0 {
+	v := strings.TrimSpace(raw)
+	if !strings.Contains(v, "@") {
 		return raw
 	}
-	prefix := ""
-	if i := strings.Index(raw[:at], "://"); i >= 0 {
-		prefix = raw[:i+3]
+	if u, err := url.Parse(v); err == nil && u.Host != "" && u.Opaque == "" {
+		if u.User == nil {
+			return raw // the "@" is in the path, query or fragment
+		}
+		u.User = url.User("xxxxx")
+		return u.String()
 	}
-	return prefix + "xxxxx" + raw[at:]
+	if i := strings.Index(v, "://"); i >= 0 {
+		return v[:i+3] + "<redacted>"
+	}
+	return "<redacted>"
+}
+
+// registryHelp follows every malformed-URL message.
+const registryHelp = "help: want https://host[:port]/path, file:///abs/path or an absolute path"
+
+// urlProblem names a url.Parse failure without its text, which quotes parts
+// of the value.
+func urlProblem(err error) string {
+	var esc url.EscapeError
+	var host url.InvalidHostError
+	switch {
+	case errors.As(err, &esc):
+		return "bad percent-escape"
+	case errors.As(err, &host):
+		return "invalid character in host"
+	case strings.Contains(err.Error(), "invalid port"):
+		return "invalid port"
+	default:
+		return "not a valid URL"
+	}
 }
 
 // checkRegistryURL validates a registry value and returns it with
@@ -322,12 +346,10 @@ func checkRegistryURL(raw string) (string, error) {
 	case strings.HasPrefix(v, "https://"), strings.HasPrefix(v, "http://"):
 		u, err := url.Parse(v)
 		if err != nil {
-			// url.Parse errors quote fragments of the value (a port, a host),
-			// which can be credentials, so none of their text is shown.
-			return "", fmt.Errorf("%q: not a valid URL", RedactURL(raw))
+			return "", fmt.Errorf("%q: %s\n%s", RedactURL(raw), urlProblem(err), registryHelp)
 		}
 		if u.Hostname() == "" {
-			return "", fmt.Errorf("%q: missing host", RedactURL(raw))
+			return "", fmt.Errorf("%q: missing host\n%s", RedactURL(raw), registryHelp)
 		}
 		return v, nil
 	case strings.HasPrefix(v, "file://"):

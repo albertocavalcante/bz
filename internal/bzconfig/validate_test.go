@@ -54,12 +54,21 @@ func TestMerge_RegistryIsStoredTrimmed(t *testing.T) {
 }
 
 func TestMerge_RegistryRejectsHostlessAndControlCharacters(t *testing.T) {
-	for _, raw := range []string{"http://:80", "https://:443/bcr", "https://x.example/a\nb", "/opt/re\x1bgistry"} {
-		reg := raw
-		eff, err := Merge(Defaults("/c"), Layer{Kind: LayerProject, Origin: "/p", Settings: Settings{Registry: &reg}})
-		require.Error(t, err, "%q", raw)
-		assert.Equal(t, DefaultRegistry, eff.Network.Registry)
-		assertNoControlBytes(t, err.Error())
+	const prefix = "invalid registry in project config /p: "
+	const help = "\nhelp: want https://host[:port]/path, file:///abs/path or an absolute path"
+	tests := []struct{ name, in, want string }{
+		{"port without host", "http://:80", prefix + `"http://:80": missing host` + help},
+		{"port and path without host", "https://:443/bcr", prefix + `"https://:443/bcr": missing host` + help},
+		{"newline", "https://x.example/a\nb", prefix + `"https://x.example/a\nb": contains control or non-printable characters`},
+		{"escape", "/opt/re\x1bgistry", prefix + `"/opt/re\x1bgistry": contains control or non-printable characters`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reg := tt.in
+			eff, err := Merge(Defaults("/c"), Layer{Kind: LayerProject, Origin: "/p", Settings: Settings{Registry: &reg}})
+			require.EqualError(t, err, tt.want)
+			assert.Equal(t, DefaultRegistry, eff.Network.Registry)
+		})
 	}
 }
 
@@ -79,12 +88,16 @@ func TestRedactURL(t *testing.T) {
 		{"no credentials", "https://bcr.bazel.build/x", "https://bcr.bazel.build/x"},
 		{"user and password", "https://user:s3cret@host.example/p", "https://xxxxx@host.example/p"},
 		{"token only", "https://tok3n@host.example", "https://xxxxx@host.example"},
-		{"slash in password", "https://user:pa/ss@host", "https://xxxxx@host"},
-		{"at signs in userinfo", "https://a@b:c@host/x", "https://xxxxx@host/x"},
-		{"no scheme", "user:s3cret@host", "xxxxx@host"},
-		{"no scheme with port", "s3cret@host:80", "xxxxx@host:80"},
+		{"escaped at in password", "https://user:pa%40ss@host/p", "https://xxxxx@host/p"},
+		{"at in path is kept", "https://host/x@y", "https://host/x@y"},
 		{"at in query is kept", "https://host/p?u=a@b", "https://host/p?u=a@b"},
-		{"at in fragment is kept", "https://host/p#a@b", "https://host/p#a@b"},
+		{"question mark in password", "https://user:pa?ss@host", "https://<redacted>"},
+		{"hash in password", "https://user:pa#ss@host", "https://<redacted>"},
+		{"slash in password", "https://user:pa/ss@host", "https://<redacted>"},
+		{"bad port after credentials", "https://user:s3cret@host:bad", "https://<redacted>"},
+		{"ambiguous path or password", "https://host:bad/x@y", "https://<redacted>"},
+		{"no scheme", "user:s3cret@host", "<redacted>"},
+		{"no scheme with port", "s3cret@host:80", "<redacted>"},
 		{"path", "/opt/registry", "/opt/registry"},
 	}
 	for _, tt := range tests {
@@ -94,25 +107,27 @@ func TestRedactURL(t *testing.T) {
 	}
 }
 
-// TestMerge_RegistryCredentialsNeverPrinted: credentials are accepted and
-// kept for use, but no error shows them.
-func TestMerge_RegistryCredentialsNeverPrinted(t *testing.T) {
+// TestMerge_RegistryErrorMessages: each failure class has a fixed message
+// that never shows credentials; malformed URLs end with a help line.
+func TestMerge_RegistryErrorMessages(t *testing.T) {
 	good := "https://user:s3cret@registry.example/bcr"
 	eff, err := Merge(Defaults("/c"), Layer{Kind: LayerProject, Origin: "/p", Settings: Settings{Registry: &good}})
 	require.NoError(t, err)
 	assert.Equal(t, good, eff.Network.Registry)
 
 	const prefix = "invalid registry in project config /p: "
+	const help = "\nhelp: want https://host[:port]/path, file:///abs/path or an absolute path"
 	tests := []struct{ name, in, want string }{
-		{"missing host", "https://user:s3cret@", prefix + `"https://xxxxx@": missing host`},
-		{"bad escape", "https://user:s3cret@host/%zz", prefix + `"https://xxxxx@host/%zz": not a valid URL`},
-		{"slash in password", "https://user:pa/ss@host", prefix + `"https://xxxxx@host": not a valid URL`},
-		{"bad port", "https://user:s3cret@host:pa", prefix + `"https://xxxxx@host:pa": not a valid URL`},
+		{"missing host", "https://user:s3cret@", prefix + `"https://<redacted>": missing host` + help},
+		{"missing host without credentials", "http://:80", prefix + `"http://:80": missing host` + help},
+		{"bad percent-escape", "https://user:s3cret@host/%zz", prefix + `"https://<redacted>": bad percent-escape` + help},
+		{"invalid port", "https://user:s3cret@host:pa", prefix + `"https://<redacted>": invalid port` + help},
+		{"question mark in password", "https://user:pa?ss@host", prefix + `"https://<redacted>": invalid port` + help},
+		{"hash in password", "https://user:pa#ss@host", prefix + `"https://<redacted>": invalid port` + help},
+		{"invalid character in host", "https://user:s3cret@ho^st/", prefix + `"https://<redacted>": invalid character in host` + help},
 		{"unsupported scheme", "ftp://user:s3cret@host/registry", prefix + `"ftp://xxxxx@host/registry": want an https://, http:// or file:// URL or an absolute path`},
-		{"no scheme", "user:s3cret@host", prefix + `"xxxxx@host": want an https://, http:// or file:// URL or an absolute path`},
-		{"no scheme with port", "s3cret@host:80", prefix + `"xxxxx@host:80": want an https://, http:// or file:// URL or an absolute path`},
-		{"control character", "https://user:s3cret@host/a\nb", prefix + `"https://xxxxx@host/a\nb": contains control or non-printable characters`},
-		{"token without host name", "https://s3cret@:443/bcr", prefix + `"https://xxxxx@:443/bcr": missing host`},
+		{"no scheme", "user:s3cret@host", prefix + `"<redacted>": want an https://, http:// or file:// URL or an absolute path`},
+		{"control character", "https://user:s3cret@host/a\nb", prefix + `"https://<redacted>": contains control or non-printable characters`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -121,4 +136,16 @@ func TestMerge_RegistryCredentialsNeverPrinted(t *testing.T) {
 			require.EqualError(t, err, tt.want)
 		})
 	}
+}
+
+func TestMerge_FallbackAndEnvRegistryMessages(t *testing.T) {
+	fallback := []string{"https://ok.example", "https://user:s3cret@host:bad"}
+	_, err := Merge(Defaults("/c"), Layer{Kind: LayerProject, Origin: "/p", Settings: Settings{FallbackRegistries: &fallback}})
+	require.EqualError(t, err, `invalid fallback_registries entry in project config /p: "https://<redacted>": invalid port`+
+		"\nhelp: want https://host[:port]/path, file:///abs/path or an absolute path")
+
+	env, err := EnvLayer(lookupFrom(map[string]string{EnvRegistry: "s3cret@host:80"}), "")
+	require.NoError(t, err)
+	_, err = Merge(Defaults("/c"), env)
+	require.EqualError(t, err, `invalid registry in environment BZ_REGISTRY: "<redacted>": want an https://, http:// or file:// URL or an absolute path`)
 }
