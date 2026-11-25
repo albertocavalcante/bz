@@ -3,6 +3,9 @@ package cache
 import (
 	"bytes"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"testing"
@@ -11,6 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/albertocavalcante/bz/internal/cli"
 	"github.com/albertocavalcante/bz/internal/testutil"
 )
 
@@ -92,6 +96,59 @@ func TestDownloadCmd_SpecificModules(t *testing.T) {
 
 	cachedModuleBazel := filepath.Join(cacheDir, "modules", "rules_go", "0.50.1", "MODULE.bazel")
 	assert.FileExists(t, cachedModuleBazel)
+}
+
+func TestDownloadCmd_NormalizesRegistryFlagBeforeUse(t *testing.T) {
+	registryDir := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{
+		"rules_go": {Versions: []string{"0.50.1"}},
+	})
+	cacheDir := t.TempDir()
+
+	downloadAll = false
+	downloadJSON = false
+	cmd := resetDownloadCmd()
+	cmd.SetArgs([]string{
+		"--registry= \t" + registryDir + "\n",
+		"--cache-dir=" + cacheDir,
+		"rules_go@0.50.1",
+	})
+
+	require.NoError(t, cmd.Execute())
+	assert.FileExists(t, filepath.Join(cacheDir, "modules", "rules_go", "metadata.json"))
+	assert.Equal(t, " \t"+registryDir+"\n", downloadRegistry)
+}
+
+func TestDownloadCmd_ExplicitEmptyRegistryFlagIsInvalid(t *testing.T) {
+	registryDir := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{
+		"rules_go": {Versions: []string{"0.50.1"}},
+	})
+	oldOptions := cli.Global
+	cli.Global.Registry = registryDir
+	t.Cleanup(func() { cli.Global = oldOptions })
+	for _, value := range []string{"", " \t\n"} {
+		t.Run("value="+value, func(t *testing.T) {
+			t.Setenv("BZ_REGISTRY", registryDir)
+			cmd := resetDownloadCmd()
+			cmd.SetArgs([]string{"--registry=" + value, "--cache-dir=" + t.TempDir(), "rules_go@0.50.1"})
+
+			require.EqualError(t, cmd.Execute(), "invalid registry in flag --registry: empty registry URL")
+		})
+	}
+}
+
+func TestDownloadCmd_AbsentRegistryFlagFallsBackToEnvironment(t *testing.T) {
+	registryDir := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{
+		"rules_go": {Versions: []string{"0.50.1"}},
+	})
+	oldOptions := cli.Global
+	cli.Global.Registry = ""
+	t.Cleanup(func() { cli.Global = oldOptions })
+	t.Setenv("BZ_REGISTRY", registryDir)
+
+	cmd := resetDownloadCmd()
+	cmd.SetArgs([]string{"--cache-dir=" + t.TempDir(), "rules_go@0.50.1"})
+
+	require.NoError(t, cmd.Execute())
 }
 
 func TestDownloadCmd_ModuleFromMODULEBazel(t *testing.T) {
@@ -264,4 +321,79 @@ func TestParseModuleArg(t *testing.T) {
 			assert.Equal(t, tt.wantVersion, gotVersion)
 		})
 	}
+}
+
+func TestDownloadCmd_RegistryFlagNeverPrintsCredentials(t *testing.T) {
+	const help = "\nhelp: want https://host[:port]/path, file:///abs/path or an absolute path"
+	const prefix = "invalid registry in flag --registry: "
+	const secret = "S3CR3T"
+
+	tests := []struct {
+		name    string
+		value   string
+		wantErr string
+	}{
+		{
+			name:    "credentialed URL that is unreachable",
+			value:   "https://user:" + secret + "@127.0.0.1:1/",
+			wantErr: "1 of 1 module(s) failed to download",
+		},
+		{
+			name:    "unparsable credentialed value",
+			value:   "https://user:" + secret + "@",
+			wantErr: prefix + `"https://<redacted>": missing host` + help,
+		},
+		{
+			name:    "plain bad value",
+			value:   "bad",
+			wantErr: prefix + `"bad": want an https://, http:// or file:// URL or an absolute path`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			downloadAll = false
+			downloadJSON = true
+			t.Cleanup(func() { downloadJSON = false })
+			cmd := resetDownloadCmd()
+			var out bytes.Buffer
+			cmd.SetOut(&out)
+			cmd.SetErr(&out)
+			cmd.SetArgs([]string{"--registry=" + tt.value, "--cache-dir=" + t.TempDir(), "rules_go@0.50.1"})
+
+			err := cmd.Execute()
+			shown := out.String()
+			if err != nil {
+				shown += err.Error()
+			}
+			require.EqualError(t, err, tt.wantErr)
+			assert.NotContains(t, shown, secret)
+		})
+	}
+}
+
+func TestDownloadCmd_JSONTransportFailureRedactsCredentials(t *testing.T) {
+	const secret = "S3CR3T"
+	server := httptest.NewServer(http.NotFoundHandler())
+	server.Close()
+	registryURL, err := url.Parse(server.URL)
+	require.NoError(t, err)
+	registryURL.User = url.UserPassword("user", secret)
+
+	cmd := resetDownloadCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{
+		"--json",
+		"--registry=" + registryURL.String(),
+		"--cache-dir=" + t.TempDir(),
+		"rules_go@0.50.1",
+	})
+
+	require.NoError(t, cmd.Execute())
+	var result downloadResult
+	require.NoError(t, json.Unmarshal(out.Bytes(), &result))
+	assert.Equal(t, 1, result.Failed)
+	require.Len(t, result.Errors, 1)
+	assert.Contains(t, result.Errors[0], registryURL.Scheme+"://xxxxx@")
+	assert.NotContains(t, result.Errors[0], secret)
 }

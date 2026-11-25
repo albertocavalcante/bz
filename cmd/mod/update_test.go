@@ -2,6 +2,7 @@ package mod
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -60,6 +61,14 @@ bazel_dep(name = "rules_python", version = "0.31.0")
 	require.NoError(t, err)
 	assert.Contains(t, string(content), `bazel_dep(name = "rules_go", version = "0.50.1")`)
 	assert.Contains(t, string(content), `bazel_dep(name = "rules_python", version = "1.0.0")`)
+}
+
+func TestInvalidRegistryVersionErrorRedactsMalformedCredentials(t *testing.T) {
+	const secret = "S3CR3T"
+	err := invalidRegistryVersionError("rules_go", "https://user:"+secret+"@", errors.New("invalid version"))
+
+	assert.NotContains(t, err.Error(), secret)
+	assert.Contains(t, err.Error(), "https://<redacted>")
 }
 
 func TestUpdateCmd_UpdatesSpecificDependency(t *testing.T) {

@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/albertocavalcante/go-bcr"
+
+	"github.com/albertocavalcante/bz/internal/bzconfig"
 )
 
 // Well-known registry URLs.
@@ -63,7 +65,7 @@ func New(url string) (Registry, error) {
 		return NewFileRegistry(url), nil
 	}
 
-	return nil, fmt.Errorf("%w: unsupported URL format %q", ErrInvalidRegistry, url)
+	return nil, fmt.Errorf("%w: unsupported URL format %q", ErrInvalidRegistry, bzconfig.RedactURL(url))
 }
 
 // Default returns the default BCR registry.
@@ -145,7 +147,7 @@ func NewWithOptions(url string, opts ...Option) (Registry, error) {
 		return newHTTPRegistryWithBCR(url, cfg), nil
 	}
 
-	return nil, fmt.Errorf("%w: unsupported URL format %q", ErrInvalidRegistry, url)
+	return nil, fmt.Errorf("%w: unsupported URL format %q", ErrInvalidRegistry, bzconfig.RedactURL(url))
 }
 
 // newHTTPRegistryWithBCR creates an HTTP registry using go-bcr.

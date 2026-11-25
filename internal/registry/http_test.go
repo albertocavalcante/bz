@@ -5,8 +5,16 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 )
+
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
 
 func TestHTTPRegistry_Type(t *testing.T) {
 	t.Parallel()
@@ -26,6 +34,33 @@ func TestHTTPRegistry_String(t *testing.T) {
 	reg := NewHTTPRegistry("https://bcr.bazel.build")
 	if got := reg.String(); got != "https://bcr.bazel.build" {
 		t.Errorf("String() = %q, want %q", got, "https://bcr.bazel.build")
+	}
+}
+
+func TestHTTPRegistry_FetchRedactsURLTransportErrors(t *testing.T) {
+	const secret = "S3CR3T"
+	cause := errors.New("synthetic transport failure")
+	reg := NewHTTPRegistry("https://user:" + secret + "@registry.test")
+	reg.httpClient = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		return nil, &url.Error{Op: "Get", URL: req.URL.String(), Err: cause}
+	})}
+
+	_, err := reg.GetMetadata(context.Background(), "rules_go")
+	if err == nil {
+		t.Fatal("GetMetadata() error = nil, want transport error")
+	}
+	if errors.Is(err, cause) == false {
+		t.Fatalf("GetMetadata() error = %v, want wrapped transport cause", err)
+	}
+	var urlErr *url.Error
+	if !errors.As(err, &urlErr) {
+		t.Fatalf("GetMetadata() error = %v, want *url.Error", err)
+	}
+	if got := urlErr.URL; got != "https://xxxxx@registry.test/modules/rules_go/metadata.json" {
+		t.Errorf("url error URL = %q", got)
+	}
+	if got := err.Error(); strings.Contains(got, secret) {
+		t.Errorf("GetMetadata() error leaked credential: %q", got)
 	}
 }
 

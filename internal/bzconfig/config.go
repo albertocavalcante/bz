@@ -359,6 +359,26 @@ func urlProblem(err error) string {
 	return "not a valid URL"
 }
 
+// NormalizeRegistry checks a registry value taken from source (for example
+// "flag --registry") with the rules that apply to configured registries and
+// returns the normalized value that callers must use. Errors name the source
+// and show the value without credentials.
+func NormalizeRegistry(source, raw string) (string, error) {
+	v, err := checkRegistryURL(raw)
+	if err != nil {
+		return "", fmt.Errorf("invalid registry in %s: %w", source, err)
+	}
+	return v, nil
+}
+
+// ValidateRegistry checks a registry value without returning its normalized
+// form. Callers that will execute requests with the value should use
+// NormalizeRegistry instead.
+func ValidateRegistry(source, raw string) error {
+	_, err := NormalizeRegistry(source, raw)
+	return err
+}
+
 // checkRegistryURL validates a registry value and returns it with
 // surrounding whitespace removed, which is the form callers store (the
 // registry client matches URL prefixes on the raw string). It accepts the

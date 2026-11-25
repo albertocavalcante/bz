@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/albertocavalcante/bz/internal/bzconfig"
 	"github.com/albertocavalcante/bz/internal/cli"
 	"github.com/albertocavalcante/bz/internal/cmdutil"
 	"github.com/albertocavalcante/bz/internal/coord"
@@ -79,6 +80,13 @@ func runDownload(cmd *cobra.Command, args []string) error {
 	}
 
 	registryURL := downloadRegistry
+	if cmd.Flags().Changed("registry") {
+		normalized, err := bzconfig.NormalizeRegistry("flag --registry", registryURL)
+		if err != nil {
+			return err
+		}
+		registryURL = normalized
+	}
 	if registryURL == "" {
 		registryURL = cli.GetRegistry()
 	}
@@ -89,7 +97,7 @@ func runDownload(cmd *cobra.Command, args []string) error {
 	// Create registry client
 	reg, err := registry.New(registryURL)
 	if err != nil {
-		return fmt.Errorf("invalid registry: %w", err)
+		return err
 	}
 
 	// Determine what modules to download

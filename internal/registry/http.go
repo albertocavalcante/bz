@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/albertocavalcante/bz/internal/bzconfig"
 	"github.com/albertocavalcante/bz/internal/coord"
 )
 
@@ -264,7 +266,7 @@ func (r *HTTPRegistry) fetch(ctx context.Context, url string) ([]byte, error) {
 
 	resp, err := r.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("fetch %s: %w", url, err)
+		return nil, fmt.Errorf("fetch %s: %w", bzconfig.RedactURL(url), redactTransportError(err))
 	}
 	defer resp.Body.Close()
 
@@ -273,7 +275,7 @@ func (r *HTTPRegistry) fetch(ctx context.Context, url string) ([]byte, error) {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP %d from %s", resp.StatusCode, url)
+		return nil, fmt.Errorf("HTTP %d from %s", resp.StatusCode, bzconfig.RedactURL(url))
 	}
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxFetchResponseBytes))
@@ -282,6 +284,20 @@ func (r *HTTPRegistry) fetch(ctx context.Context, url string) ([]byte, error) {
 	}
 
 	return body, nil
+}
+
+// redactTransportError copies URL errors with credential-free display data
+// while preserving the underlying cause for errors.Is and errors.As.
+func redactTransportError(err error) error {
+	var urlErr *url.Error
+	if !errors.As(err, &urlErr) {
+		return err
+	}
+	return &url.Error{
+		Op:  urlErr.Op,
+		URL: bzconfig.RedactURL(urlErr.URL),
+		Err: redactTransportError(urlErr.Err),
+	}
 }
 
 // GetSource fetches the source.json content for a specific version.

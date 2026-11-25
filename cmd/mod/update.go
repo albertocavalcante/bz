@@ -2,12 +2,12 @@ package mod
 
 import (
 	"fmt"
-	"net/url"
 	"path/filepath"
 	"slices"
 
 	"github.com/spf13/cobra"
 
+	"github.com/albertocavalcante/bz/internal/bzconfig"
 	"github.com/albertocavalcante/bz/internal/cli"
 	"github.com/albertocavalcante/bz/internal/cmdutil"
 	"github.com/albertocavalcante/bz/internal/coord"
@@ -175,7 +175,11 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		} else if err := coord.ValidateVersion(latest); err != nil {
 			// All-or-nothing: a registry serving a malformed version is not
 			// trusted for the rest of this run either.
-			return invalidRegistryVersionError(name, resolvedRegistryURL(), err)
+			registryURL, resolveErr := resolvedRegistryURL()
+			if resolveErr != nil {
+				return resolveErr
+			}
+			return invalidRegistryVersionError(name, registryURL, err)
 		}
 
 		info.latest = latest
@@ -249,10 +253,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 // invalidRegistryVersionError explains a registry version that is not a valid
 // Bazel version. The registry location is shown without credentials.
 func invalidRegistryVersionError(name, registryURL string, cause error) error {
-	shown := registryURL
-	if u, err := url.Parse(registryURL); err == nil {
-		shown = u.Redacted()
-	}
+	shown := bzconfig.RedactURL(registryURL)
 	return fmt.Errorf("cannot update %q: registry returned %w\n  registry: %q\n"+
 		"  note: nothing was written to MODULE.bazel\n"+
 		"  help: check the registry's metadata for %q, or update the other modules by name: bz mod update <module>",
