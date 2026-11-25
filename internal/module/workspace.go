@@ -2,12 +2,15 @@ package module
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -82,6 +85,73 @@ func (w *Workspace) ReadFile(rel string) ([]byte, error) {
 		return os.ReadFile(w.rootReal)
 	}
 	return w.root.ReadFile(filepath.FromSlash(rel))
+}
+
+// VerifyUnchanged reports whether every captured workspace file still has the
+// bytes used to construct an update plan. It reads the root and included files
+// through the same paths used by WriteAll, so a missing included file is also
+// detected before an update writes anything. Each file is opened as a regular
+// file and read only through one byte past its captured size.
+func (w *Workspace) VerifyUnchanged(ctx context.Context, snapshot map[string][]byte) error {
+	files := make([]string, 0, len(snapshot))
+	for rel := range snapshot {
+		files = append(files, rel)
+	}
+	sort.Strings(files)
+
+	for _, rel := range files {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		current, err := w.readCapturedFile(rel, len(snapshot[rel]))
+		if err != nil {
+			return fmt.Errorf("verify %s: %w", rel, err)
+		}
+		if !bytes.Equal(current, snapshot[rel]) {
+			return fmt.Errorf("verify %s: %w", rel, ErrFileChanged)
+		}
+	}
+	return nil
+}
+
+// readCapturedFile reads a regular workspace file with a bound derived from
+// the captured bytes. Included paths are resolved exactly as write preflight
+// does; the selected root must still resolve to the same target captured when
+// the workspace was opened.
+func (w *Workspace) readCapturedFile(rel string, capturedLen int) ([]byte, error) {
+	file, err := w.openCapturedFile(rel)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = file.Close() }()
+
+	info, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, errors.New("not a regular file")
+	}
+	return io.ReadAll(io.LimitReader(file, int64(capturedLen)+1))
+}
+
+// openCapturedFile opens a captured file for a bounded verification read.
+func (w *Workspace) openCapturedFile(rel string) (*os.File, error) {
+	if rel == w.rootRel {
+		resolved, err := filepath.EvalSymlinks(filepath.Join(w.dir, w.rootRel))
+		if err != nil {
+			return nil, err
+		}
+		if resolved != w.rootReal {
+			return nil, ErrFileChanged
+		}
+		return openForVerification(resolved)
+	}
+	target, err := w.resolveIncluded(rel)
+	if err != nil {
+		return nil, err
+	}
+	return w.root.OpenFile(target, verificationOpenFlags(), 0)
 }
 
 // Declarations returns where each bazel_dep named name is declared, in
