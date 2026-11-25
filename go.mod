@@ -7,6 +7,7 @@ toolchain go1.26.11
 require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/albertocavalcante/go-bcr v0.2.1
+	github.com/albertocavalcante/go-bzlmod v0.0.0-20261124022258-667e22eb6b51
 	github.com/albertocavalcante/go-bzlmod-ast v0.0.0-20261124042307-d6523571459d
 	github.com/bazelbuild/buildtools v0.0.0-20250602201422-b1e23f1025b8
 	github.com/bmatcuk/doublestar/v4 v4.10.4

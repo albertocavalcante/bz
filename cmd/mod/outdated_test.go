@@ -216,24 +216,38 @@ func TestOutdatedCmd_NoModuleFile(t *testing.T) {
 	assert.Contains(t, err.Error(), "MODULE.bazel")
 }
 
-func TestOutdatedDep_UpdateTypes(t *testing.T) {
-	tests := []struct {
-		current    string
-		latest     string
-		wantType   version.UpdateType
-		wantString string
-	}{
-		{"1.0.0", "1.0.0", version.None, "-"},
-		{"1.0.0", "1.0.1", version.Patch, "patch"},
-		{"1.0.0", "1.1.0", version.Minor, "minor"},
-		{"1.0.0", "2.0.0", version.Major, "major"},
-	}
+func TestOutdatedCmd_IndeterminateVersions(t *testing.T) {
+	useRegistry(t, map[string]testutil.TestModule{
+		"a": {Versions: []string{"1..0", "2.0.0"}},
+		"b": {Versions: []string{"2.0.0"}},
+	})
+	includeWorkspace(t, map[string]string{
+		"MODULE.bazel": `module(name = "m")
+bazel_dep(name = "a", version = "1.0.0")
+bazel_dep(name = "b", version = "1.0.0-rc_2")
+`,
+	})
+	var buf bytes.Buffer
+	outdatedCmd.SetOut(&buf)
+	outdatedJSON = true
+	t.Cleanup(func() {
+		outdatedCmd.SetOut(os.Stdout)
+		outdatedJSON = false
+	})
 
-	for _, tt := range tests {
-		t.Run(tt.current+"_to_"+tt.latest, func(t *testing.T) {
-			got := version.ClassifyUpdate(tt.current, tt.latest)
-			assert.Equal(t, tt.wantType, got)
-			assert.Equal(t, tt.wantString, got.String())
-		})
+	require.NoError(t, outdatedCmd.RunE(outdatedCmd, nil))
+	var result struct {
+		Outdated int           `json:"outdated"`
+		Deps     []OutdatedDep `json:"dependencies"`
 	}
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &result))
+	assert.Zero(t, result.Outdated)
+	require.Len(t, result.Deps, 2)
+	assert.Contains(t, result.Deps[0].Error, "invalid module version")
+	assert.Equal(t, version.Unknown, result.Deps[1].UpdateType)
+
+	buf.Reset()
+	outdatedJSON = false
+	require.NoError(t, outdatedCmd.RunE(outdatedCmd, nil))
+	assert.Contains(t, buf.String(), "No verified dependency updates found.")
 }

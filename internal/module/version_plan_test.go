@@ -16,7 +16,7 @@ func TestPlanVersionEdits_GroupsFilesAndDeduplicatesRequests(t *testing.T) {
 
 	plan, err := PlanVersionEdits(snapshot, []VersionEdit{
 		{Rel: root, Name: "a", Version: "2"},
-		{Rel: included, Name: "b", Version: "2"},
+		{Rel: included, Name: "b", Current: "1", Version: "2"},
 		{Rel: root, Name: "c", Version: "2"},
 		{Rel: included, Name: "b", Version: "3"},
 		{Rel: included, Name: "d", Version: "2"},

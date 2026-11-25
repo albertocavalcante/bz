@@ -2,6 +2,7 @@ package mod
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/albertocavalcante/bz/internal/testutil"
+	"github.com/albertocavalcante/bz/internal/version"
 )
 
 func TestUpdateCmd_UpdatesAllDependencies(t *testing.T) {
@@ -65,7 +67,7 @@ bazel_dep(name = "rules_python", version = "0.31.0")
 
 func TestInvalidRegistryVersionErrorRedactsMalformedCredentials(t *testing.T) {
 	const secret = "S3CR3T"
-	err := invalidRegistryVersionError("rules_go", "https://user:"+secret+"@", errors.New("invalid version"))
+	err := registryUpgradeError("rules_go", "https://user:"+secret+"@", errors.New("invalid version"))
 
 	assert.NotContains(t, err.Error(), secret)
 	assert.Contains(t, err.Error(), "https://<redacted>")
@@ -233,7 +235,7 @@ bazel_dep(name = "rules_go", version = "0.50.1")
 	assert.Contains(t, output, "All dependencies are up to date")
 }
 
-func TestUpdateCmd_SkipsUnverifiedBCRDowngrade(t *testing.T) {
+func TestUpdateCmd_SkipsBCRDowngrade(t *testing.T) {
 	for _, dryRun := range []bool{false, true} {
 		t.Run(fmt.Sprintf("dry-run=%t", dryRun), func(t *testing.T) {
 			useRegistry(t, map[string]testutil.TestModule{
@@ -252,12 +254,74 @@ func TestUpdateCmd_SkipsUnverifiedBCRDowngrade(t *testing.T) {
 			require.NoError(t, updateCmd.RunE(updateCmd, nil))
 
 			assert.Equal(t, content, readRel(t, dir, "MODULE.bazel"))
-			assert.Contains(t, out.String(), "Skipping a: cannot verify that 1.2.3.bcr.9 is newer than 1.2.3.bcr.10")
 			assert.NotContains(t, out.String(), "Updated a")
 			assert.NotContains(t, out.String(), "Would update a")
-			assert.NotContains(t, out.String(), "All dependencies are up to date")
+			assert.Contains(t, out.String(), "All dependencies are up to date")
 		})
 	}
+}
+
+func TestModCommandsAgreeOnBazelUpgrades(t *testing.T) {
+	useRegistry(t, map[string]testutil.TestModule{
+		"a": {Versions: []string{"1.2.3.bcr.10", "2.0.0+build", "1.2.3.bcr.8"}, YankedVersions: map[string]string{"2.0.0": "withdrawn"}},
+		"b": {Versions: []string{"1.0.0-rc.10", "1.0.0-rc.9"}},
+		"c": {Versions: []string{"1.1.0+other"}},
+		"d": {Versions: []string{"1.2.0"}},
+	})
+	const before = `module(name = "m")
+bazel_dep(name = "a", version = "1.2.3.bcr.9")
+bazel_dep(name = "b", version = "1.0.0-rc.2")
+bazel_dep(name = "c", version = "1.1.0+previous")
+bazel_dep(name = "d", version = "1.2")
+`
+	const after = `module(name = "m")
+bazel_dep(name = "a", version = "1.2.3.bcr.10")
+bazel_dep(name = "b", version = "1.0.0-rc.10")
+bazel_dep(name = "c", version = "1.1.0+previous")
+bazel_dep(name = "d", version = "1.2.0")
+`
+	dir := includeWorkspace(t, map[string]string{"MODULE.bazel": before})
+
+	var out bytes.Buffer
+	outdatedCmd.SetOut(&out)
+	updateCmd.SetOut(&out)
+	outdatedJSON = true
+	t.Cleanup(func() {
+		outdatedCmd.SetOut(os.Stdout)
+		updateCmd.SetOut(os.Stdout)
+		outdatedJSON = false
+		updateDryRun = false
+	})
+
+	require.NoError(t, outdatedCmd.RunE(outdatedCmd, nil))
+	var result struct {
+		Outdated int           `json:"outdated"`
+		Deps     []OutdatedDep `json:"dependencies"`
+	}
+	require.NoError(t, json.Unmarshal(out.Bytes(), &result))
+	assert.Equal(t, 3, result.Outdated)
+	assert.Equal(t, []OutdatedDep{
+		{Name: "a", Current: "1.2.3.bcr.9", Latest: "1.2.3.bcr.10", UpdateType: version.NonSemVer},
+		{Name: "b", Current: "1.0.0-rc.2", Latest: "1.0.0-rc.10", UpdateType: version.Patch},
+		{Name: "c", Current: "1.1.0+previous", Latest: "1.1.0+other", UpdateType: version.None},
+		{Name: "d", Current: "1.2", Latest: "1.2.0", UpdateType: version.NonSemVer},
+	}, result.Deps)
+
+	out.Reset()
+	updateDryRun = true
+	require.NoError(t, updateCmd.RunE(updateCmd, nil))
+	assert.Equal(t, before, readRel(t, dir, "MODULE.bazel"))
+	assert.Equal(t, "Would update a: 1.2.3.bcr.9 -> 1.2.3.bcr.10 (non-semver)\n"+
+		"Would update b: 1.0.0-rc.2 -> 1.0.0-rc.10 (patch)\n"+
+		"Would update d: 1.2 -> 1.2.0 (non-semver)\n", out.String())
+
+	out.Reset()
+	updateDryRun = false
+	require.NoError(t, updateCmd.RunE(updateCmd, nil))
+	assert.Equal(t, after, readRel(t, dir, "MODULE.bazel"))
+	assert.Equal(t, "Updated a: 1.2.3.bcr.9 -> 1.2.3.bcr.10 (non-semver)\n"+
+		"Updated b: 1.0.0-rc.2 -> 1.0.0-rc.10 (patch)\n"+
+		"Updated d: 1.2 -> 1.2.0 (non-semver)\n", out.String())
 }
 
 func TestUpdateCmd_NoDeps(t *testing.T) {
@@ -338,19 +402,21 @@ bazel_dep(name = "rules_go", version = "0.46.0")
 	registryFlag = registryDir
 	defer func() { registryFlag = oldRegistry }()
 
-	updateDryRun = false
-
 	var buf bytes.Buffer
 	updateCmd.SetOut(&buf)
-	defer updateCmd.SetOut(os.Stdout)
-
-	err := updateCmd.RunE(updateCmd, []string{})
-	require.NoError(t, err)
-
-	output := buf.String()
-	// Should show error for this module
-	assert.Contains(t, output, "rules_go")
-	assert.Contains(t, output, "error")
+	t.Cleanup(func() {
+		updateDryRun = false
+		updateCmd.SetOut(os.Stdout)
+	})
+	for _, dryRun := range []bool{true, false} {
+		buf.Reset()
+		updateDryRun = dryRun
+		require.NoError(t, updateCmd.RunE(updateCmd, nil))
+		assert.Contains(t, buf.String(), "rules_go: error fetching metadata")
+		assert.Contains(t, buf.String(), "No verified dependency updates found.")
+		assert.NotContains(t, buf.String(), "All dependencies are up to date")
+		assert.Equal(t, moduleContent, readRel(t, tmpDir, "MODULE.bazel"))
+	}
 }
 
 func TestUpdateCmd_NoModuleFile(t *testing.T) {
@@ -494,6 +560,7 @@ func TestUpdateCmd_MixedFoundAndNotFound(t *testing.T) {
 	moduleContent := `module(name = "test_module", version = "1.0.0")
 
 bazel_dep(name = "rules_go", version = "0.46.0")
+bazel_dep(name = "missing_from_registry", version = "1.0.0")
 `
 	modulePath := filepath.Join(tmpDir, "MODULE.bazel")
 	require.NoError(t, os.WriteFile(modulePath, []byte(moduleContent), 0o644))
@@ -504,26 +571,26 @@ bazel_dep(name = "rules_go", version = "0.46.0")
 	registryFlag = registryDir
 	defer func() { registryFlag = oldRegistry }()
 
-	updateDryRun = false
-
 	var buf bytes.Buffer
 	updateCmd.SetOut(&buf)
-	defer updateCmd.SetOut(os.Stdout)
-
-	// Try to update one that exists and one that doesn't
-	err := updateCmd.RunE(updateCmd, []string{"rules_go", "nonexistent"})
-	require.NoError(t, err)
-
-	output := buf.String()
-	// Should warn about nonexistent
-	assert.Contains(t, output, "Warning")
-	assert.Contains(t, output, "nonexistent")
-	// Should still update rules_go
-	assert.Contains(t, output, "rules_go")
-
-	content, err := os.ReadFile(modulePath)
-	require.NoError(t, err)
-	assert.Contains(t, string(content), `version = "0.50.1"`)
+	t.Cleanup(func() {
+		updateDryRun = false
+		updateCmd.SetOut(os.Stdout)
+	})
+	for _, dryRun := range []bool{true, false} {
+		buf.Reset()
+		updateDryRun = dryRun
+		require.NoError(t, updateCmd.RunE(updateCmd, []string{"rules_go", "nonexistent", "missing_from_registry"}))
+		assert.Contains(t, buf.String(), "Warning: nonexistent not found")
+		assert.Contains(t, buf.String(), "missing_from_registry: error fetching metadata")
+		if dryRun {
+			assert.Contains(t, buf.String(), "Would update rules_go")
+			assert.Equal(t, moduleContent, readRel(t, tmpDir, "MODULE.bazel"))
+		} else {
+			assert.Contains(t, buf.String(), "Updated rules_go")
+			assert.Contains(t, readRel(t, tmpDir, "MODULE.bazel"), `version = "0.50.1"`)
+		}
+	}
 }
 
 func TestUpdateCmd_DryRunSpecificModule(t *testing.T) {
@@ -698,13 +765,13 @@ func TestUpdateCmd_RefusesInvalidRegistryVersion(t *testing.T) {
 		"a": {Versions: []string{"1.0.0"}},
 		"b": {Versions: []string{"1.0.0", "2.0.0"}},
 	})
-	meta := `{"versions": ["1.0.0", "9.9.9\", repo_name = \"evil"]}`
+	meta := `{"versions": ["9.9.9\", repo_name = \"evil", "1.0.0"]}`
 	require.NoError(t, os.WriteFile(filepath.Join(registryDir, "modules", "a", "metadata.json"), []byte(meta), 0o644))
 
 	moduleContent := `module(name = "test_module", version = "1.0.0")
 
-bazel_dep(name = "a", version = "1.0.0")
 bazel_dep(name = "b", version = "1.0.0")
+bazel_dep(name = "a", version = "1.0.0")
 `
 	modulePath := filepath.Join(tmpDir, "MODULE.bazel")
 	require.NoError(t, os.WriteFile(modulePath, []byte(moduleContent), 0o644))
@@ -719,27 +786,58 @@ bazel_dep(name = "b", version = "1.0.0")
 	updateCmd.SetOut(&buf)
 	defer updateCmd.SetOut(os.Stdout)
 
-	err := updateCmd.RunE(updateCmd, []string{})
 	want := `cannot update "a": registry returned invalid module version "9.9.9\", repo_name = \"evil": ` +
 		`must match RELEASE[-PRERELEASE][+BUILD] using only A-Z, a-z, 0-9, '.', '-' and '+'` + "\n" +
 		fmt.Sprintf("  registry: %q\n", registryDir) +
 		"  note: nothing was written to MODULE.bazel\n" +
 		"  help: check the registry's metadata for \"a\", or update the other modules by name: bz mod update <module>"
-	require.EqualError(t, err, want)
-	assert.Empty(t, buf.String())
+	for _, dryRun := range []bool{true, false} {
+		updateDryRun = dryRun
+		require.EqualError(t, updateCmd.RunE(updateCmd, nil), want)
+		assert.Empty(t, buf.String())
+		assert.Equal(t, moduleContent, readRel(t, tmpDir, "MODULE.bazel"))
+	}
+}
 
-	got, err := os.ReadFile(modulePath)
-	require.NoError(t, err)
-	assert.Equal(t, moduleContent, string(got))
+func TestUpdateCmd_RefusesVersionUnsupportedByModuleParser(t *testing.T) {
+	useRegistry(t, map[string]testutil.TestModule{
+		"a": {Versions: []string{"2.0.0"}},
+		"b": {Versions: []string{"snapshot", "2.0.0"}},
+	})
+	const content = `module(name = "m")
+bazel_dep(name = "a", version = "1.0.0")
+bazel_dep(name = "b", version = "1.0.0")
+`
+	dir := includeWorkspace(t, map[string]string{"MODULE.bazel": content})
+	var out bytes.Buffer
+	updateCmd.SetOut(&out)
+	t.Cleanup(func() {
+		updateDryRun = false
+		updateCmd.SetOut(os.Stdout)
+	})
+	for _, dryRun := range []bool{true, false} {
+		updateDryRun = dryRun
+		err := updateCmd.RunE(updateCmd, nil)
+		require.ErrorIs(t, err, version.ErrUnsupportedBazelVersion)
+		assert.ErrorContains(t, err, `cannot update "b": bz MODULE.bazel parser does not support this Bazel version: "snapshot"`)
+		assert.ErrorContains(t, err, "bz mod update <module>")
+		assert.Empty(t, out.String())
+		assert.Equal(t, content, readRel(t, dir, "MODULE.bazel"))
+	}
 }
 
 func TestUpdateCmd_DryRunSkipsUneditableDuplicate(t *testing.T) {
 	useRegistry(t, map[string]testutil.TestModule{
 		"a": {Versions: []string{"1.0.0", "1.1.0"}},
+		"c": {Versions: []string{"1.0.0", "1.1.0"}},
 	})
 	files := map[string]string{
-		"MODULE.bazel":     "module(name = \"m\")\ninclude(\"//d:x.MODULE.bazel\")\n",
-		"d/x.MODULE.bazel": "bazel_dep(name = \"a\", version = \"1.0.0\")\nbazel_dep(name = \"a\")\n",
+		"MODULE.bazel": "module(name = \"m\")\ninclude(\"//d:x.MODULE.bazel\")\n",
+		"d/x.MODULE.bazel": `bazel_dep(name = "a", version = "1.0.0")
+bazel_dep(name = "a")
+bazel_dep(name = "c", version = "1.0.0", repo_name = "first_c")
+bazel_dep(name = "c", version = "", repo_name = "second_c")
+`,
 	}
 	dir := includeWorkspace(t, files)
 	var out bytes.Buffer
@@ -757,8 +855,41 @@ func TestUpdateCmd_DryRunSkipsUneditableDuplicate(t *testing.T) {
 	updateDryRun = false
 	require.NoError(t, updateCmd.RunE(updateCmd, nil))
 	assert.Equal(t, out.String(), preview)
-	assert.Equal(t, "Skipping a: no version argument in bazel_dep (version is managed elsewhere) [d/x.MODULE.bazel]\n", preview)
+	assert.Equal(t, "Skipping a: no version argument in bazel_dep (version is managed elsewhere) [d/x.MODULE.bazel]\n"+
+		"Skipping c: no version argument in bazel_dep (version is managed elsewhere) [d/x.MODULE.bazel]\n", preview)
 	for name, want := range files {
 		assert.Equal(t, want, readRel(t, dir, name), name)
+	}
+}
+
+func TestUpdateCmd_RefusesToRewriteUnverifiedDuplicateVersions(t *testing.T) {
+	tests := []string{"1.2.3.bcr.11", "1.2.3.bcr.10+build"}
+	for _, current := range tests {
+		t.Run(current, func(t *testing.T) {
+			useRegistry(t, map[string]testutil.TestModule{
+				"a": {Versions: []string{"1.2.3.bcr.10"}},
+				"b": {Versions: []string{"2.0.0"}},
+			})
+			content := fmt.Sprintf(`module(name = "m")
+bazel_dep(name = "b", version = "1.0.0")
+bazel_dep(name = "a", version = "1.2.3.bcr.9", repo_name = "first_a")
+bazel_dep(name = "a", version = "%s", repo_name = "second_a")
+`, current)
+			dir := includeWorkspace(t, map[string]string{"MODULE.bazel": content})
+			var out bytes.Buffer
+			updateCmd.SetOut(&out)
+			t.Cleanup(func() {
+				updateDryRun = false
+				updateCmd.SetOut(os.Stdout)
+			})
+			for _, dryRun := range []bool{true, false} {
+				updateDryRun = dryRun
+				err := updateCmd.RunE(updateCmd, nil)
+				require.ErrorContains(t, err, "failed to update a: MODULE.bazel:4")
+				assert.ErrorContains(t, err, fmt.Sprintf("has version %q, expected %q", current, "1.2.3.bcr.9"))
+				assert.Empty(t, out.String())
+				assert.Equal(t, content, readRel(t, dir, "MODULE.bazel"))
+			}
+		})
 	}
 }

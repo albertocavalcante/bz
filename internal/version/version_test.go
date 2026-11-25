@@ -128,54 +128,6 @@ func TestCompareStrings(t *testing.T) {
 	}
 }
 
-func TestClassifyUpdate(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		current, latest string
-		want            UpdateType
-	}{
-		// No update
-		{"1.0.0", "1.0.0", None},
-		{"0.50.1", "0.50.1", None},
-
-		// Patch update
-		{"1.0.0", "1.0.1", Patch},
-		{"1.0.5", "1.0.10", Patch},
-
-		// Minor update
-		{"1.0.0", "1.1.0", Minor},
-		{"1.5.0", "1.10.0", Minor},
-		{"1.0.5", "1.1.0", Minor},
-
-		// Major update
-		{"1.0.0", "2.0.0", Major},
-		{"0.50.1", "1.0.0", Major},
-		{"1.5.3", "2.0.0", Major},
-
-		// Current is newer (no update)
-		{"2.0.0", "1.0.0", None},
-		{"1.1.0", "1.0.0", None},
-
-		// Invalid versions (unknown)
-		{"invalid", "1.0.0", Unknown},
-		{"1.0.0", "invalid", Unknown},
-		{"abc", "def", Unknown},
-
-		// Prerelease to release
-		{"1.0.0-rc1", "1.0.0", Patch},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.current+"_to_"+tt.latest, func(t *testing.T) {
-			t.Parallel()
-			got := ClassifyUpdate(tt.current, tt.latest)
-			if got != tt.want {
-				t.Errorf("ClassifyUpdate(%q, %q) = %v, want %v", tt.current, tt.latest, got, tt.want)
-			}
-		})
-	}
-}
-
 func TestUpdateTypeString(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -187,6 +139,7 @@ func TestUpdateTypeString(t *testing.T) {
 		{Minor, "minor"},
 		{Major, "major"},
 		{Unknown, "unknown"},
+		{NonSemVer, "non-semver"},
 	}
 
 	for _, tt := range tests {
