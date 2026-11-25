@@ -186,6 +186,8 @@ jobs:
           for archive in "${archives[@]}"; do
             test -s "$archive"
             test -s "$archive.sha256"
+            expected=$(sha256sum "$archive")
+            tr -d '\r' < "$archive.sha256" | diff -u <(printf '%s\n' "$expected") -
           done
           test "$(find . -maxdepth 1 -type f | wc -l)" -eq "$((2 * ${#archives[@]}))"
           cat ./*.sha256 | tr -d '\r' | sort -k2 > checksums.txt
@@ -199,14 +201,56 @@ jobs:
             release/*.tar.gz
             release/*.zip
 
-      - name: Create Release
-        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
-        with:
-          tag_name: ${{ github.ref_name }}
-          draft: false
-          prerelease: true
-          make_latest: false
-          generate_release_notes: true
-          files: release/*
+      - name: Verify draft assets and publish prerelease
+        working-directory: release
+        shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LC_ALL: C
+        run: |
+          list_releases_for_tag() {
+            gh api --paginate "repos/$GITHUB_REPOSITORY/releases" |
+              jq --slurp --arg tag "$GITHUB_REF_NAME" '[.[][] | select(.tag_name == $tag)]'
+          }
+
+          verify_tag_commit() {
+            local actual
+            actual=$(gh api "repos/$GITHUB_REPOSITORY/commits/refs/tags/$GITHUB_REF_NAME" --jq '.sha')
+            if [[ "$actual" != "$expected_commit" ]]; then
+              printf 'Tag %s does not point to built commit %s\n' "$GITHUB_REF_NAME" "$expected_commit" >&2
+              return 1
+            fi
+          }
+
+          existing=$(list_releases_for_tag)
+          if ! jq -e 'length == 0' <<< "$existing" > /dev/null; then
+            printf 'A release or draft already exists for %s. See the release recovery instructions.\n' "$GITHUB_REF_NAME" >&2
+            exit 1
+          fi
+          expected_commit=$(git rev-parse HEAD)
+          verify_tag_commit
+
+          files=(*.tar.gz *.zip *.sha256 checksums.txt)
+          test "${#files[@]}" -eq 11
+          draft_url=$(gh release create "$GITHUB_REF_NAME" "${files[@]}" --repo "$GITHUB_REPOSITORY" \
+            --draft --prerelease --verify-tag --latest=false --generate-notes)
+          printf 'Uploaded draft %s\n' "$draft_url"
+          draft_id=$(list_releases_for_tag | jq -er --arg url "$draft_url" '
+            if length == 1 and .[0].draft and .[0].prerelease and .[0].html_url == $url
+            then .[0].id
+            else error("Expected exactly one newly created prerelease draft")
+            end')
+
+          expected=$(
+            for file in "${files[@]}"; do
+              checksum=$(sha256sum "$file")
+              printf '%s\tuploaded\tsha256:%s\n' "$file" "${checksum%% *}"
+            done | sort
+          )
+          uploaded=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases/$draft_id/assets" \
+            --jq '.[] | [.name, .state, .digest] | @tsv' | sort)
+          diff -u <(printf '%s\n' "$expected") <(printf '%s\n' "$uploaded")
+          verify_tag_commit
+
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$draft_id" \
+            -F draft=false -F prerelease=true -f make_latest=false --jq '.html_url'

@@ -42,6 +42,10 @@ This project uses [Conventional Commits](https://www.conventionalcommits.org/):
 3. Ensure `go test ./...` passes
 4. Open a Pull Request
 
+## Recovering an RC Release
+
+The release workflow creates a draft for the RC tag, then publishes it after verifying all uploaded assets. If the run fails, inspect the release and its assets before retrying. If a failed upload or verification left an unpublished draft, delete only that draft and rerun the failed workflow with its existing tag. If the prerelease was already published, keep its tag and assets and use the next RC number for any replacement.
+
 ## Need Help?
 
 - [Open a Discussion](https://github.com/albertocavalcante/bz/discussions) for questions
