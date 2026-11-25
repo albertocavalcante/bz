@@ -57,8 +57,8 @@ const registryFlagSource = "flag --registry"
 const modRootAnnotation = "bz.mod.root"
 
 // checkRegistryFlag refuses an invalid --registry before any other work.
-func checkRegistryFlag() error {
-	if registryFlag == "" {
+func checkRegistryFlag(cmd *cobra.Command) error {
+	if registryFlag == "" && !cmd.Flags().Changed("registry") {
 		return nil
 	}
 	return bzconfig.ValidateRegistry(registryFlagSource, registryFlag)
@@ -86,7 +86,7 @@ func runModPersistentPreRun(cmd *cobra.Command, args []string) error {
 			return err
 		}
 	}
-	return checkRegistryFlag()
+	return checkRegistryFlag(cmd)
 }
 
 func configureModCmd() {

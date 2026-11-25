@@ -83,6 +83,7 @@ func TestRun_ErrorsArePrintedOnce(t *testing.T) {
 		{name: "doctor reports issues once without Error line", args: []string{"--offline", "doctor"}, wantSub: "issue", wantErrLines: 0, onceSub: "issues found"},
 		{name: "cache download failure summary once", args: []string{"cache", "download", "--registry", "http://127.0.0.1:1", "--cache-dir", "CACHEDIR", "rules_go@0.50.1"}, wantSub: "1 of 1 module(s) failed to download", wantErrLines: 0, onceSub: "failed to download"},
 		{name: "offline cache miss", args: []string{"--offline", "mod", "info", "rules_go"}, wantSub: "offline", wantErrLines: 1},
+		{name: "explicitly empty module registry flag", args: []string{"--offline", "mod", "info", "rules_go", "--registry="}, wantSub: "empty registry URL", wantErrLines: 1},
 	}
 
 	for _, tt := range tests {
