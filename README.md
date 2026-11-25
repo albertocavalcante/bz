@@ -4,7 +4,6 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/albertocavalcante/bz)](https://goreportcard.com/report/github.com/albertocavalcante/bz)
 [![Go Reference](https://pkg.go.dev/badge/github.com/albertocavalcante/bz.svg)](https://pkg.go.dev/github.com/albertocavalcante/bz)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue)](LICENSE-MIT)
-[![Release](https://img.shields.io/github/v/release/albertocavalcante/bz)](https://github.com/albertocavalcante/bz/releases/latest)
 
 A CLI for Bzlmod - Bazel's module system.
 
@@ -21,11 +20,14 @@ Manage MODULE.bazel dependencies, query the Bazel Central Registry, and streamli
 
 ## Installation
 
+Choose a published `v0.1.0-rc.N` from [GitHub Releases](https://github.com/albertocavalcante/bz/releases).
+Download the archive for your platform or install the same tag with Go. For example, for `v0.1.0-rc.1`:
+
 ```bash
-go install github.com/albertocavalcante/bz@latest
+go install github.com/albertocavalcante/bz@v0.1.0-rc.1
 ```
 
-Or download a binary from [Releases](https://github.com/albertocavalcante/bz/releases).
+See the [installation guide](https://albertocavalcante.github.io/bz/installation/) for checksum verification and source builds.
 
 ## Quick Start
 

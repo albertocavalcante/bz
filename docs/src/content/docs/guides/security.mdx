@@ -107,7 +107,7 @@ This only finds records for modules whose name equals the upstream package name,
 
 ### CI/CD Integration
 
-The job fails whenever vulnerabilities are found, a query fails, or a direct dependency could not be checked:
+The job fails whenever vulnerabilities are found, a query fails, or a direct dependency could not be checked. Use a published release candidate tag from [GitHub Releases](https://github.com/albertocavalcante/bz/releases).
 
 ```yaml
 # GitHub Actions example
@@ -117,7 +117,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install bz
-        run: go install github.com/albertocavalcante/bz@latest
+        run: go install github.com/albertocavalcante/bz@v0.1.0-rc.1
       - name: Security audit
         run: bz audit --severity=high
 ```
@@ -389,10 +389,10 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
+          go-version: '1.26'
 
       - name: Install bz
-        run: go install github.com/albertocavalcante/bz@latest
+        run: go install github.com/albertocavalcante/bz@v0.1.0-rc.1
 
       - name: Vulnerability scan
         run: bz audit --json > audit-report.json

@@ -252,10 +252,6 @@ ci-watch:
 ci-list:
     gh run list --limit 10
 
-# Trigger nightly build
-nightly:
-    gh workflow run nightly.yml --field force=true
-
 # Trigger docs deployment manually
 docs-deploy:
     gh workflow run docs.yml
@@ -264,17 +260,17 @@ docs-deploy:
 # Release
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Create a new release tag
-release version:
+# Create a 0.1.0 release candidate tag
+release $RELEASE_TAG:
     #!/usr/bin/env bash
     set -euo pipefail
-    if [[ ! "{{version}}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
-        echo "Error: Version must be in format v1.2.3 or v1.2.3-rc1"
+    if [[ ! "$RELEASE_TAG" =~ ^v0\.1\.0-rc\.[123456789][0123456789]*$ ]]; then
+        printf 'Expected a v0.1.0 release candidate tag such as v0.1.0-rc.1, got %s\n' "$RELEASE_TAG" >&2
         exit 1
     fi
-    git tag -a "{{version}}" -m "Release {{version}}"
-    echo "Created tag {{version}}"
-    echo "Run 'git push origin {{version}}' to trigger release workflow"
+    git tag -a "$RELEASE_TAG" -m "Release $RELEASE_TAG"
+    echo "Created tag $RELEASE_TAG"
+    echo "Run 'git push origin $RELEASE_TAG' to trigger release workflow"
 
 # List tags
 tags:
