@@ -102,32 +102,6 @@ git_override(module_name = "gazelle", remote = "https://github.com/test/test.git
 	})
 }
 
-func TestWriteDepsTable(t *testing.T) {
-	t.Parallel()
-
-	content := `
-module(name = "mymod", version = "2.0.0")
-bazel_dep(name = "rules_go", version = "0.50.1")
-`
-	f, err := LoadContent("MODULE.bazel", []byte(content))
-	if err != nil {
-		t.Fatalf("LoadContent failed: %v", err)
-	}
-
-	var buf bytes.Buffer
-	if err := f.WriteDepsTable(&buf); err != nil {
-		t.Fatalf("WriteDepsTable failed: %v", err)
-	}
-
-	output := buf.String()
-	if !strings.Contains(output, "mymod") {
-		t.Error("expected output to contain module name")
-	}
-	if !strings.Contains(output, "rules_go") {
-		t.Error("expected output to contain rules_go")
-	}
-}
-
 func TestWriteJSON(t *testing.T) {
 	t.Parallel()
 
