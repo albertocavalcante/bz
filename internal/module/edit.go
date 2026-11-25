@@ -22,6 +22,10 @@ var ErrNoVersionArgument = errors.New("bazel_dep has no version argument")
 // ErrDepNotFound indicates that no bazel_dep with the requested name exists.
 var ErrDepNotFound = errors.New("bazel_dep not found")
 
+// ErrAmbiguousDep indicates that a single dependency declaration or version
+// argument could not be selected.
+var ErrAmbiguousDep = errors.New("ambiguous bazel_dep")
+
 // InvalidDepError reports a module name or version that bz refuses to write
 // into MODULE.bazel.
 type InvalidDepError struct {
@@ -55,9 +59,11 @@ type DepSpec struct {
 
 // depStmt is a top-level bazel_dep() call with its byte span in the source.
 type depStmt struct {
-	name       string
-	start, end int               // byte span of the whole call expression
-	version    *build.StringExpr // nil when there is no literal version argument
+	name                  string
+	start, end            int               // byte span of the whole call expression
+	version               *build.StringExpr // nil when there is no literal version argument
+	pos                   build.Position
+	nameArgs, versionArgs int
 }
 
 // findDeps parses src with buildtools and returns every top-level
@@ -90,22 +96,26 @@ func findDeps(src []byte) ([]depStmt, error) {
 			if !ok {
 				continue
 			}
-			val, ok := as.RHS.(*build.StringExpr)
-			if !ok {
-				continue
-			}
+			val, _ := as.RHS.(*build.StringExpr)
 			switch key.Name {
 			case "name":
-				d.name = val.Value
-				haveName = true
+				d.nameArgs++
+				if val != nil {
+					d.name = val.Value
+					haveName = true
+				}
 			case "version":
-				d.version = val
+				d.versionArgs++
+				if val != nil {
+					d.version = val
+				}
 			}
 		}
 		if !haveName {
 			continue
 		}
 		s, e := call.Span()
+		d.pos = s
 		d.start, d.end = s.Byte, e.Byte
 		deps = append(deps, d)
 	}
@@ -252,20 +262,55 @@ func SetDepVersion(src []byte, name, version string) ([]byte, bool, error) {
 		}
 	}
 
+	return replaceVersions(src, targets, version)
+}
+
+// PreviewVersionAt edits the single call at the selected origin. name and
+// version must already have been validated by ValidateDep.
+func PreviewVersionAt(src []byte, name, version string, origin Origin) (updated []byte, current string, err error) {
+	deps, err := findDeps(src)
+	if err != nil {
+		return nil, "", err
+	}
+	i := slices.IndexFunc(deps, func(d depStmt) bool {
+		return d.pos.Line == origin.Pos.Start.Line && d.pos.LineRune == origin.Pos.Start.Column
+	})
+	if i < 0 {
+		return nil, "", fmt.Errorf("cannot locate %q at %s:%d:%d", name, origin.File, origin.Pos.Start.Line, origin.Pos.Start.Column)
+	}
+	target := deps[i]
+	if target.nameArgs != 1 || target.versionArgs > 1 || target.name != name {
+		return nil, "", fmt.Errorf("%w: %s at %s:%d:%d", ErrAmbiguousDep, name, origin.File, origin.Pos.Start.Line, origin.Pos.Start.Column)
+	}
+	if target.version == nil || target.version.Value == "" {
+		return nil, "", fmt.Errorf("%w: %s", ErrNoVersionArgument, name)
+	}
+
+	current = target.version.Value
+	if current == version {
+		return bytes.Clone(src), current, nil
+	}
+	updated, _, err = replaceVersions(src, deps[i:i+1], version)
+	return updated, current, err
+}
+
+func replaceVersions(src []byte, targets []depStmt, version string) ([]byte, bool, error) {
 	res := append([]byte(nil), src...)
 	// Apply from the end so earlier offsets stay valid.
 	for i := len(targets) - 1; i >= 0; i-- {
 		lit := targets[i].version
 		s, e := lit.Span()
-		q := byte('"')
-		if s.Byte < len(res) && (res[s.Byte] == '"' || res[s.Byte] == '\'') {
-			q = res[s.Byte]
-		}
-		repl := string(q) + version + string(q)
+		width := 1
 		if lit.TripleQuote {
-			repl = string(bytes.Repeat([]byte{q}, 3)) + version + string(bytes.Repeat([]byte{q}, 3))
+			width = 3
 		}
-		res = append(res[:s.Byte:s.Byte], append([]byte(repl), res[e.Byte:]...)...)
+		start := s.Byte + width
+		if res[s.Byte] == 'r' {
+			start++
+		}
+		// Replace only the contents, retaining the original quotes and any
+		// raw string prefix.
+		res = slices.Replace(res, start, e.Byte-width, []byte(version)...)
 	}
 	if bytes.Equal(res, src) {
 		return res, false, nil

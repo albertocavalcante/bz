@@ -103,6 +103,8 @@ See the [Configuration Guide](https://albertocavalcante.github.io/bz/configurati
 
 ## Documentation
 
+Go callers can preview a dependency version edit with the [workspace package](workspace/preview.go).
+
 - [Full Documentation](https://albertocavalcante.github.io/bz/)
 - [Getting Started](https://albertocavalcante.github.io/bz/getting-started/)
 - [CLI Reference](https://albertocavalcante.github.io/bz/cli/)

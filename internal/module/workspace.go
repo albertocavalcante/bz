@@ -40,6 +40,15 @@ func OpenWorkspace(modulePath string) (*Workspace, error) {
 	if err != nil {
 		return nil, err
 	}
+	w, err := openWorkspace(modulePath)
+	if err != nil {
+		return nil, err
+	}
+	w.File = f
+	return w, nil
+}
+
+func openWorkspace(modulePath string) (*Workspace, error) {
 	dir := filepath.Dir(modulePath)
 	root, err := os.OpenRoot(dir)
 	if err != nil {
@@ -50,7 +59,7 @@ func OpenWorkspace(modulePath string) (*Workspace, error) {
 		_ = root.Close()
 		return nil, fmt.Errorf("resolve %s: %w", modulePath, err)
 	}
-	w := &Workspace{File: f, dir: dir, root: root, rootRel: filepath.Base(modulePath), rootReal: resolved}
+	w := &Workspace{dir: dir, root: root, rootRel: filepath.Base(modulePath), rootReal: resolved}
 	w.writeFile = w.replaceFile
 	return w, nil
 }

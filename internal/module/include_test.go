@@ -124,6 +124,42 @@ func openTree(t *testing.T, dir string) *Workspace {
 	return ws
 }
 
+func TestOpenWorkspaceForUpdateRetainsParsedBytes(t *testing.T) {
+	t.Parallel()
+
+	const root = "include(\"//:dep.MODULE.bazel\")\r\n"
+	const rel = "dep.MODULE.bazel"
+	const original = "bazel_dep(name = \"a\", version = \"1\")\r\n"
+	const changed = "bazel_dep(name = \"a\", version = \"3\")\r\n"
+	dir := writeTree(t, map[string]string{"MODULE.bazel": root, rel: original})
+	ws, snapshot, err := OpenWorkspaceForUpdate(t.Context(), filepath.Join(dir, "MODULE.bazel"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ws.Close() })
+	if err := os.WriteFile(filepath.Join(dir, rel), []byte(changed), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := string(snapshot["MODULE.bazel"]); got != root {
+		t.Fatalf("root bytes = %q, want %q", got, root)
+	}
+	dep := ws.File.Deps[0]
+	file := ws.RelPath(ws.File.OriginOf(dep))
+	if got := string(snapshot[file]); file != rel || got != original || dep.Version.String() != "1" {
+		t.Fatalf("parsed %q version %q, captured %q", file, dep.Version, got)
+	}
+	plan, err := PlanVersionEdits(snapshot, []VersionEdit{{Rel: file, Name: "a", Version: "2"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ws.WriteAll(plan.Files); !errors.Is(err, ErrFileChanged) {
+		t.Fatalf("write error = %v, want ErrFileChanged", err)
+	}
+	if got := readAll(t, dir, rel)[0]; got != changed {
+		t.Fatalf("concurrent edit = %q, want %q", got, changed)
+	}
+}
+
 func twoFileTree(t *testing.T) (dir string, ws *Workspace, edits []FileEdit) {
 	t.Helper()
 	dir = writeTree(t, map[string]string{
