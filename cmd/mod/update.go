@@ -191,23 +191,30 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		updates = append(updates, info)
 	}
 
-	// Filter to only updates that have changes
+	// Only versions classified as newer may be previewed or applied.
 	var pendingUpdates []updateInfo
-	for _, u := range updates {
-		if u.updateType != version.None && u.err == nil {
-			pendingUpdates = append(pendingUpdates, u)
-		}
-	}
-
-	// Print errors for modules that couldn't be checked
+	var skippedUnverified bool
 	for _, u := range updates {
 		if u.err != nil {
 			fmt.Fprintf(out, "%s: error fetching metadata: %v\n", u.name, u.err)
+			continue
+		}
+		switch u.updateType {
+		case version.Patch, version.Minor, version.Major:
+			pendingUpdates = append(pendingUpdates, u)
+		case version.Unknown:
+			skippedUnverified = true
+			fmt.Fprintf(out, "Skipping %s: cannot verify that %s is newer than %s%s\n",
+				u.name, u.latest, u.current, u.inFile(filepath.Base(modulePath)))
 		}
 	}
 
 	if len(pendingUpdates) == 0 {
-		fmt.Fprintln(out, "All dependencies are up to date!")
+		if skippedUnverified {
+			fmt.Fprintln(out, "No verified dependency updates found.")
+		} else {
+			fmt.Fprintln(out, "All dependencies are up to date!")
+		}
 		return nil
 	}
 

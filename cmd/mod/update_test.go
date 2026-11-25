@@ -224,6 +224,33 @@ bazel_dep(name = "rules_go", version = "0.50.1")
 	assert.Contains(t, output, "All dependencies are up to date")
 }
 
+func TestUpdateCmd_SkipsUnverifiedBCRDowngrade(t *testing.T) {
+	for _, dryRun := range []bool{false, true} {
+		t.Run(fmt.Sprintf("dry-run=%t", dryRun), func(t *testing.T) {
+			useRegistry(t, map[string]testutil.TestModule{
+				"a": {Versions: []string{"1.2.3.bcr.9"}},
+			})
+			const content = "module(name = \"m\")\nbazel_dep(name = \"a\", version = \"1.2.3.bcr.10\")\n"
+			dir := includeWorkspace(t, map[string]string{"MODULE.bazel": content})
+			updateDryRun = dryRun
+			var out bytes.Buffer
+			updateCmd.SetOut(&out)
+			t.Cleanup(func() {
+				updateDryRun = false
+				updateCmd.SetOut(os.Stdout)
+			})
+
+			require.NoError(t, updateCmd.RunE(updateCmd, nil))
+
+			assert.Equal(t, content, readRel(t, dir, "MODULE.bazel"))
+			assert.Contains(t, out.String(), "Skipping a: cannot verify that 1.2.3.bcr.9 is newer than 1.2.3.bcr.10")
+			assert.NotContains(t, out.String(), "Updated a")
+			assert.NotContains(t, out.String(), "Would update a")
+			assert.NotContains(t, out.String(), "All dependencies are up to date")
+		})
+	}
+}
+
 func TestUpdateCmd_NoDeps(t *testing.T) {
 	tmpDir := t.TempDir()
 
