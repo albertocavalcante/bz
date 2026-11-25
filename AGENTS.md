@@ -2,6 +2,24 @@
 
 Guidelines for AI agents and contributors working on this project.
 
+## Issue References and Replies
+
+- Use `Refs #N` for work on an issue and `Related to #N` for context in PR
+  descriptions, commits, and squash messages. Treat Development sidebar links
+  as potential closing links. A closing link requires explicit maintainer
+  approval for that PR and issue.
+- Before closing a human-filed issue, a maintainer must post a substantive
+  reply on the issue and record its permalink. Keep the issue open while
+  work needed to resolve the report is pending.
+- Put a visible AI disclosure in every issue comment whose wording or
+  substance AI generated or rewrote. Agents need maintainer approval to post.
+
+## Documentation
+
+- Update the existing documentation that owns the topic. Add a Markdown file
+  only when it serves a distinct audience or task that the existing docs
+  cannot serve well.
+
 ## Commit Messages
 
 This project follows [Semantic Commit Messages](https://www.conventionalcommits.org/).
