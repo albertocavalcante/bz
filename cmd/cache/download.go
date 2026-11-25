@@ -104,6 +104,9 @@ func runDownload(cmd *cobra.Command, args []string) error {
 	var modulesToDownload []moduleVersion
 
 	if downloadAll {
+		if err := cmdutil.CheckRegistryNetwork("cache download", reg); err != nil {
+			return err
+		}
 		// Download all modules from registry
 		modules, err := reg.ListModules(ctx)
 		if err != nil {
@@ -143,6 +146,9 @@ func runDownload(cmd *cobra.Command, args []string) error {
 				}
 			}
 			if version == "" {
+				if err := cmdutil.CheckRegistryNetwork("cache download", reg); err != nil {
+					return err
+				}
 				// No version specified, get latest
 				meta, err := reg.GetMetadata(ctx, name)
 				if err != nil {
@@ -155,9 +161,6 @@ func runDownload(cmd *cobra.Command, args []string) error {
 			}
 			modulesToDownload = append(modulesToDownload, moduleVersion{name: name, version: version})
 		}
-
-		// Resolve transitive dependencies
-		modulesToDownload = resolveTransitiveDeps(ctx, reg, modulesToDownload)
 	} else {
 		// No args - read from MODULE.bazel
 		f, err := module.FindAndLoad()
@@ -176,8 +179,12 @@ func runDownload(cmd *cobra.Command, args []string) error {
 			fmt.Fprintln(out, "No dependencies found in MODULE.bazel")
 			return nil
 		}
+	}
 
-		// Resolve transitive dependencies
+	if !downloadAll {
+		if err := cmdutil.CheckRegistryNetwork("cache download", reg); err != nil {
+			return err
+		}
 		modulesToDownload = resolveTransitiveDeps(ctx, reg, modulesToDownload)
 	}
 

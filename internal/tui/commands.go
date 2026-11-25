@@ -11,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/albertocavalcante/bz/internal/cli"
+	"github.com/albertocavalcante/bz/internal/cmdutil"
 	"github.com/albertocavalcante/bz/internal/module"
 	"github.com/albertocavalcante/bz/internal/registry"
 )
@@ -70,14 +71,9 @@ func InitModule(name, version string, force bool) tea.Cmd {
 func defaultSearchRegistry() (registry.Registry, error) {
 	url := cli.GetRegistry()
 	if url == "" {
-		return registry.Default(), nil
+		url = registry.DefaultBCR
 	}
-
-	reg, err := registry.New(url)
-	if err != nil {
-		return nil, fmt.Errorf("invalid registry %q: %w", url, err)
-	}
-	return reg, nil
+	return cmdutil.OpenRegistry("tui", url)
 }
 
 func searchModules(ctx context.Context, reg registry.Registry, query string) ([]ModuleResult, error) {

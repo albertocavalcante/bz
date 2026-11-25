@@ -197,7 +197,6 @@ func runSBOM(cmd *cobra.Command, args []string) error {
 	ctx := cmdutil.CommandContext(cmd)
 
 	registryURL := resolvedSBOMRegistryURL()
-
 	reg, err := registry.New(registryURL)
 	if err != nil {
 		return fmt.Errorf("invalid registry: %w", err)
@@ -206,7 +205,10 @@ func runSBOM(cmd *cobra.Command, args []string) error {
 	// Collect dependencies
 	deps := make(map[string]*sbomDependency)
 
-	if sbomIncludeTransitive {
+	if sbomIncludeTransitive && len(f.Deps) > 0 {
+		if err := cmdutil.CheckRegistryNetwork("sbom", reg); err != nil {
+			return err
+		}
 		// Collect all transitive dependencies
 		visited := make(map[string]bool)
 		for _, dep := range f.Deps {

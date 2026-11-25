@@ -107,6 +107,12 @@ func runSync(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	if workflow := svc.GetWorkflow(workflowName); workflow != nil &&
+		(workflow.Origin.Type != "file" || workflow.Destination.Type != "file") {
+		if err := cli.CheckOfflineAllowed("mod sync"); err != nil {
+			return err
+		}
+	}
 
 	// Build options
 	opts := modsync.Options{
