@@ -1,8 +1,6 @@
 package module
 
 import (
-	"bytes"
-	"strings"
 	"testing"
 
 	ast "github.com/albertocavalcante/go-bzlmod-ast"
@@ -108,63 +106,5 @@ func TestToSummary_IncludesOverridesAndExtensions(t *testing.T) {
 	}
 	if got := byType["local_path"].Detail; got != "../local_mod" {
 		t.Fatalf("local_path detail = %q, want %q", got, "../local_mod")
-	}
-}
-
-func TestWriteFullTable_RendersAllSections(t *testing.T) {
-	t.Parallel()
-
-	content := `
-module(name = "demo", version = "1.0.0")
-bazel_dep(name = "rules_go", version = "0.50.0")
-bazel_dep(name = "gazelle", version = "0.38.0", dev_dependency = True)
-go = use_extension("@rules_go//go:extensions.bzl", "go")
-local_path_override(module_name = "rules_go", path = "../rules_go")
-register_toolchains("@rules_go//go:toolchain")
-register_execution_platforms("@platforms//:host")
-`
-	f, err := LoadContent("MODULE.bazel", []byte(content))
-	if err != nil {
-		t.Fatalf("LoadContent() error = %v", err)
-	}
-
-	var buf bytes.Buffer
-	if err := f.WriteFullTable(&buf); err != nil {
-		t.Fatalf("WriteFullTable() error = %v", err)
-	}
-	out := buf.String()
-
-	mustContain := []string{
-		"demo (1.0.0)",
-		"Dependencies:",
-		"rules_go",
-		"gazelle",
-		"(dev)",
-		"Extensions:",
-		"Overrides:",
-		"Toolchains:",
-		"Execution Platforms:",
-		"@rules_go//go:toolchain",
-		"@platforms//:host",
-	}
-	for _, needle := range mustContain {
-		if !strings.Contains(out, needle) {
-			t.Fatalf("WriteFullTable() output missing %q:\n%s", needle, out)
-		}
-	}
-}
-
-func TestWriteFullTable_EmptyFileMessage(t *testing.T) {
-	t.Parallel()
-
-	f := &File{}
-	var buf bytes.Buffer
-	if err := f.WriteFullTable(&buf); err != nil {
-		t.Fatalf("WriteFullTable() error = %v", err)
-	}
-
-	out := buf.String()
-	if !strings.Contains(out, "No dependencies, extensions, or overrides found.") {
-		t.Fatalf("WriteFullTable() output = %q, want empty-state message", out)
 	}
 }

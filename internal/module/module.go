@@ -75,13 +75,10 @@ func (f *File) OriginOf(stmt ast.Statement) Origin {
 	return Origin{File: moduleFileName, Pos: stmt.Span()}
 }
 
-// fromSuffix returns " [file]" for statements declared in an included file
-// and the empty string for the root file.
-func (f *File) fromSuffix(stmt ast.Statement) string {
-	if o := f.OriginOf(stmt); !o.IsRoot() {
-		return " [" + o.File + "]"
-	}
-	return ""
+// HasIncludedStatements reports whether any included file contributes
+// statements to the module.
+func (f *File) HasIncludedStatements() bool {
+	return len(f.origins) > 0
 }
 
 // Raw returns the underlying AST for advanced operations.

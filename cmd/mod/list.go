@@ -44,8 +44,8 @@ func runList(cmd *cobra.Command, args []string) error {
 	}
 
 	if listAll {
-		return f.WriteFullTable(out)
+		return writeFullTable(out, f)
 	}
 
-	return f.WriteDepsTable(out)
+	return writeDepsTable(out, f)
 }

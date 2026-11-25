@@ -5,11 +5,8 @@ import (
 	"fmt"
 	"io"
 	"strings"
-	"text/tabwriter"
 
 	ast "github.com/albertocavalcante/go-bzlmod-ast"
-
-	"github.com/albertocavalcante/bz/internal/cli"
 )
 
 // Dep is a simplified dependency for output.
@@ -137,139 +134,6 @@ func (f *File) WriteJSON(w io.Writer) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	return enc.Encode(f.ToSummary())
-}
-
-// WriteDepsTable writes dependencies as a table.
-func (f *File) WriteDepsTable(w io.Writer) error {
-	if f.Name() != "" {
-		fmt.Fprintf(w, "%s", f.Name())
-		if f.Version() != "" {
-			fmt.Fprintf(w, " (%s)", f.Version())
-		}
-		fmt.Fprintln(w)
-		fmt.Fprintln(w)
-	}
-
-	if len(f.Deps) == 0 {
-		fmt.Fprintln(w, "No dependencies found.")
-		return nil
-	}
-
-	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	// The FILE column only appears when an included file declares a dependency,
-	// so workspaces without include() print exactly what they always did.
-	showFile := len(f.origins) > 0
-	if showFile {
-		fmt.Fprintln(tw, "NAME\tVERSION\tDEV\tFILE")
-	} else {
-		fmt.Fprintln(tw, "NAME\tVERSION\tDEV")
-	}
-
-	for _, dep := range f.Deps {
-		dev := ""
-		if dep.DevDependency {
-			dev = cli.Muted("yes")
-		}
-		if showFile {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", dep.Name.String(), dep.Version.String(), dev, f.OriginOf(dep).File)
-			continue
-		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\n", dep.Name.String(), dep.Version.String(), dev)
-	}
-
-	return tw.Flush()
-}
-
-// WriteFullTable writes all MODULE.bazel contents as tables.
-func (f *File) WriteFullTable(w io.Writer) error {
-	if f.Name() != "" {
-		fmt.Fprintf(w, "%s", f.Name())
-		if f.Version() != "" {
-			fmt.Fprintf(w, " (%s)", f.Version())
-		}
-		fmt.Fprintln(w)
-	}
-
-	// Dependencies
-	if len(f.Deps) > 0 {
-		fmt.Fprintln(w)
-		fmt.Fprintln(w, "Dependencies:")
-		tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-		for _, dep := range f.Deps {
-			dev := ""
-			if dep.DevDependency {
-				dev = cli.Muted(" (dev)")
-			}
-			fmt.Fprintf(tw, "  %s\t%s%s\n", dep.Name.String(), dep.Version.String(), dev+f.fromSuffix(dep))
-		}
-		if err := tw.Flush(); err != nil {
-			return err
-		}
-	}
-
-	// Extensions
-	if len(f.Extensions) > 0 {
-		fmt.Fprintln(w)
-		fmt.Fprintln(w, "Extensions:")
-		tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-		for _, ext := range f.Extensions {
-			dev := ""
-			if ext.DevDependency {
-				dev = " (dev)"
-			}
-			fmt.Fprintf(tw, "  %s\t%s%s\n", ext.ExtensionName.String(), ext.ExtensionFile.String(), dev+f.fromSuffix(ext))
-		}
-		if err := tw.Flush(); err != nil {
-			return err
-		}
-	}
-
-	// Overrides
-	if len(f.Overrides) > 0 {
-		fmt.Fprintln(w)
-		fmt.Fprintln(w, "Overrides:")
-		tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-		for _, o := range f.Overrides {
-			ov := overrideToSummary(o)
-			detail := ""
-			if ov.Detail != "" {
-				detail = " → " + ov.Detail
-			}
-			fmt.Fprintf(tw, "  %s\t[%s]%s%s\n", ov.Module, ov.Type, detail, f.fromSuffix(o))
-		}
-		if err := tw.Flush(); err != nil {
-			return err
-		}
-	}
-
-	// Toolchains
-	if len(f.Toolchains) > 0 {
-		fmt.Fprintln(w)
-		fmt.Fprintln(w, "Toolchains:")
-		for _, tc := range f.Toolchains {
-			for _, p := range tc.Patterns {
-				fmt.Fprintf(w, "  %s\n", p)
-			}
-		}
-	}
-
-	// Platforms
-	if len(f.Platforms) > 0 {
-		fmt.Fprintln(w)
-		fmt.Fprintln(w, "Execution Platforms:")
-		for _, ep := range f.Platforms {
-			for _, p := range ep.Patterns {
-				fmt.Fprintf(w, "  %s\n", p)
-			}
-		}
-	}
-
-	if len(f.Deps) == 0 && len(f.Extensions) == 0 && len(f.Overrides) == 0 {
-		fmt.Fprintln(w)
-		fmt.Fprintln(w, "No dependencies, extensions, or overrides found.")
-	}
-
-	return nil
 }
 
 // includedFile returns the included file that declared stmt, or "" for the
