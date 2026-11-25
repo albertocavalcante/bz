@@ -2,10 +2,16 @@ package modsync
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/albertocavalcante/bz/internal/config"
 )
+
+type testSourceURLs struct {
+	URL  string   `json:"url"`
+	URLs []string `json:"urls"`
+}
 
 func TestRewriteSourceURLs(t *testing.T) {
 	t.Parallel()
@@ -76,13 +82,72 @@ func TestRewriteSourceURLs(t *testing.T) {
 			}
 
 			// Parse result to check URL
-			var src sourceJSON
+			var src testSourceURLs
 			if err := json.Unmarshal(result, &src); err != nil {
 				t.Fatalf("failed to parse result: %v", err)
 			}
 
 			if src.URL != tt.wantURL {
 				t.Errorf("URL = %q, want %q", src.URL, tt.wantURL)
+			}
+		})
+	}
+}
+
+func TestRewriteSourceURLs_DescriptorTypeAndAliases(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		name    string
+		content string
+		pattern string
+		want    string
+	}{
+		{
+			name:    "default archive with legacy empty and null",
+			content: `{"url":"","archive":null,"urls":[null, "", "original"],"mirror_urls":[null, "", "original"]}`,
+			pattern: `^$`,
+			want:    `{"url":"","archive":null,"urls":[null, "replaced", "original"],"mirror_urls":[null, "", "original"]}`,
+		},
+		{
+			name:    "only exact mirror_urls key",
+			content: `{"URL":"original","ARCHIVE":"original","URLS":["original"],"Mirror_URLS":["original"],"mirror_urls":["original"]}`,
+			pattern: "original",
+			want:    `{"URL":"replaced","ARCHIVE":"replaced","URLS":["replaced"],"Mirror_URLS":["original"],"mirror_urls":["replaced"]}`,
+		},
+		{
+			name:    "future type with opaque URL fields",
+			content: `{"url":"original","mirror_urls":{"unknown":"original"},"type":"future"}`,
+			pattern: "original",
+			want:    `{"url":"original","mirror_urls":{"unknown":"original"},"type":"future"}`,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := rewriteSourceURLs([]byte(tt.content), tt.pattern, "replaced")
+			if err != nil || string(got) != tt.want {
+				t.Errorf("rewriteSourceURLs() = %q, %v, want %q", got, err, tt.want)
+			}
+		})
+	}
+}
+
+func TestRewriteSourceURLs_InvalidDescriptor(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		source string
+		want   string
+	}{
+		{`{"url":"https://example.com/"`, "parse source.json"},
+		{`{"url":"https://example.com/"} {}`, "unexpected data"},
+		{`[{"url":"https://example.com/"}]`, "expected an object"},
+		{`{"url":42}`, `field "url"`},
+		{`{"mirror_urls":["https://example.com/",42]}`, `field "mirror_urls"`},
+	} {
+		t.Run(tt.source, func(t *testing.T) {
+			t.Parallel()
+			result, err := rewriteSourceURLs([]byte(tt.source), "example", "mirror")
+			if result != nil || err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Errorf("rewriteSourceURLs() = %q, %v, want error containing %q", result, err, tt.want)
 			}
 		})
 	}
@@ -103,7 +168,7 @@ func TestRewriteSourceURLs_URLsArray(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	var src sourceJSON
+	var src testSourceURLs
 	if err := json.Unmarshal(result, &src); err != nil {
 		t.Fatalf("failed to parse result: %v", err)
 	}
@@ -143,7 +208,7 @@ func TestApplyTransforms(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	var src sourceJSON
+	var src testSourceURLs
 	if err := json.Unmarshal(result, &src); err != nil {
 		t.Fatalf("failed to parse result: %v", err)
 	}
@@ -169,8 +234,8 @@ func TestApplyTransforms_SkipYanked(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Content should be unchanged (just re-encoded)
-	var original, transformed sourceJSON
+	// The inert transform preserves the URL.
+	var original, transformed testSourceURLs
 	if err := json.Unmarshal([]byte(content), &original); err != nil {
 		t.Fatalf("failed to parse original: %v", err)
 	}
@@ -208,7 +273,7 @@ func TestApplyTransforms_MultipleTransforms(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	var src sourceJSON
+	var src testSourceURLs
 	if err := json.Unmarshal(result, &src); err != nil {
 		t.Fatalf("failed to parse result: %v", err)
 	}

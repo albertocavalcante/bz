@@ -2,6 +2,11 @@ package modsync
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/albertocavalcante/bz/internal/config"
@@ -552,5 +557,90 @@ func TestService_Run_ModulesOverride(t *testing.T) {
 	// Should only process rules_go
 	if result.ModulesProcessed != 1 {
 		t.Errorf("ModulesProcessed = %d, want 1", result.ModulesProcessed)
+	}
+}
+
+func TestService_Run_RewritesOnlySourceURLs(t *testing.T) {
+	t.Parallel()
+	const name = "example"
+	const version = "1.0.0"
+	const archive = `{
+  "url": "https://upstream.example/source.tar.gz",
+  "mirror_urls": ["https://backup.example/source.tar.gz", "https://upstream.example/backup.tar.gz"],
+  "urls": ["https://upstream.example/legacy.tar.gz"],
+  "archive": "https://upstream.example/other.tar.gz",
+  "archive_type": "tar.gz",
+  "type": "archive",
+  "patches": {"second.patch":"sha256-2", "first.patch":"sha256-1"},
+  "extra": { "url": "https://upstream.example/info", "number": 9007199254740993, "raw": "\u0061" }
+}`
+	const git = `{"url":"https://upstream.example/extension","mirror_urls":{"extension":true},"remote":"https://upstream.example/project.git","commit":"abc","tag":"v1","type":"git_repository","patches":{"fix.patch":"sha256-a"}}`
+	const local = `{"urls":["https://upstream.example/extension"],"archive":"https://upstream.example/other","path":"relative/dependency","type":"local_path","extension":true}`
+	tests := []struct {
+		name       string
+		descriptor string
+		want       string
+	}{
+		{
+			name:       "archive",
+			descriptor: archive,
+			want: strings.NewReplacer(
+				"https://upstream.example/source.tar.gz", "https://mirror.example/source.tar.gz",
+				"https://upstream.example/backup.tar.gz", "https://mirror.example/backup.tar.gz",
+				"https://upstream.example/legacy.tar.gz", "https://mirror.example/legacy.tar.gz",
+				"https://upstream.example/other.tar.gz", "https://mirror.example/other.tar.gz",
+			).Replace(archive),
+		},
+		{name: "git", descriptor: git, want: git},
+		{name: "local", descriptor: local, want: local},
+	}
+
+	for _, kind := range []string{"file", "http"} {
+		t.Run(kind, func(t *testing.T) {
+			t.Parallel()
+			for _, tt := range tests {
+				t.Run(tt.name, func(t *testing.T) {
+					t.Parallel()
+					originDir := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{
+						name: {Versions: []string{version}},
+					})
+					sourcePath := filepath.FromSlash(registry.SourcePath(name, version))
+					if err := os.WriteFile(filepath.Join(originDir, sourcePath), []byte(tt.descriptor), 0o644); err != nil {
+						t.Fatal(err)
+					}
+					origin := &config.Registry{Type: kind, URL: originDir}
+					if kind == "http" {
+						server := httptest.NewServer(http.FileServer(http.Dir(originDir)))
+						t.Cleanup(server.Close)
+						origin.URL = server.URL
+					}
+
+					dest := t.TempDir()
+					workflow := &config.Workflow{
+						Name:        "rewrite",
+						Origin:      origin,
+						Destination: &config.Registry{Type: "file", URL: dest},
+						Modules:     []string{name},
+						Transformations: []*config.Transform{
+							{Type: "skip_yanked"},
+							{Type: "rewrite_urls", Pattern: `^https://upstream\.example/`, Replacement: "https://mirror.example/"},
+						},
+					}
+					result, err := NewService(&config.Config{Workflows: []*config.Workflow{workflow}}).
+						Run(t.Context(), workflow.Name, Options{})
+					if err != nil || len(result.Errors) != 0 || result.ModulesWritten != 1 {
+						t.Fatalf("Run() = %+v, %v", result, err)
+					}
+
+					got, err := os.ReadFile(filepath.Join(dest, name, version, registry.SourceFile))
+					if err != nil {
+						t.Fatal(err)
+					}
+					if string(got) != tt.want {
+						t.Errorf("destination source.json = %s\nwant %s", got, tt.want)
+					}
+				})
+			}
+		})
 	}
 }
