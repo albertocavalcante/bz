@@ -171,14 +171,12 @@ func readCachedModuleBazel(cacheDir string, ref depgraph.ModuleRef) ([]byte, err
 		return nil, err
 	}
 
-	// Keep cacheDir and modules as traversed directory components. Opening a
-	// FIFO directly can block before it can be checked with fstat.
-	base, err := os.OpenRoot(cacheDir + string(os.PathSeparator) + ".")
+	base, err := os.OpenRoot(verificationDirectoryPath(cacheDir))
 	if err != nil {
 		return nil, err
 	}
 	defer base.Close()
-	root, err := base.OpenRoot(registry.ModulesDir + "/.")
+	root, err := base.OpenRoot(verificationDirectoryPath(registry.ModulesDir))
 	if err != nil {
 		return nil, err
 	}
