@@ -229,6 +229,9 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		// Preserve declaration order in previews and file order in apply output.
 		slices.Sort(plan.Applied)
 	} else if len(plan.Files) > 0 {
+		if err := ws.VerifyUnchanged(ctx, snapshot); err != nil {
+			return err
+		}
 		if err := ws.WriteAll(plan.Files); err != nil {
 			return err
 		}

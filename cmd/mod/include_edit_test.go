@@ -2,13 +2,18 @@ package mod
 
 import (
 	"bytes"
+	"io/fs"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/albertocavalcante/bz/internal/module"
 	"github.com/albertocavalcante/bz/internal/testutil"
 )
 
@@ -138,6 +143,124 @@ func TestUpdate_AllFilesAtOnce(t *testing.T) {
 	assert.Equal(t, "bazel_dep(name = \"e\", version = '4')", readRel(t, dir, "d/y.MODULE.bazel"))
 	assert.Contains(t, out.String(), "Updated b: 1 -> 2 (major) [d/x.MODULE.bazel]")
 	assert.Contains(t, out.String(), "Updated a: 1.0.0 -> 1.1.0 (minor)\n")
+}
+
+func TestUpdate_RefusesChangedUneditedIncludedFile(t *testing.T) {
+	files := map[string]string{
+		"MODULE.bazel":     "module(name = \"m\")\ninclude(\"//d:x.MODULE.bazel\")\ninclude(\"//d:y.MODULE.bazel\")\n",
+		"d/x.MODULE.bazel": "bazel_dep(name = \"b\", version = \"1\")\n",
+		"d/y.MODULE.bazel": "bazel_dep(name = \"unrelated\", version = \"1\")\n",
+	}
+	dir := includeWorkspace(t, files)
+
+	var once sync.Once
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/modules/b/metadata.json" {
+			http.NotFound(w, r)
+			return
+		}
+		once.Do(func() {
+			err := os.WriteFile(filepath.Join(dir, "d", "y.MODULE.bazel"), []byte("bazel_dep(name = \"unrelated\", version = \"2\")\n"), 0o644)
+			if err != nil {
+				t.Errorf("change unedited included file: %v", err)
+			}
+		})
+		_, _ = w.Write([]byte(`{"versions":["1","2"]}`))
+	}))
+	t.Cleanup(server.Close)
+
+	old := registryFlag
+	registryFlag = server.URL
+	t.Cleanup(func() { registryFlag = old })
+	updateDryRun = false
+
+	err := updateCmd.RunE(updateCmd, []string{"b"})
+	require.ErrorContains(t, err, "verify d/y.MODULE.bazel")
+	assert.ErrorIs(t, err, module.ErrFileChanged)
+	assert.Equal(t, files["MODULE.bazel"], readRel(t, dir, "MODULE.bazel"))
+	assert.Equal(t, files["d/x.MODULE.bazel"], readRel(t, dir, "d/x.MODULE.bazel"))
+	assert.Equal(t, "bazel_dep(name = \"unrelated\", version = \"2\")\n", readRel(t, dir, "d/y.MODULE.bazel"))
+}
+
+func TestUpdate_RefusesRemovedUneditedIncludedFile(t *testing.T) {
+	files := map[string]string{
+		"MODULE.bazel":     "module(name = \"m\")\ninclude(\"//d:x.MODULE.bazel\")\ninclude(\"//d:y.MODULE.bazel\")\n",
+		"d/x.MODULE.bazel": "bazel_dep(name = \"b\", version = \"1\")\n",
+		"d/y.MODULE.bazel": "bazel_dep(name = \"unrelated\", version = \"1\")\n",
+	}
+	dir := includeWorkspace(t, files)
+
+	var once sync.Once
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/modules/b/metadata.json" {
+			http.NotFound(w, r)
+			return
+		}
+		once.Do(func() {
+			if err := os.Remove(filepath.Join(dir, "d", "y.MODULE.bazel")); err != nil {
+				t.Errorf("remove unedited included file: %v", err)
+			}
+		})
+		_, _ = w.Write([]byte(`{"versions":["1","2"]}`))
+	}))
+	t.Cleanup(server.Close)
+
+	old := registryFlag
+	registryFlag = server.URL
+	t.Cleanup(func() { registryFlag = old })
+	updateDryRun = false
+
+	err := updateCmd.RunE(updateCmd, []string{"b"})
+	require.ErrorContains(t, err, "verify d/y.MODULE.bazel")
+	assert.ErrorIs(t, err, fs.ErrNotExist)
+	assert.Equal(t, files["MODULE.bazel"], readRel(t, dir, "MODULE.bazel"))
+	assert.Equal(t, files["d/x.MODULE.bazel"], readRel(t, dir, "d/x.MODULE.bazel"))
+}
+
+func TestUpdate_RefusesRetargetedRoot(t *testing.T) {
+	base := t.TempDir()
+	ws := filepath.Join(base, "ws")
+	targetOne := filepath.Join(base, "one", "MODULE.bazel")
+	targetTwo := filepath.Join(base, "two", "MODULE.bazel")
+	for _, target := range []string{targetOne, targetTwo} {
+		require.NoError(t, os.MkdirAll(filepath.Dir(target), 0o755))
+		require.NoError(t, os.WriteFile(target, []byte("module(name = \"m\")\nbazel_dep(name = \"b\", version = \"1\")\n"), 0o644))
+	}
+	require.NoError(t, os.MkdirAll(ws, 0o755))
+	link := filepath.Join(ws, "MODULE.bazel")
+	if err := os.Symlink(targetOne, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	t.Chdir(ws)
+
+	var once sync.Once
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/modules/b/metadata.json" {
+			http.NotFound(w, r)
+			return
+		}
+		once.Do(func() {
+			if err := os.Remove(link); err != nil {
+				t.Errorf("remove root link: %v", err)
+				return
+			}
+			if err := os.Symlink(targetTwo, link); err != nil {
+				t.Errorf("retarget root link: %v", err)
+			}
+		})
+		_, _ = w.Write([]byte(`{"versions":["1","2"]}`))
+	}))
+	t.Cleanup(server.Close)
+
+	old := registryFlag
+	registryFlag = server.URL
+	t.Cleanup(func() { registryFlag = old })
+	updateDryRun = false
+
+	err := updateCmd.RunE(updateCmd, []string{"b"})
+	require.ErrorIs(t, err, module.ErrFileChanged)
+	assert.Equal(t, "module(name = \"m\")\nbazel_dep(name = \"b\", version = \"1\")\n", readRel(t, base, "one/MODULE.bazel"))
+	assert.Equal(t, "module(name = \"m\")\nbazel_dep(name = \"b\", version = \"1\")\n", readRel(t, base, "two/MODULE.bazel"))
 }
 
 func TestUpdate_ReadOnlyIncludedFileWritesNothing(t *testing.T) {
