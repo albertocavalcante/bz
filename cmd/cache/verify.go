@@ -10,8 +10,14 @@ import (
 
 	"github.com/albertocavalcante/bz/internal/cli"
 	"github.com/albertocavalcante/bz/internal/cmdutil"
+	"github.com/albertocavalcante/bz/internal/coord"
+	"github.com/albertocavalcante/bz/internal/depgraph"
 	"github.com/albertocavalcante/bz/internal/module"
+	"github.com/albertocavalcante/bz/internal/registry"
 )
+
+// Match the maximum MODULE.bazel response accepted by the HTTP registry.
+const maxCachedModuleBazelSize = 50 << 20
 
 var (
 	verifyJSON     bool
@@ -20,12 +26,11 @@ var (
 
 var verifyCmd = &cobra.Command{
 	Use:   "verify",
-	Short: "Verify cache is complete for offline use",
-	Long: `Verifies that the local cache contains all dependencies required
-for offline use based on the current MODULE.bazel file.
-
-This command checks that all direct dependencies (and optionally transitive
-dependencies) are present in the local cache.
+	Short: "Verify cached MODULE.bazel dependency closure",
+	Long: `Checks that cached MODULE.bazel files are readable and parseable
+across exact declared versions, including development dependencies, from the
+current MODULE.bazel file.
+Bazel resolution and source archive availability require separate checks.
 
 Examples:
   bz cache verify
@@ -77,7 +82,7 @@ func runVerify(cmd *cobra.Command, args []string) error {
 			return printVerifyJSON(out, verifyResult{Complete: true})
 		}
 		fmt.Fprintln(out, "No dependencies found in MODULE.bazel")
-		fmt.Fprintln(out, "\nCache is COMPLETE for offline use.")
+		fmt.Fprintln(out, "\nCache is COMPLETE for declared MODULE.bazel closure.")
 		return nil
 	}
 
@@ -86,19 +91,7 @@ func runVerify(cmd *cobra.Command, args []string) error {
 		fmt.Fprintln(out)
 	}
 
-	// Check each dependency
-	var statuses []moduleStatus
-	for _, dep := range f.Deps {
-		name := dep.Name.String()
-		version := dep.Version.String()
-
-		cached := isModuleCached(cacheDir, name, version)
-		statuses = append(statuses, moduleStatus{
-			name:    name,
-			version: version,
-			cached:  cached,
-		})
-	}
+	statuses := verifyCachedClosure(cacheDir, depgraph.FromModuleFileDeps(f))
 
 	// Build result
 	result := verifyResult{}
@@ -123,9 +116,9 @@ func runVerify(cmd *cobra.Command, args []string) error {
 
 		fmt.Fprintln(out)
 		if result.Complete {
-			fmt.Fprintln(out, cli.Success("Cache is COMPLETE for offline use."))
+			fmt.Fprintln(out, cli.Success("Cache is COMPLETE for declared MODULE.bazel closure."))
 		} else {
-			fmt.Fprintf(out, cli.Error("Cache is INCOMPLETE.")+" Run '%s' to fix.\n", "bz cache download")
+			fmt.Fprintf(out, cli.Error("Cache is INCOMPLETE for declared MODULE.bazel closure.")+" Run '%s' to fix.\n", "bz cache download")
 		}
 	}
 
@@ -136,19 +129,96 @@ func runVerify(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// isModuleCached checks if a specific module version exists in the cache.
-func isModuleCached(cacheDir, name, version string) bool {
-	moduleBazelPath := filepath.Join(cacheDir, "modules", name, version, "MODULE.bazel")
-	_, err := os.Stat(moduleBazelPath)
-	return err == nil
+// verifyCachedClosure walks the same declared dependency closure that cache
+// download follows. A module is cached only when its MODULE.bazel can be read
+// safely and parsed, because otherwise its children cannot be determined.
+func verifyCachedClosure(cacheDir string, initial []depgraph.ModuleRef) []moduleStatus {
+	seen := make(map[string]bool)
+	queue := append([]depgraph.ModuleRef(nil), initial...)
+	statuses := make([]moduleStatus, 0, len(initial))
+
+	for len(queue) > 0 {
+		ref := queue[0]
+		queue = queue[1:]
+		if seen[ref.Key()] {
+			continue
+		}
+		seen[ref.Key()] = true
+
+		content, err := readCachedModuleBazel(cacheDir, ref)
+		if err != nil {
+			statuses = append(statuses, moduleStatus{name: ref.Name, version: ref.Version})
+			continue
+		}
+		parsed, err := module.LoadContent(ref.Name, content)
+		if err != nil {
+			statuses = append(statuses, moduleStatus{name: ref.Name, version: ref.Version})
+			continue
+		}
+
+		statuses = append(statuses, moduleStatus{name: ref.Name, version: ref.Version, cached: true})
+		queue = append(queue, depgraph.FromModuleFileDeps(parsed)...)
+	}
+
+	return statuses
+}
+
+// readCachedModuleBazel reads one cache entry through an os.Root so the path
+// stays beneath cacheDir. The nonblocking open avoids waiting on a FIFO. The
+// post-open stat and bounded read reject special or oversized files.
+func readCachedModuleBazel(cacheDir string, ref depgraph.ModuleRef) ([]byte, error) {
+	if err := coord.Validate(ref.Name, ref.Version); err != nil {
+		return nil, err
+	}
+
+	// Keep cacheDir and modules as traversed directory components. Opening a
+	// FIFO directly can block before it can be checked with fstat.
+	base, err := os.OpenRoot(cacheDir + string(os.PathSeparator) + ".")
+	if err != nil {
+		return nil, err
+	}
+	defer base.Close()
+	root, err := base.OpenRoot(registry.ModulesDir + "/.")
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+
+	path := filepath.Join(ref.Name, ref.Version, "MODULE.bazel")
+	file, err := root.OpenFile(path, verificationOpenFlags(), 0)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	info, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("cached MODULE.bazel is not a regular file")
+	}
+	if info.Size() > maxCachedModuleBazelSize {
+		return nil, fmt.Errorf("cached MODULE.bazel exceeds %d-byte limit", maxCachedModuleBazelSize)
+	}
+
+	content, err := io.ReadAll(io.LimitReader(file, maxCachedModuleBazelSize+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(content) > maxCachedModuleBazelSize {
+		return nil, fmt.Errorf("cached MODULE.bazel exceeds %d-byte limit", maxCachedModuleBazelSize)
+	}
+	return content, nil
 }
 
 func printVerifyText(w io.Writer, statuses []moduleStatus) {
 	for _, s := range statuses {
+		label := (moduleVersion{name: s.name, version: s.version}).label()
 		if s.cached {
-			fmt.Fprintf(w, "  %s %s@%s\n", cli.SuccessIcon(), s.name, s.version)
+			fmt.Fprintf(w, "  %s %s\n", cli.SuccessIcon(), label)
 		} else {
-			fmt.Fprintf(w, "  %s %s@%s %s\n", cli.ErrorIcon(), s.name, s.version, cli.Muted("(missing)"))
+			fmt.Fprintf(w, "  %s %s %s\n", cli.ErrorIcon(), label, cli.Muted("(missing)"))
 		}
 	}
 }

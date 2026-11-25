@@ -474,7 +474,7 @@ Last updated:    2024-01-15 10:30:00
 
 ### `bz cache verify`
 
-Verify that the local cache contains all dependencies required for offline use.
+Check that cached `MODULE.bazel` files are readable and parseable across exact declared versions, including development dependencies. Bazel resolution and source archive availability require separate checks.
 
 ```bash
 bz cache verify
@@ -495,7 +495,7 @@ Verifying cache for MODULE.bazel dependencies...
   ✓ rules_python@0.35.0
   ✗ gazelle@0.38.0 (missing)
 
-Cache is INCOMPLETE. Run 'bz cache download' to fix.
+Cache is INCOMPLETE for declared MODULE.bazel closure. Run 'bz cache download' to fix.
 ```
 
 Returns non-zero exit code if cache is incomplete.
