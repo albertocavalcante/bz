@@ -87,10 +87,10 @@ bz cache download --all
 bz cache download --cache-dir=/opt/bz-cache
 ```
 
-### Verify Cache Completeness
+### Verify Cached Module Closure
 
 ```bash
-# Check if cache has all deps needed for offline use
+# Check cached MODULE.bazel files across exact declared dependency versions
 bz cache verify
 
 # Output as JSON (for scripting)
@@ -105,7 +105,7 @@ Verifying cache for MODULE.bazel dependencies...
   ✓ bazel_skylib@1.5.0
   ✗ gazelle@0.38.0 (missing)
 
-Cache is INCOMPLETE. Run 'bz cache download' to fix.
+Cache is INCOMPLETE for declared MODULE.bazel closure. Run 'bz cache download' to fix.
 ```
 
 ### Check Cache Statistics
