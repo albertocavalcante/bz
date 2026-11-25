@@ -75,28 +75,14 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	ws, err := module.OpenWorkspace(modulePath)
+	ctx := cmdutil.CommandContext(cmd)
+	ws, snapshot, err := module.OpenWorkspaceForUpdate(ctx, modulePath)
 	if err != nil {
 		return err
 	}
 	defer ws.Close()
 	f := ws.File
 	deps := f.UniqueDeps()
-
-	// Snapshot every declaring file before the slow registry calls, so the
-	// write below detects edits made in between.
-	snapshot := make(map[string][]byte)
-	for _, dep := range deps {
-		file := ws.RelPath(f.OriginOf(dep))
-		if _, ok := snapshot[file]; ok {
-			continue
-		}
-		content, err := ws.ReadFile(file)
-		if err != nil {
-			return fmt.Errorf("failed to read %s: %w", file, err)
-		}
-		snapshot[file] = content
-	}
 
 	// A module declared in several files must not be updated in just one.
 	for _, dep := range deps {
@@ -114,8 +100,6 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		fmt.Fprintln(out, "No dependencies found in MODULE.bazel")
 		return nil
 	}
-
-	ctx := cmdutil.CommandContext(cmd)
 
 	// Create network-aware registry
 	reg, err := createNetworkAwareRegistry()

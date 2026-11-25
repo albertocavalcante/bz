@@ -135,6 +135,10 @@ func expandIncludes(path string, root *ast.ParseResult) (*File, error) {
 	defer dir.Close()
 
 	x, err := ast.ExpandIncludes(context.Background(), root, dir.FS(), ast.IncludeOptions{})
+	return loadExpanded(path, x, err)
+}
+
+func loadExpanded(path string, x *ast.ExpandedFile, err error) (*File, error) {
 	if err != nil {
 		return nil, includeError(err)
 	}
