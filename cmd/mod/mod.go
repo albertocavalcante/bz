@@ -39,11 +39,14 @@ func createNetworkAwareRegistry() (registry.Registry, error) {
 	if err != nil {
 		return nil, err
 	}
+	if inner.Type() == registry.TypeFile {
+		return inner, nil
+	}
 
 	// Wrap with network-aware registry that respects CLI options
 	opts := &cli.Options{
-		Offline:       cli.IsOffline(),
-		PreferOffline: cli.IsPreferOffline(),
+		Offline:       cli.IsEffectivelyOffline(),
+		PreferOffline: cli.IsEffectivelyPreferOffline(),
 	}
 
 	// For now, we don't have a cache registry, so pass nil

@@ -56,9 +56,8 @@ func (e *OfflineModeError) Error() string {
 	if e.Description != "" {
 		msg += " " + e.Description
 	}
-	msg += ".\n\nIn offline mode, this operation is not available.\n\nOptions:\n"
-	msg += "  1. Run with network access (remove --offline flag or BZ_OFFLINE env var)\n"
-	msg += fmt.Sprintf("  2. Disable this command in .bzconfig.toml:\n     [commands]\n     disabled = [%q]\n", e.Command)
+	msg += " and cannot run in offline mode.\n"
+	msg += "To allow network access, remove --offline, unset BZ_OFFLINE, or check [network].mode in .bzconfig.toml."
 	return msg
 }
 

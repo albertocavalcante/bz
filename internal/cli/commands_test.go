@@ -165,6 +165,7 @@ func TestOfflineModeError_Error(t *testing.T) {
 	assert.Contains(t, errMsg, "audit")
 	assert.Contains(t, errMsg, "requires network access")
 	assert.Contains(t, errMsg, "offline mode")
+	assert.Contains(t, errMsg, "[network].mode")
 }
 
 func TestOfflineModeError_Is(t *testing.T) {

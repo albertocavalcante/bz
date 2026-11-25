@@ -66,6 +66,9 @@ func runPing(cmd *cobra.Command, args []string) error {
 	if err := cli.CheckCommandAllowed("ping"); err != nil {
 		return err
 	}
+	if err := cli.CheckOfflineAllowed("registry ping"); err != nil {
+		return err
+	}
 
 	ctx := cmdutil.CommandContext(cmd)
 

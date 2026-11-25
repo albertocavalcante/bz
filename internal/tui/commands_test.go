@@ -4,14 +4,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
+	"github.com/albertocavalcante/bz/internal/cli"
 	"github.com/albertocavalcante/bz/internal/coord"
 	"github.com/albertocavalcante/bz/internal/module"
 	"github.com/albertocavalcante/bz/internal/registry"
+	"github.com/albertocavalcante/bz/internal/testutil"
 )
 
 type failingSearchRegistry struct {
@@ -90,6 +95,37 @@ func TestSearchModules(t *testing.T) {
 			t.Fatalf("error = %v, want wrapped %v", err, wantErr)
 		}
 	})
+}
+
+func TestSearchModulesOffline(t *testing.T) {
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	t.Cleanup(server.Close)
+	cli.ResetCachedConfig()
+	t.Cleanup(cli.ResetCachedConfig)
+	t.Setenv("BZ_OFFLINE", "1")
+	t.Setenv("BZ_REGISTRY", server.URL)
+	msg := SearchModules("fixture")()
+	errMsg, ok := msg.(ErrMsg)
+	if !ok {
+		t.Fatalf("offline search got %T, want ErrMsg", msg)
+	}
+	var offlineErr *cli.OfflineModeError
+	if !errors.As(errMsg.Err, &offlineErr) || requests.Load() != 0 {
+		t.Errorf("offline search made %d requests and returned %v", requests.Load(), errMsg.Err)
+	}
+
+	t.Setenv("BZ_REGISTRY", testutil.SetupTestRegistry(t, map[string]testutil.TestModule{
+		"fixture": {Versions: []string{"1.0.0"}},
+	}))
+	msg = SearchModules("fixture")()
+	result, ok := msg.(SearchResultsMsg)
+	if !ok || len(result.Results) != 1 || result.Results[0].Version != "1.0.0" {
+		t.Errorf("offline search of local registry got %#v", msg)
+	}
 }
 
 func TestListLocalDeps(t *testing.T) {
