@@ -55,7 +55,7 @@ func TestRunner_HostileVersionFileDestination(t *testing.T) {
 
 	parent := t.TempDir()
 	reg := setupHostileRegistry(t, parent)
-	// A traversal of three levels from dest/rules_go/<v> lands in parent/x.
+	// The destination is nested so the path-traversal probe stays in the test fixture.
 	dest := filepath.Join(parent, "x", "y", "dest")
 
 	result, err := NewService(hostileWorkflow(reg, &config.Registry{Type: "file", URL: dest})).
@@ -70,7 +70,7 @@ func TestRunner_HostileVersionFileDestination(t *testing.T) {
 	if len(result.Errors) != 1 || !errors.Is(result.Errors[0], coord.ErrInvalidVersion) {
 		t.Fatalf("Errors = %v, want one ErrInvalidVersion", result.Errors)
 	}
-	if _, err := os.Stat(filepath.Join(dest, "rules_go", "1.0", "MODULE.bazel")); err != nil {
+	if _, err := os.Stat(filepath.Join(dest, "modules", "rules_go", "1.0", "MODULE.bazel")); err != nil {
 		t.Errorf("valid version not written: %v", err)
 	}
 	entries, err := os.ReadDir(filepath.Join(parent, "x"))
@@ -140,8 +140,8 @@ func TestRunner_HostileVersionHTTPDestination(t *testing.T) {
 
 	mu.Lock()
 	defer mu.Unlock()
-	if len(requests) == 0 {
-		t.Fatal("no requests for the valid version")
+	if len(requests) == 0 || requests[0] != "HEAD /r/rules_go/1.0/MODULE.bazel" {
+		t.Fatalf("unexpected requests for the valid version: %v", requests)
 	}
 	for _, r := range requests {
 		if strings.Contains(r, "..") || strings.Contains(strings.ToLower(r), "%2e") || strings.Contains(r, "ESCAPED") {

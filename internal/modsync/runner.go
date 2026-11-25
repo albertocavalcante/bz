@@ -2,7 +2,10 @@ package modsync
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"path"
 
@@ -18,6 +21,7 @@ type runner struct {
 	workflow *config.Workflow
 	source   registry.Registry
 	dest     publisher.Publisher
+	local    *publisher.FilePublisher
 	opts     Options
 }
 
@@ -30,15 +34,17 @@ func newRunner(workflow *config.Workflow, opts Options) (*runner, error) {
 	}
 
 	// Create destination publisher
-	dest, err := publisherFromConfig(workflow.Destination)
+	dest, err := publisherFromConfig(workflow.Destination, opts.DryRun)
 	if err != nil {
 		return nil, fmt.Errorf("creating destination publisher: %w", err)
 	}
 
+	local, _ := dest.(*publisher.FilePublisher)
 	return &runner{
 		workflow: workflow,
 		source:   source,
 		dest:     dest,
+		local:    local,
 		opts:     opts,
 	}, nil
 }
@@ -122,7 +128,16 @@ func (r *runner) syncModule(ctx context.Context, moduleName string, result *Resu
 	// Check if we should skip yanked versions
 	skipYanked := r.hasTransform(config.Transform{Type: "skip_yanked"})
 
+	var metadata *localMetadata
+	if r.local != nil && !r.opts.DryRun {
+		metadata, err = readLocalMetadata(r.local, moduleName)
+		if err != nil {
+			return fmt.Errorf("read destination metadata: %w", err)
+		}
+	}
+
 	// Process each version
+	var available []string
 	for _, version := range versions {
 		// Versions come from untrusted source metadata; an invalid one fails
 		// only that version and nothing is written for it.
@@ -148,6 +163,9 @@ func (r *runner) syncModule(ctx context.Context, moduleName string, result *Resu
 			continue
 		}
 
+		if metadata != nil {
+			available = append(available, version)
+		}
 		if written {
 			result.ModulesWritten++
 		} else {
@@ -155,19 +173,50 @@ func (r *runner) syncModule(ctx context.Context, moduleName string, result *Resu
 		}
 	}
 
+	if metadata != nil && (len(available) > 0 || metadata.fields != nil) {
+		if err := metadata.write(r.local, moduleName, meta, available); err != nil {
+			return fmt.Errorf("write destination metadata: %w", err)
+		}
+	}
 	return nil
 }
 
 // syncVersion syncs a single module version.
 func (r *runner) syncVersion(ctx context.Context, moduleName, version string) (written bool, err error) {
 	// Check if already exists in destination
-	moduleBazelPath := path.Join(moduleName, version, "MODULE.bazel")
-	exists, err := r.dest.Exists(ctx, moduleBazelPath)
+	moduleBazelPath := path.Join(moduleName, version, registry.ModuleBazelFile)
+	sourceJSONPath := path.Join(moduleName, version, registry.SourceFile)
+	hasModule, err := r.dest.Exists(ctx, moduleBazelPath)
 	if err != nil {
 		return false, fmt.Errorf("check exists: %w", err)
 	}
+	var hasSource bool
+	if r.local != nil {
+		hasSource, err = r.dest.Exists(ctx, sourceJSONPath)
+		if err != nil {
+			return false, fmt.Errorf("check source.json exists: %w", err)
+		}
+	}
 
-	if exists {
+	if r.local != nil {
+		// A previous interrupted or corrupt write is not a complete version.
+		if hasModule {
+			data, readErr := r.local.Read(moduleBazelPath)
+			if readErr != nil && !errors.Is(readErr, fs.ErrNotExist) {
+				return false, readErr
+			}
+			hasModule = readErr == nil && len(data) > 0
+		}
+		if hasSource {
+			data, readErr := r.local.Read(sourceJSONPath)
+			if readErr != nil && !errors.Is(readErr, fs.ErrNotExist) {
+				return false, readErr
+			}
+			hasSource = readErr == nil && json.Valid(data)
+		}
+	}
+
+	if hasModule && (r.local == nil || hasSource) {
 		if r.opts.Verbose {
 			slog.Info("skipped existing version", "module", moduleName, "version", version)
 		}
@@ -183,34 +232,43 @@ func (r *runner) syncVersion(ctx context.Context, moduleName, version string) (w
 		return true, nil
 	}
 
-	// Read MODULE.bazel from source
-	moduleBazel, err := r.source.GetModuleBazel(ctx, moduleName, version)
-	if err != nil {
-		return false, fmt.Errorf("get MODULE.bazel: %w", err)
-	}
-
-	// Read source.json from source
-	sourceJSON, err := r.getSourceJSON(ctx, moduleName, version)
-	if err != nil {
-		return false, fmt.Errorf("get source.json: %w", err)
-	}
-
-	// Apply transformations to source.json
-	if len(r.workflow.Transformations) > 0 && sourceJSON != nil {
-		sourceJSON, err = applyTransforms(r.workflow.Transformations, sourceJSON)
+	var moduleBazel []byte
+	if !hasModule {
+		moduleBazel, err = r.source.GetModuleBazel(ctx, moduleName, version)
 		if err != nil {
-			return false, fmt.Errorf("apply transforms: %w", err)
+			return false, fmt.Errorf("get MODULE.bazel: %w", err)
 		}
 	}
 
-	// Write MODULE.bazel to destination
-	if err := r.dest.Put(ctx, moduleBazelPath, moduleBazel); err != nil {
-		return false, fmt.Errorf("write MODULE.bazel: %w", err)
+	var sourceJSON []byte
+	if !hasSource {
+		sourceJSON, err = r.getSourceJSON(ctx, moduleName, version)
+		if err != nil {
+			return false, fmt.Errorf("get source.json: %w", err)
+		}
+		if r.local != nil && !json.Valid(sourceJSON) {
+			return false, fmt.Errorf("source.json is missing or invalid")
+		}
+		if len(r.workflow.Transformations) > 0 && sourceJSON != nil {
+			sourceJSON, err = applyTransforms(r.workflow.Transformations, sourceJSON)
+			if err != nil {
+				return false, fmt.Errorf("apply transforms: %w", err)
+			}
+		}
 	}
 
-	// Write source.json to destination (if available)
-	if sourceJSON != nil {
-		sourceJSONPath := path.Join(moduleName, version, "source.json")
+	// Publish the local version marker after its source description.
+	if r.local != nil && !hasSource {
+		if err := r.dest.Put(ctx, sourceJSONPath, sourceJSON); err != nil {
+			return false, fmt.Errorf("write source.json: %w", err)
+		}
+	}
+	if !hasModule {
+		if err := r.dest.Put(ctx, moduleBazelPath, moduleBazel); err != nil {
+			return false, fmt.Errorf("write MODULE.bazel: %w", err)
+		}
+	}
+	if r.local == nil && sourceJSON != nil {
 		if err := r.dest.Put(ctx, sourceJSONPath, sourceJSON); err != nil {
 			return false, fmt.Errorf("write source.json: %w", err)
 		}
@@ -337,14 +395,17 @@ func registryFromConfig(cfg *config.Registry) (registry.Registry, error) {
 }
 
 // publisherFromConfig creates a publisher from config.
-func publisherFromConfig(cfg *config.Registry) (publisher.Publisher, error) {
+func publisherFromConfig(cfg *config.Registry, dryRun bool) (publisher.Publisher, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("registry configuration is required")
 	}
 
 	switch cfg.Type {
 	case "file":
-		return publisher.NewFilePublisher(cfg.URL)
+		if dryRun {
+			return publisher.OpenFileRegistryPublisher(cfg.URL)
+		}
+		return publisher.NewFileRegistryPublisher(cfg.URL)
 
 	case "git":
 		branch := cfg.Branch
