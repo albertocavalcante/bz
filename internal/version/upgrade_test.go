@@ -2,6 +2,7 @@ package version
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/albertocavalcante/bz/internal/coord"
@@ -39,6 +40,7 @@ func TestRegistryUpgrade(t *testing.T) {
 		{"prefer plain equivalent version", "1.1.0", []string{"1.2.0+build", "1.2.0"}, nil, "1.2.0", Minor},
 		{"yank applies to build spellings", "1.1.0", []string{"2.0.0+build", "1.5.0"}, map[string]string{"2.0.0": "withdrawn"}, "1.5.0", Minor},
 		{"yanked build applies to other spellings", "1.1.0", []string{"2.0.0+other", "2.0.0", "1.5.0"}, map[string]string{"2.0.0+build": "withdrawn"}, "1.5.0", Minor},
+		{"long build spelling is still yanked", "1.1.0", []string{"2.0.0", "1.5.0"}, map[string]string{"2.0.0+" + strings.Repeat("b", coord.MaxCoordinateLen+1): "withdrawn"}, "1.5.0", Minor},
 		{"Bazel ignores build segments", "1.1.0", []string{"1.2.0+foo..bar"}, nil, "1.2.0+foo..bar", NonSemVer},
 		{"ignore malformed yanked", "1.0.0", []string{"1..0", "1.0.1"}, map[string]string{"1..0": ""}, "1.0.1", Patch},
 		{"all yanked", "1.5.0", []string{"2.0.0"}, map[string]string{"2.0.0": ""}, "1.5.0", None},

@@ -227,8 +227,14 @@ func RegistryUpgrade(current string, versions []string, yanked map[string]string
 func selectRegistryVersion(versions []string, yanked map[string]string) (string, bazelversion.ParsedVersion, error) {
 	// Bazel parses yanked version keys, so equivalent build spellings are
 	// yanked together.
-	yankedVersions := make(map[string]bool, len(yanked))
+	yankedVersions := make(map[string]bool)
 	for raw := range yanked {
+		// Build metadata is ignored for identity. Only a prefix that fits a
+		// registry coordinate can match a candidate.
+		prefix, _, _ := strings.Cut(raw, "+")
+		if len(prefix) > coord.MaxCoordinateLen {
+			continue
+		}
 		if parsed, err := bazelversion.Parse(raw); err == nil {
 			yankedVersions[parsed.Normalized] = true
 		}
