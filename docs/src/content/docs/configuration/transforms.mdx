@@ -31,7 +31,7 @@ Yanked versions typically have known issues. It's usually a good idea to skip th
 
 ### Rewrite Source URLs
 
-Rewrite URLs in `source.json` using regex patterns:
+Use a regular expression to rewrite the archive URL and its `mirror_urls` in `source.json`. Other fields, including patch references and their order, stay intact.
 
 ```starlark
 sync.workflow(

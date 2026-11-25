@@ -1,9 +1,12 @@
 package modsync
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"regexp"
+	"strings"
 
 	"github.com/albertocavalcante/bz/internal/config"
 )
@@ -36,57 +39,104 @@ func applyTransforms(transforms []*config.Transform, sourceJSON []byte) ([]byte,
 	return result, nil
 }
 
-// sourceJSON represents the structure of a source.json file.
-type sourceJSON struct {
-	URL         string            `json:"url,omitempty"`
-	Integrity   string            `json:"integrity,omitempty"`
-	StripPrefix string            `json:"strip_prefix,omitempty"`
-	Patches     map[string]string `json:"patches,omitempty"`
-	PatchStrip  int               `json:"patch_strip,omitempty"`
-	Overlay     map[string]string `json:"overlay,omitempty"`
-	// Archive type fields
-	Type    string   `json:"type,omitempty"`
-	URLs    []string `json:"urls,omitempty"`
-	Archive string   `json:"archive,omitempty"`
-}
-
-// rewriteSourceURLs rewrites URLs in source.json matching a pattern.
+// rewriteSourceURLs rewrites only the URL strings in a source descriptor.
 func rewriteSourceURLs(content []byte, pattern, replacement string) ([]byte, error) {
 	if pattern == "" {
 		return content, nil
 	}
-
 	re, err := regexp.Compile(pattern)
 	if err != nil {
 		return nil, fmt.Errorf("invalid pattern %q: %w", pattern, err)
 	}
 
-	// Parse the source.json
-	var src sourceJSON
-	if err := json.Unmarshal(content, &src); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(content))
+	open, err := decoder.Token()
+	if err != nil {
 		return nil, fmt.Errorf("parse source.json: %w", err)
 	}
-
-	// Rewrite single URL field
-	if src.URL != "" {
-		src.URL = re.ReplaceAllString(src.URL, replacement)
+	if open != json.Delim('{') {
+		return nil, fmt.Errorf("parse source.json: expected an object")
 	}
 
-	// Rewrite URLs array
-	for i, url := range src.URLs {
-		src.URLs[i] = re.ReplaceAllString(url, replacement)
+	var output []byte
+	var copied int
+	replace := func(end int, raw json.RawMessage) error {
+		var url string
+		if err := json.Unmarshal(raw, &url); err != nil {
+			return err
+		}
+		if url == "" {
+			return nil
+		}
+		updated := re.ReplaceAllString(url, replacement)
+		if updated == url {
+			return nil
+		}
+		encoded, err := json.Marshal(updated)
+		if err != nil {
+			return err
+		}
+		// InputOffset points just after the raw value. Copy intervening bytes
+		// verbatim, including any ordered patch entries and unknown fields.
+		output = append(output, content[copied:end-len(raw)]...)
+		output = append(output, encoded...)
+		copied = end
+		return nil
 	}
 
-	// Rewrite Archive field
-	if src.Archive != "" {
-		src.Archive = re.ReplaceAllString(src.Archive, replacement)
+	var raw json.RawMessage
+	for decoder.More() {
+		key, err := decoder.Token()
+		if err != nil {
+			return nil, fmt.Errorf("parse source.json: %w", err)
+		}
+		if err := decoder.Decode(&raw); err != nil {
+			return nil, fmt.Errorf("parse source.json field %q: %w", key, err)
+		}
+		end := int(decoder.InputOffset())
+		switch strings.ToLower(key.(string)) {
+		case "url", "archive":
+			err = replace(end, raw)
+		case "mirror_urls", "urls":
+			err = rewriteURLArray(raw, end-len(raw), replace)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("parse source.json field %q: %w", key, err)
+		}
 	}
-
-	// Re-encode to JSON with indentation for readability
-	result, err := json.MarshalIndent(src, "", "  ")
-	if err != nil {
-		return nil, fmt.Errorf("encode source.json: %w", err)
+	if _, err := decoder.Token(); err != nil {
+		return nil, fmt.Errorf("parse source.json: %w", err)
 	}
+	if _, err := decoder.Token(); err != io.EOF {
+		if err != nil {
+			return nil, fmt.Errorf("parse source.json: %w", err)
+		}
+		return nil, fmt.Errorf("parse source.json: unexpected data after object")
+	}
+	if copied == 0 {
+		return content, nil
+	}
+	return append(output, content[copied:]...), nil
+}
 
-	return result, nil
+func rewriteURLArray(raw json.RawMessage, start int, replace func(int, json.RawMessage) error) error {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	open, err := decoder.Token()
+	if err != nil || open == nil {
+		return err
+	}
+	if open != json.Delim('[') {
+		return fmt.Errorf("expected an array of URLs")
+	}
+	var item json.RawMessage
+	for decoder.More() {
+		if err := decoder.Decode(&item); err != nil {
+			return err
+		}
+		if err := replace(start+int(decoder.InputOffset()), item); err != nil {
+			return err
+		}
+	}
+	_, err = decoder.Token()
+	return err
 }
