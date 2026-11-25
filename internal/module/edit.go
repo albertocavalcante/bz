@@ -239,8 +239,12 @@ func removalSpan(src []byte, start, end int) (s struct{ start, end int }) {
 // with *InvalidDepError; ErrDepNotFound and ErrNoVersionArgument are returned
 // (wrapped) when there is nothing to edit.
 func SetDepVersion(src []byte, name, version string) ([]byte, bool, error) {
-	if err := coord.ValidateVersion(version); err != nil {
-		return nil, false, &InvalidDepError{Module: name, Err: err}
+	return setDepVersion(src, VersionEdit{Name: name, Version: version})
+}
+
+func setDepVersion(src []byte, edit VersionEdit) ([]byte, bool, error) {
+	if err := coord.ValidateVersion(edit.Version); err != nil {
+		return nil, false, &InvalidDepError{Module: edit.Name, Err: err}
 	}
 	deps, err := findDeps(src)
 	if err != nil {
@@ -249,20 +253,28 @@ func SetDepVersion(src []byte, name, version string) ([]byte, bool, error) {
 
 	var targets []depStmt
 	for _, d := range deps {
-		if d.name == name {
+		if d.name == edit.Name {
 			targets = append(targets, d)
 		}
 	}
 	if len(targets) == 0 {
-		return nil, false, fmt.Errorf("%w: %s", ErrDepNotFound, name)
+		return nil, false, fmt.Errorf("%w: %s", ErrDepNotFound, edit.Name)
 	}
 	for _, d := range targets {
-		if d.version == nil {
-			return nil, false, fmt.Errorf("%w: %s", ErrNoVersionArgument, name)
+		if d.version == nil || (edit.Current != "" && d.version.Value == "") {
+			return nil, false, fmt.Errorf("%w: %s", ErrNoVersionArgument, edit.Name)
+		}
+	}
+	if edit.Current != "" {
+		for _, d := range targets {
+			if d.version.Value != edit.Current {
+				return nil, false, fmt.Errorf("%s:%d: bazel_dep has version %q, expected %q; align the versions of repeated declarations before updating",
+					edit.Rel, d.pos.Line, d.version.Value, edit.Current)
+			}
 		}
 	}
 
-	return replaceVersions(src, targets, version)
+	return replaceVersions(src, targets, edit.Version)
 }
 
 // PreviewVersionAt edits the single call at the selected origin. name and

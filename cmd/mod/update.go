@@ -1,6 +1,7 @@
 package mod
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"slices"
@@ -10,7 +11,6 @@ import (
 	"github.com/albertocavalcante/bz/internal/bzconfig"
 	"github.com/albertocavalcante/bz/internal/cli"
 	"github.com/albertocavalcante/bz/internal/cmdutil"
-	"github.com/albertocavalcante/bz/internal/coord"
 	"github.com/albertocavalcante/bz/internal/module"
 	"github.com/albertocavalcante/bz/internal/version"
 )
@@ -21,14 +21,14 @@ var (
 
 var updateCmd = &cobra.Command{
 	Use:   "update [module...]",
-	Short: "Update dependencies to latest compatible versions",
-	Long: `Update bazel_dep entries in MODULE.bazel to their latest stable versions.
+	Short: "Update dependencies to newer registry versions",
+	Long: `Update bazel_dep entries in MODULE.bazel to newer registry versions.
 
 Without arguments, updates all dependencies. With module names specified,
 updates only those modules.
 
-Uses LatestStable() from registry metadata, which skips prereleases and
-yanked versions.
+Uses Bazel version order to choose the highest non-yanked stable version.
+If none is available, considers the highest non-yanked prerelease.
 
 Examples:
   bz mod update                    # update all dependencies
@@ -168,22 +168,14 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
-		// Use LatestVersion which skips prereleases
-		latest := meta.LatestVersion()
-		if latest == "" {
-			latest = current
-		} else if err := coord.ValidateVersion(latest); err != nil {
-			// All-or-nothing: a registry serving a malformed version is not
-			// trusted for the rest of this run either.
+		info.latest, info.updateType, err = version.RegistryUpgrade(current, meta.Versions, meta.YankedVersions)
+		if err != nil {
 			registryURL, resolveErr := resolvedRegistryURL()
 			if resolveErr != nil {
 				return resolveErr
 			}
-			return invalidRegistryVersionError(name, registryURL, err)
+			return registryUpgradeError(name, registryURL, err)
 		}
-
-		info.latest = latest
-		info.updateType = version.ClassifyUpdate(current, latest)
 		updates = append(updates, info)
 	}
 
@@ -192,13 +184,14 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	var skippedUnverified bool
 	for _, u := range updates {
 		if u.err != nil {
+			skippedUnverified = true
 			fmt.Fprintf(out, "%s: error fetching metadata: %v\n", u.name, u.err)
 			continue
 		}
-		switch u.updateType {
-		case version.Patch, version.Minor, version.Major:
+		switch {
+		case u.updateType.IsUpgrade():
 			pendingUpdates = append(pendingUpdates, u)
-		case version.Unknown:
+		case u.updateType == version.Unknown:
 			skippedUnverified = true
 			fmt.Fprintf(out, "Skipping %s: cannot verify that %s is newer than %s%s\n",
 				u.name, u.latest, u.current, u.inFile(rootFile))
@@ -216,7 +209,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 
 	requests := make([]module.VersionEdit, 0, len(pendingUpdates))
 	for _, u := range pendingUpdates {
-		requests = append(requests, module.VersionEdit{Rel: u.file, Name: u.name, Version: u.latest})
+		requests = append(requests, module.VersionEdit{Rel: u.file, Name: u.name, Current: u.current, Version: u.latest})
 	}
 	plan, err := module.PlanVersionEdits(snapshot, requests)
 	if err != nil {
@@ -225,6 +218,9 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 
 	for _, i := range plan.Versionless {
 		reportVersionless(pendingUpdates[i])
+	}
+	if len(plan.Applied) == 0 && skippedUnverified {
+		fmt.Fprintln(out, "No verified dependency updates found.")
 	}
 
 	action := "Updated"
@@ -250,12 +246,17 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// invalidRegistryVersionError explains a registry version that is not a valid
-// Bazel version. The registry location is shown without credentials.
-func invalidRegistryVersionError(name, registryURL string, cause error) error {
+// registryUpgradeError explains why the chosen version cannot be applied.
+// The registry location is shown without credentials.
+func registryUpgradeError(name, registryURL string, cause error) error {
+	source := "registry returned "
+	help := fmt.Sprintf("check the registry's metadata for %q, or ", name)
+	if errors.Is(cause, version.ErrUnsupportedBazelVersion) {
+		source, help = "", ""
+	}
 	shown := bzconfig.RedactURL(registryURL)
-	return fmt.Errorf("cannot update %q: registry returned %w\n  registry: %q\n"+
+	return fmt.Errorf("cannot update %q: %s%w\n  registry: %q\n"+
 		"  note: nothing was written to MODULE.bazel\n"+
-		"  help: check the registry's metadata for %q, or update the other modules by name: bz mod update <module>",
-		name, cause, shown, name)
+		"  help: %supdate the other modules by name: bz mod update <module>",
+		name, source, cause, shown, help)
 }

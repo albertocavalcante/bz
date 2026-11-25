@@ -22,8 +22,8 @@ var outdatedCmd = &cobra.Command{
 	Short: "Show dependencies with newer versions available",
 	Long: `Check all dependencies in MODULE.bazel for newer versions.
 
-Compares each dependency's current version against the latest available
-version in the registry and shows which ones can be updated.
+Uses Bazel version order to choose the highest non-yanked stable version.
+If none is available, considers the highest non-yanked prerelease.
 
 Examples:
   bz mod outdated
@@ -77,28 +77,16 @@ func runOutdated(cmd *cobra.Command, args []string) error {
 			name := dep.Name.String()
 			current := dep.Version.String()
 
-			od := OutdatedDep{
-				Name:    name,
-				Current: current,
+			od := OutdatedDep{Name: name, Current: current, Latest: current}
+			if current != "" {
+				meta, err := reg.GetMetadata(ctx, name)
+				if err == nil {
+					od.Latest, od.UpdateType, err = version.RegistryUpgrade(current, meta.Versions, meta.YankedVersions)
+				}
+				if err != nil {
+					od.Error = err.Error()
+				}
 			}
-
-			// Fetch metadata from registry
-			meta, err := reg.GetMetadata(ctx, name)
-			if err != nil {
-				od.Error = err.Error()
-				od.Latest = current
-				od.UpdateType = version.None
-				deps = append(deps, od)
-				continue
-			}
-
-			latest := meta.LatestVersion()
-			if latest == "" {
-				latest = current
-			}
-
-			od.Latest = latest
-			od.UpdateType = version.ClassifyUpdate(current, latest)
 			deps = append(deps, od)
 		}
 		return nil
@@ -123,17 +111,17 @@ func printOutdatedTable(w io.Writer, deps []OutdatedDep) error {
 	fmt.Fprintln(tw, "Module\tCurrent\tLatest\tUpdate")
 	fmt.Fprintln(tw, "------\t-------\t------\t------")
 
-	hasUpdates := false
+	var hasUpdates, incomplete bool
 	for _, dep := range deps {
 		if dep.Error != "" {
+			incomplete = true
 			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", dep.Name, dep.Current, cli.Error("error"), dep.Error)
 			continue
 		}
 
 		updateStr := colorizeUpdateType(dep.UpdateType)
-		if dep.UpdateType != version.None {
-			hasUpdates = true
-		}
+		hasUpdates = hasUpdates || dep.UpdateType.IsUpgrade()
+		incomplete = incomplete || dep.UpdateType == version.Unknown
 
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", dep.Name, dep.Current, dep.Latest, updateStr)
 	}
@@ -142,7 +130,10 @@ func printOutdatedTable(w io.Writer, deps []OutdatedDep) error {
 		return err
 	}
 
-	if !hasUpdates {
+	switch {
+	case !hasUpdates && incomplete:
+		fmt.Fprintln(w, "\nNo verified dependency updates found.")
+	case !hasUpdates:
 		fmt.Fprintln(w, "\n"+cli.Success("All dependencies are up to date!"))
 	}
 
@@ -164,11 +155,10 @@ func colorizeUpdateType(ut version.UpdateType) string {
 }
 
 func printOutdatedJSON(w io.Writer, deps []OutdatedDep) error {
-	// Filter to only include dependencies with updates available
-	var outdated []OutdatedDep
+	var outdated int
 	for _, dep := range deps {
-		if dep.UpdateType != version.None || dep.Error != "" {
-			outdated = append(outdated, dep)
+		if dep.UpdateType.IsUpgrade() {
+			outdated++
 		}
 	}
 
@@ -178,7 +168,7 @@ func printOutdatedJSON(w io.Writer, deps []OutdatedDep) error {
 		Deps     []OutdatedDep `json:"dependencies"`
 	}{
 		Total:    len(deps),
-		Outdated: len(outdated),
+		Outdated: outdated,
 		Deps:     deps,
 	}
 

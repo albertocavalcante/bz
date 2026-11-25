@@ -149,7 +149,15 @@ bz mod info rules_go --json
 
 ### `bz mod update`
 
-Update dependencies to latest stable versions.
+Update dependencies to the highest non-yanked stable versions by Bazel version
+order. When a module has no stable candidate, the command considers its highest
+non-yanked prerelease. Both dry runs and edits require a candidate strictly
+newer than the installed version. A malformed unyanked registry version or a
+selected version that the `MODULE.bazel` parser cannot read stops the command
+before any edits. Within a file, repeated declarations must agree on their
+current version before `update` can edit them. You can still update other modules
+by name. If a metadata lookup fails, the command reports the failure and can
+still apply verified upgrades for other modules.
 
 ```bash
 bz mod update                    # update all dependencies
@@ -164,7 +172,13 @@ bz mod update --dry-run          # preview changes
 
 ### `bz mod outdated`
 
-Check all dependencies for newer versions.
+Check all dependencies using the same version selection as `bz mod update`.
+Conventional numeric releases, including shorthand like `1.2`, use major,
+minor, or patch labels when the bump is clear. Other verified upgrades are
+labeled `non-semver`. JSON output assigns these upgrades `update_type` 5 and
+includes them in the `outdated` count. The dependency list includes versions
+that could not be compared and registry errors. The `outdated` count includes
+only verified upgrades.
 
 ```bash
 bz mod outdated
@@ -177,10 +191,10 @@ bz mod outdated --json
 
 **Example output:**
 ```
-Module      Current  Latest
-------      -------  ------
-rules_go    0.49.0   0.50.1
-gazelle     0.37.0   0.38.0
+Module    Current      Latest        Update
+------    -------      ------        ------
+rules_go  0.49.0       0.50.1        minor
+zlib      1.3.1.bcr.9  1.3.1.bcr.10  non-semver
 ```
 
 ### `bz mod search`

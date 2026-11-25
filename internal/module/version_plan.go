@@ -7,10 +7,12 @@ import (
 )
 
 // VersionEdit requests a replacement for every version literal of a module
-// declared in one workspace-relative file.
+// declared in one workspace-relative file. When Current is set, all
+// declarations with a version must match it before editing.
 type VersionEdit struct {
 	Rel     string
 	Name    string
+	Current string
 	Version string
 }
 
@@ -54,7 +56,7 @@ func PlanVersionEdits(snapshot map[string][]byte, requests []VersionEdit) (Versi
 			}
 			seen[request.Name] = true
 
-			next, changed, err := SetDepVersion(content, request.Name, request.Version)
+			next, changed, err := setDepVersion(content, request)
 			if errors.Is(err, ErrNoVersionArgument) {
 				plan.Versionless = append(plan.Versionless, i)
 				continue

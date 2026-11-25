@@ -1,17 +1,24 @@
-// Package version provides semantic version parsing and comparison utilities.
+// Package version provides version parsing, comparison, and update selection.
 package version
 
 import (
+	"errors"
+	"fmt"
 	"runtime/debug"
 	"strconv"
 	"strings"
+
+	"github.com/albertocavalcante/go-bzlmod-ast/label"
+	bazelversion "github.com/albertocavalcante/go-bzlmod/selection/version"
+
+	"github.com/albertocavalcante/bz/internal/coord"
 )
 
 // UpdateType represents the type of version update.
 type UpdateType int
 
 const (
-	// None indicates versions are equal.
+	// None indicates no newer version is available.
 	None UpdateType = iota
 	// Patch indicates a patch version update (x.y.Z).
 	Patch
@@ -19,8 +26,10 @@ const (
 	Minor
 	// Major indicates a major version update (X.y.z).
 	Major
-	// Unknown indicates versions couldn't be compared as semver.
+	// Unknown indicates the current version couldn't be compared.
 	Unknown
+	// NonSemVer indicates a verified Bazel upgrade without a SemVer bump type.
+	NonSemVer
 )
 
 // String returns a human-readable representation of the update type.
@@ -34,8 +43,20 @@ func (u UpdateType) String() string {
 		return "minor"
 	case Major:
 		return "major"
+	case NonSemVer:
+		return "non-semver"
 	default:
 		return "unknown"
+	}
+}
+
+// IsUpgrade reports whether the comparison found a newer version.
+func (u UpdateType) IsUpgrade() bool {
+	switch u {
+	case Patch, Minor, Major, NonSemVer:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -168,38 +189,132 @@ func CompareStrings(a, b string) int {
 	return 0
 }
 
-// ClassifyUpdate determines the type of update between two versions.
-func ClassifyUpdate(current, latest string) UpdateType {
-	if current == latest {
-		return None
+// ErrUnsupportedBazelVersion reports a valid Bazel upgrade that bz cannot read
+// back from MODULE.bazel with its current parser.
+var ErrUnsupportedBazelVersion = errors.New("bz MODULE.bazel parser does not support this Bazel version")
+
+// RegistryUpgrade compares a dependency against the highest non-yanked stable
+// candidate, or the highest prerelease if there is no stable candidate.
+// Invalid unyanked registry entries produce an error because they cannot be
+// ranked safely. An unparseable current version makes the upgrade unverified.
+// A newer candidate must also be accepted by the MODULE.bazel parser.
+func RegistryUpgrade(current string, versions []string, yanked map[string]string) (string, UpdateType, error) {
+	if current == "" {
+		return current, None, nil
 	}
 
-	semCurrent := Parse(current)
-	semLatest := Parse(latest)
-
-	// If we can't parse as semver, it's unknown
-	if semCurrent == nil || semLatest == nil {
-		return Unknown
+	latest, candidate, err := selectRegistryVersion(versions, yanked)
+	if err != nil {
+		return current, None, err
+	}
+	if latest == "" {
+		return current, None, nil
 	}
 
-	// If latest is not newer, no update
-	if Compare(semCurrent, semLatest) >= 0 {
-		return None
+	if installed, err := bazelversion.Parse(current); err == nil {
+		// Both versions parsed successfully, so Compare uses Bazel order.
+		if bazelversion.Compare(latest, current) <= 0 {
+			return latest, None, nil
+		}
+		if _, err := label.NewVersion(latest); err != nil {
+			return latest, None, fmt.Errorf("%w: %q", ErrUnsupportedBazelVersion, latest)
+		}
+		return latest, classifyBump(current, latest, installed, candidate), nil
 	}
+	return latest, Unknown, nil
+}
 
-	// Determine update type
-	if semLatest.Major > semCurrent.Major {
+func selectRegistryVersion(versions []string, yanked map[string]string) (string, bazelversion.ParsedVersion, error) {
+	// Bazel parses yanked version keys, so equivalent build spellings are
+	// yanked together.
+	yankedVersions := make(map[string]bool, len(yanked))
+	for raw := range yanked {
+		if parsed, err := bazelversion.Parse(raw); err == nil {
+			yankedVersions[parsed.Normalized] = true
+		}
+	}
+	var latest string
+	var selected bazelversion.ParsedVersion
+	for _, candidate := range versions {
+		if _, skip := yanked[candidate]; skip {
+			continue
+		}
+		if err := coord.ValidateVersion(candidate); err != nil {
+			return "", bazelversion.ParsedVersion{}, err
+		}
+		parsed, err := bazelversion.Parse(candidate)
+		if err != nil {
+			return "", bazelversion.ParsedVersion{}, err
+		}
+		if yankedVersions[parsed.Normalized] {
+			continue
+		}
+		if latest == "" || preferRegistryVersion(candidate, latest, parsed, selected) {
+			latest, selected = candidate, parsed
+		}
+	}
+	return latest, selected, nil
+}
+
+func preferRegistryVersion(candidate, latest string, parsed, selected bazelversion.ParsedVersion) bool {
+	candidateStable, latestStable := len(parsed.Prerelease) == 0, len(selected.Prerelease) == 0
+	if candidateStable != latestStable {
+		return candidateStable
+	}
+	order := bazelversion.Compare(candidate, latest)
+	// Equivalent build variants use spelling as a deterministic tiebreaker.
+	// If present, the version without build metadata comes first.
+	return order > 0 || (order == 0 && candidate < latest)
+}
+
+func classifyBump(current, latest string, installed, candidate bazelversion.ParsedVersion) UpdateType {
+	from, fromOK := conventionalRelease(current, installed)
+	to, toOK := conventionalRelease(latest, candidate)
+	if !fromOK || !toOK {
+		return NonSemVer
+	}
+	switch {
+	case to[0] != from[0]:
 		return Major
-	}
-	if semLatest.Minor > semCurrent.Minor {
+	case to[1] != from[1]:
 		return Minor
-	}
-	if semLatest.Patch > semCurrent.Patch {
+	case to[2] != from[2] || len(candidate.Release) == len(installed.Release):
+		// A newer prerelease spelling of the same release is a patch update.
 		return Patch
+	default:
+		// Appending zero-valued segments advances Bazel's ordering without
+		// changing a conventional major, minor, or patch number.
+		return NonSemVer
 	}
+}
 
-	// Could be prerelease change
-	return Patch
+// conventionalRelease accepts numeric release shorthand for bump labeling.
+// Missing segments are zero here and have already been compared by Bazel.
+func conventionalRelease(raw string, parsed bazelversion.ParsedVersion) ([3]uint64, bool) {
+	var release [3]uint64
+	if len(parsed.Release) > len(release) {
+		return release, false
+	}
+	values := release[:0]
+	for _, id := range parsed.Release {
+		if !id.IsDigitsOnly || (len(id.AsString) > 1 && id.AsString[0] == '0') {
+			return release, false
+		}
+		values = append(values, id.AsNumber)
+	}
+	for _, id := range parsed.Prerelease {
+		if id.IsDigitsOnly && len(id.AsString) > 1 && id.AsString[0] == '0' {
+			return release, false
+		}
+	}
+	if _, build, ok := strings.Cut(raw, "+"); ok {
+		for id := range strings.SplitSeq(build, ".") {
+			if id == "" {
+				return release, false
+			}
+		}
+	}
+	return release, true
 }
 
 // Placeholder values that mean "not set by -ldflags".
