@@ -70,12 +70,6 @@ func runDownload(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if downloadRegistry != "" {
-		if err := bzconfig.ValidateRegistry("flag --registry", downloadRegistry); err != nil {
-			return err
-		}
-	}
-
 	ctx := cmdutil.CommandContext(cmd)
 
 	out := cmd.OutOrStdout()
@@ -86,6 +80,13 @@ func runDownload(cmd *cobra.Command, args []string) error {
 	}
 
 	registryURL := downloadRegistry
+	if cmd.Flags().Changed("registry") {
+		normalized, err := bzconfig.NormalizeRegistry("flag --registry", registryURL)
+		if err != nil {
+			return err
+		}
+		registryURL = normalized
+	}
 	if registryURL == "" {
 		registryURL = cli.GetRegistry()
 	}

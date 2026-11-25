@@ -3,6 +3,8 @@ package mod
 import (
 	"bytes"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -11,9 +13,38 @@ import (
 
 	"github.com/albertocavalcante/bz/internal/cli"
 	"github.com/albertocavalcante/bz/internal/registry"
+	"github.com/albertocavalcante/bz/internal/testutil"
 )
 
 const flagSecret = "S3CR3T"
+
+func TestModCmdPersistentPreRunWhenStandalone(t *testing.T) {
+	oldRegistry := registryFlag
+	registryFlag = ""
+	t.Cleanup(func() { registryFlag = oldRegistry })
+
+	require.NoError(t, Cmd.PersistentPreRunE(Cmd, nil))
+}
+
+func TestModCmdPersistentPreRunDelegatesToParent(t *testing.T) {
+	oldRegistry := registryFlag
+	registryFlag = ""
+	t.Cleanup(func() { registryFlag = oldRegistry })
+
+	called := 0
+	root := &cobra.Command{
+		Use: "bz",
+		PersistentPreRunE: func(*cobra.Command, []string) error {
+			called++
+			return nil
+		},
+	}
+	root.AddCommand(Cmd)
+	t.Cleanup(func() { root.RemoveCommand(Cmd) })
+
+	require.NoError(t, Cmd.PersistentPreRunE(Cmd, nil))
+	assert.Equal(t, 1, called)
+}
 
 func TestModInfo_RegistryFlagNeverPrintsCredentials(t *testing.T) {
 	const help = "\nhelp: want https://host[:port]/path, file:///abs/path or an absolute path"
@@ -67,6 +98,38 @@ func TestModInfo_RegistryFlagNeverPrintsCredentials(t *testing.T) {
 				assert.Contains(t, shown, "Cannot reach registry (https://xxxxx@registry.invalid)")
 			}
 			assert.NotContains(t, shown, flagSecret)
+		})
+	}
+}
+
+func TestModInfo_NormalizesRegistryFlagBeforeUse(t *testing.T) {
+	registryDir := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{
+		"rules_go": {Versions: []string{"0.50.1"}},
+	})
+	server := httptest.NewServer(http.FileServer(http.Dir(registryDir)))
+	t.Cleanup(server.Close)
+
+	for _, registryURL := range []string{
+		registryDir,
+		"file://" + registryDir,
+		server.URL,
+	} {
+		t.Run(registryURL, func(t *testing.T) {
+			cli.ResetCachedConfig()
+			t.Cleanup(cli.ResetCachedConfig)
+			t.Chdir(t.TempDir())
+			oldRegistry := registryFlag
+			registryFlag = " \t" + registryURL + "\n"
+			t.Cleanup(func() { registryFlag = oldRegistry })
+
+			infoJSON = true
+			t.Cleanup(func() { infoJSON = false })
+			var out bytes.Buffer
+			infoCmd.SetOut(&out)
+
+			require.NoError(t, runInfo(infoCmd, []string{"rules_go"}))
+			assert.Contains(t, out.String(), `"name"`)
+			assert.Equal(t, " \t"+registryURL+"\n", registryFlag)
 		})
 	}
 }

@@ -16,25 +16,26 @@ import (
 var registryFlag string
 var configureOnce sync.Once
 
-func resolvedRegistryURL() string {
+func resolvedRegistryURL() (string, error) {
 	if registryFlag != "" {
-		return registryFlag
+		return bzconfig.NormalizeRegistry(registryFlagSource, registryFlag)
 	}
 	if global := cli.GetRegistry(); global != "" {
-		return global
+		return global, nil
 	}
-	return registry.DefaultBCR
+	return registry.DefaultBCR, nil
 }
 
 // createNetworkAwareRegistry creates a registry that respects offline mode settings.
 // It returns the registry and any error encountered.
 func createNetworkAwareRegistry() (registry.Registry, error) {
-	if err := checkRegistryFlag(); err != nil {
+	registryURL, err := resolvedRegistryURL()
+	if err != nil {
 		return nil, err
 	}
 
 	// Create the inner registry
-	inner, err := registry.New(resolvedRegistryURL())
+	inner, err := registry.New(registryURL)
 	if err != nil {
 		return nil, err
 	}
@@ -53,6 +54,8 @@ func createNetworkAwareRegistry() (registry.Registry, error) {
 // registryFlagSource names the flag in registry validation errors.
 const registryFlagSource = "flag --registry"
 
+const modRootAnnotation = "bz.mod.root"
+
 // checkRegistryFlag refuses an invalid --registry before any other work.
 func checkRegistryFlag() error {
 	if registryFlag == "" {
@@ -68,19 +71,22 @@ var Cmd = &cobra.Command{
 	Long: `Manage Bazel module dependencies in MODULE.bazel.
 
 Commands for adding, removing, listing, and updating bazel_dep entries.`,
+	Annotations: map[string]string{modRootAnnotation: "true"},
 	// Enable typo suggestions with minimum edit distance of 2
 	SuggestionsMinimumDistance: 2,
 	// Require a subcommand
 	RunE: cmdutil.RequireSubcommand,
 	// Replaces the root hook for this subtree, so run it first.
-	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		if root := cmd.Root(); root.PersistentPreRunE != nil {
-			if err := root.PersistentPreRunE(cmd, args); err != nil {
-				return err
-			}
+	PersistentPreRunE: runModPersistentPreRun,
+}
+
+func runModPersistentPreRun(cmd *cobra.Command, args []string) error {
+	if root := cmd.Root(); root.Annotations[modRootAnnotation] != "true" && root.PersistentPreRunE != nil {
+		if err := root.PersistentPreRunE(cmd, args); err != nil {
+			return err
 		}
-		return checkRegistryFlag()
-	},
+	}
+	return checkRegistryFlag()
 }
 
 func configureModCmd() {
