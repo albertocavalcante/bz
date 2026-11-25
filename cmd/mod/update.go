@@ -1,9 +1,7 @@
 package mod
 
 import (
-	"errors"
 	"fmt"
-	"io"
 	"net/url"
 	"path/filepath"
 	"slices"
@@ -144,6 +142,17 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	rootFile := filepath.Base(modulePath)
+	versionlessReported := make(map[string]bool)
+	reportVersionless := func(u updateInfo) {
+		if versionlessReported[u.name] {
+			return
+		}
+		versionlessReported[u.name] = true
+		fmt.Fprintf(out, "Skipping %s: no version argument in bazel_dep (version is managed elsewhere)%s\n",
+			u.name, u.inFile(rootFile))
+	}
+
 	// Check each dependency for updates
 	var updates []updateInfo
 	for _, dep := range deps {
@@ -155,15 +164,14 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
-		if current == "" {
-			fmt.Fprintf(out, "Skipping %s: no version argument in bazel_dep (version is managed elsewhere)%s\n", name, updateInfo{file: ws.RelPath(f.OriginOf(dep))}.inFile(filepath.Base(modulePath)))
-			continue
-		}
-
 		info := updateInfo{
 			name:    name,
 			current: current,
 			file:    ws.RelPath(f.OriginOf(dep)),
+		}
+		if current == "" {
+			reportVersionless(info)
+			continue
 		}
 
 		// Fetch metadata from registry
@@ -205,7 +213,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		case version.Unknown:
 			skippedUnverified = true
 			fmt.Fprintf(out, "Skipping %s: cannot verify that %s is newer than %s%s\n",
-				u.name, u.latest, u.current, u.inFile(filepath.Base(modulePath)))
+				u.name, u.latest, u.current, u.inFile(rootFile))
 		}
 	}
 
@@ -218,53 +226,34 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Handle dry-run
-	if updateDryRun {
-		for _, u := range pendingUpdates {
-			fmt.Fprintf(out, "Would update %s: %s -> %s (%s)%s\n",
-				u.name, u.current, u.latest, u.updateType.String(), u.inFile(filepath.Base(modulePath)))
-		}
-		return nil
-	}
-
-	// Apply updates in memory per file, then write all files together.
-	var files []string
+	requests := make([]module.VersionEdit, 0, len(pendingUpdates))
 	for _, u := range pendingUpdates {
-		if !slices.Contains(files, u.file) {
-			files = append(files, u.file)
-		}
+		requests = append(requests, module.VersionEdit{Rel: u.file, Name: u.name, Version: u.latest})
 	}
-	var edits []module.FileEdit
-	var appliedAll []updateInfo
-	for _, file := range files {
-		var group []updateInfo
-		for _, u := range pendingUpdates {
-			if u.file == file {
-				group = append(group, u)
-			}
-		}
-		newContent, applied, err := applyVersionUpdates(snapshot[file], group, out)
-		if err != nil {
-			return err
-		}
-		if len(applied) == 0 {
-			continue
-		}
-		edits = append(edits, module.FileEdit{Rel: file, Original: snapshot[file], Updated: newContent})
-		appliedAll = append(appliedAll, applied...)
-	}
-
-	if len(edits) == 0 {
-		return nil
-	}
-
-	if err := ws.WriteAll(edits); err != nil {
+	plan, err := module.PlanVersionEdits(snapshot, requests)
+	if err != nil {
 		return err
 	}
 
-	for _, u := range appliedAll {
-		fmt.Fprintf(out, "Updated %s: %s -> %s (%s)%s\n",
-			u.name, u.current, u.latest, u.updateType.String(), u.inFile(filepath.Base(modulePath)))
+	for _, i := range plan.Versionless {
+		reportVersionless(pendingUpdates[i])
+	}
+
+	action := "Updated"
+	if updateDryRun {
+		action = "Would update"
+		// Preserve declaration order in previews and file order in apply output.
+		slices.Sort(plan.Applied)
+	} else if len(plan.Files) > 0 {
+		if err := ws.WriteAll(plan.Files); err != nil {
+			return err
+		}
+	}
+
+	for _, i := range plan.Applied {
+		u := pendingUpdates[i]
+		fmt.Fprintf(out, "%s %s: %s -> %s (%s)%s\n",
+			action, u.name, u.current, u.latest, u.updateType.String(), u.inFile(rootFile))
 	}
 
 	return nil
@@ -281,36 +270,4 @@ func invalidRegistryVersionError(name, registryURL string, cause error) error {
 		"  note: nothing was written to MODULE.bazel\n"+
 		"  help: check the registry's metadata for %q, or update the other modules by name: bz mod update <module>",
 		name, cause, shown, name)
-}
-
-// applyVersionUpdates edits content in memory, one edit per module name
-// (SetDepVersion rewrites every statement of that name). Deps without a
-// version argument are skipped with a note on out. An edit that changes no
-// bytes is an error, and nothing is returned, so the caller writes all or
-// nothing. content itself is never modified.
-func applyVersionUpdates(content []byte, pending []updateInfo, out io.Writer) ([]byte, []updateInfo, error) {
-	newContent := content
-	var applied []updateInfo
-	seen := make(map[string]bool)
-	for _, u := range pending {
-		if seen[u.name] {
-			continue
-		}
-		seen[u.name] = true
-
-		next, changed, err := module.SetDepVersion(newContent, u.name, u.latest)
-		if err != nil {
-			if errors.Is(err, module.ErrNoVersionArgument) {
-				fmt.Fprintf(out, "Skipping %s: no version argument in bazel_dep (version is managed elsewhere)%s\n", u.name, u.inFile("MODULE.bazel"))
-				continue
-			}
-			return nil, nil, fmt.Errorf("failed to update %s: %w", u.name, err)
-		}
-		if !changed {
-			return nil, nil, fmt.Errorf("failed to update %s: version %s not found in MODULE.bazel text", u.name, u.current)
-		}
-		newContent = next
-		applied = append(applied, u)
-	}
-	return newContent, applied, nil
 }

@@ -723,3 +723,33 @@ bazel_dep(name = "b", version = "1.0.0")
 	require.NoError(t, err)
 	assert.Equal(t, moduleContent, string(got))
 }
+
+func TestUpdateCmd_DryRunSkipsUneditableDuplicate(t *testing.T) {
+	useRegistry(t, map[string]testutil.TestModule{
+		"a": {Versions: []string{"1.0.0", "1.1.0"}},
+	})
+	files := map[string]string{
+		"MODULE.bazel":     "module(name = \"m\")\ninclude(\"//d:x.MODULE.bazel\")\n",
+		"d/x.MODULE.bazel": "bazel_dep(name = \"a\", version = \"1.0.0\")\nbazel_dep(name = \"a\")\n",
+	}
+	dir := includeWorkspace(t, files)
+	var out bytes.Buffer
+	updateCmd.SetOut(&out)
+	t.Cleanup(func() {
+		updateDryRun = false
+		updateCmd.SetOut(os.Stdout)
+	})
+
+	updateDryRun = true
+	require.NoError(t, updateCmd.RunE(updateCmd, nil))
+	preview := out.String()
+	out.Reset()
+
+	updateDryRun = false
+	require.NoError(t, updateCmd.RunE(updateCmd, nil))
+	assert.Equal(t, out.String(), preview)
+	assert.Equal(t, "Skipping a: no version argument in bazel_dep (version is managed elsewhere) [d/x.MODULE.bazel]\n", preview)
+	for name, want := range files {
+		assert.Equal(t, want, readRel(t, dir, name), name)
+	}
+}
