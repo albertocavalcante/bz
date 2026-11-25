@@ -7,29 +7,35 @@ import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 ## Requirements
 
-- Go 1.25 or later (for building from source)
+- Go 1.26 or later (for building from source)
 - Git (for git-based registries)
 
 ## Install Methods
 
+Choose a published `v0.1.0-rc.N` from [GitHub Releases](https://github.com/albertocavalcante/bz/releases).
+
 <Tabs>
   <TabItem label="Binary">
-    Download a pre-built binary from the [latest release](https://github.com/albertocavalcante/bz/releases/latest), extract it, and move it to a directory in your PATH:
+    Download the archive and its matching `.sha256` file from the same release. Verify the archive before extracting it and moving the binary to a directory in your PATH.
 
     ```bash
     # Example for Linux (amd64)
-    tar -xzf bz-linux-amd64.tar.gz
-    sudo mv bz /usr/local/bin/
+    sha256sum --check bz-linux-amd64.tar.gz.sha256 &&
+      tar -xzf bz-linux-amd64.tar.gz &&
+      mkdir -p ~/.local/bin &&
+      mv bz ~/.local/bin/
     ```
 
-    Binaries are available for Linux, macOS, and Windows on both amd64 and arm64.
+    Make sure `~/.local/bin` is in your PATH.
+
+    Binaries are available for Linux and macOS on amd64 and arm64, and for Windows on amd64.
   </TabItem>
 
   <TabItem label="Go Install">
-    Install directly with Go (requires Go 1.25+):
+    Install directly with Go using the exact release tag. For example, for `v0.1.0-rc.1`:
 
     ```bash
-    go install github.com/albertocavalcante/bz@latest
+    go install github.com/albertocavalcante/bz@v0.1.0-rc.1
     ```
 
     Make sure `$GOPATH/bin` is in your PATH.
@@ -44,10 +50,11 @@ import { Tabs, TabItem } from '@astrojs/starlight/components';
     go build -o bz .
     ```
 
-    Move the binary to a location in your PATH:
+    Move the binary to a location in your PATH, such as `~/.local/bin`:
 
     ```bash
-    sudo mv bz /usr/local/bin/
+    mkdir -p ~/.local/bin
+    mv bz ~/.local/bin/
     ```
   </TabItem>
 </Tabs>

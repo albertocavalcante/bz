@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - "v*"
+      - "v0.1.0-rc.[1-9]*"
 
 # Never cancel an in-flight release; a re-pushed tag queues behind it.
 concurrency:
@@ -16,6 +16,7 @@ jobs:
   # Gate: nothing is built or published from a commit that fails tests or
   # has a called vulnerability.
   verify:
+    if: github.event.deleted == false
     runs-on: ubuntu-24.04
     name: Test and Vulnerability Check
     timeout-minutes: 20
@@ -23,6 +24,14 @@ jobs:
       contents: read
 
     steps:
+      - name: Validate release tag
+        shell: bash
+        run: |
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v0\.1\.0-rc\.[123456789][0123456789]*$ ]]; then
+            printf 'Expected a v0.1.0 release candidate tag such as v0.1.0-rc.1, got %s\n' "$GITHUB_REF_NAME" >&2
+            exit 1
+          fi
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
@@ -169,10 +178,19 @@ jobs:
       # line endings, so normalise before verifying.
       - name: Generate checksums
         working-directory: release
+        shell: bash
+        env:
+          LC_ALL: C
         run: |
+          archives=(bz-darwin-amd64.tar.gz bz-darwin-arm64.tar.gz bz-linux-amd64.tar.gz bz-linux-arm64.tar.gz bz-windows-amd64.zip)
+          for archive in "${archives[@]}"; do
+            test -s "$archive"
+            test -s "$archive.sha256"
+          done
+          test "$(find . -maxdepth 1 -type f | wc -l)" -eq "$((2 * ${#archives[@]}))"
           cat ./*.sha256 | tr -d '\r' | sort -k2 > checksums.txt
           cat checksums.txt
-          sha256sum --check checksums.txt
+          sha256sum --check --strict checksums.txt | diff -u <(printf '%s: OK\n' "${archives[@]}") -
 
       - name: Attest build provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
@@ -184,8 +202,10 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
+          tag_name: ${{ github.ref_name }}
           draft: false
-          prerelease: ${{ contains(github.ref, '-rc') || contains(github.ref, '-beta') || contains(github.ref, '-alpha') }}
+          prerelease: true
+          make_latest: false
           generate_release_notes: true
           files: release/*
         env:
