@@ -94,6 +94,43 @@ func TestRewriteSourceURLs(t *testing.T) {
 	}
 }
 
+func TestRewriteSourceURLs_DescriptorTypeAndAliases(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		name    string
+		content string
+		pattern string
+		want    string
+	}{
+		{
+			name:    "default archive with legacy empty and null",
+			content: `{"url":"","archive":null,"urls":[null, "", "original"],"mirror_urls":[null, "", "original"]}`,
+			pattern: `^$`,
+			want:    `{"url":"","archive":null,"urls":[null, "replaced", "original"],"mirror_urls":[null, "", "original"]}`,
+		},
+		{
+			name:    "only exact mirror_urls key",
+			content: `{"URL":"original","ARCHIVE":"original","URLS":["original"],"Mirror_URLS":["original"],"mirror_urls":["original"]}`,
+			pattern: "original",
+			want:    `{"URL":"replaced","ARCHIVE":"replaced","URLS":["replaced"],"Mirror_URLS":["original"],"mirror_urls":["replaced"]}`,
+		},
+		{
+			name:    "future type with opaque URL fields",
+			content: `{"url":"original","mirror_urls":{"unknown":"original"},"type":"future"}`,
+			pattern: "original",
+			want:    `{"url":"original","mirror_urls":{"unknown":"original"},"type":"future"}`,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := rewriteSourceURLs([]byte(tt.content), tt.pattern, "replaced")
+			if err != nil || string(got) != tt.want {
+				t.Errorf("rewriteSourceURLs() = %q, %v, want %q", got, err, tt.want)
+			}
+		})
+	}
+}
+
 func TestRewriteSourceURLs_InvalidDescriptor(t *testing.T) {
 	t.Parallel()
 	for _, tt := range []struct {

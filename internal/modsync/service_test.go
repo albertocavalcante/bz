@@ -570,11 +570,12 @@ func TestService_Run_RewritesOnlySourceURLs(t *testing.T) {
   "urls": ["https://upstream.example/legacy.tar.gz"],
   "archive": "https://upstream.example/other.tar.gz",
   "archive_type": "tar.gz",
+  "type": "archive",
   "patches": {"second.patch":"sha256-2", "first.patch":"sha256-1"},
   "extra": { "url": "https://upstream.example/info", "number": 9007199254740993, "raw": "\u0061" }
 }`
-	const git = `{"type":"git_repository","remote":"https://upstream.example/project.git","commit":"abc","tag":"v1","patches":{"fix.patch":"sha256-a"}}`
-	const local = `{"type":"local_path","path":"relative/dependency","extension":true}`
+	const git = `{"url":"https://upstream.example/extension","mirror_urls":{"extension":true},"remote":"https://upstream.example/project.git","commit":"abc","tag":"v1","type":"git_repository","patches":{"fix.patch":"sha256-a"}}`
+	const local = `{"urls":["https://upstream.example/extension"],"archive":"https://upstream.example/other","path":"relative/dependency","type":"local_path","extension":true}`
 	tests := []struct {
 		name       string
 		descriptor string
