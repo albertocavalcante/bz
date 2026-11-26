@@ -144,10 +144,9 @@ func missingMirrorAttachments(dest *publisher.FilePublisher, module, version str
 
 // syncMirrorAttachments copies descriptor-referenced files before the
 // version is advertised in metadata.json. Complete local files are reused.
-func (r *runner) syncMirrorAttachments(ctx context.Context, module, version string, attachments []versionAttachment) (bool, error) {
-	missing, err := missingMirrorAttachments(r.local, module, version, attachments)
-	if err != nil || len(missing) == 0 {
-		return false, err
+func (r *runner) syncMirrorAttachments(ctx context.Context, module, version string, attachments, missing []versionAttachment) (bool, error) {
+	if len(missing) == 0 {
+		return false, nil
 	}
 	if r.opts.DryRun {
 		return true, nil

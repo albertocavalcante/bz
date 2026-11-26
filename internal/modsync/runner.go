@@ -218,10 +218,18 @@ func (r *runner) syncVersion(ctx context.Context, moduleName, version string) (c
 		return false, fmt.Errorf("inspect destination: %w", err)
 	}
 	hasModule, hasSource := state.hasModule, state.hasSource
+	completeCore := hasModule
+	var missing []versionAttachment
+	if r.local != nil {
+		completeCore, missing, err = state.completeness(r.local, moduleName, version)
+		if err != nil {
+			return false, err
+		}
+	}
 
-	if hasModule && (r.local == nil || hasSource) {
+	if completeCore {
 		if r.local != nil {
-			changed, err := r.syncMirrorAttachments(ctx, moduleName, version, state.attachments)
+			changed, err := r.syncMirrorAttachments(ctx, moduleName, version, state.attachments, missing)
 			if changed || err != nil {
 				return changed, err
 			}
@@ -248,14 +256,7 @@ func (r *runner) syncVersion(ctx context.Context, moduleName, version string) (c
 
 	// Publish attachments before the descriptor and the local version marker.
 	if r.local != nil {
-		attachments := state.attachments
-		if !hasSource {
-			attachments, err = inspectMirrorSource(moduleName, version, sourceJSON)
-			if err != nil {
-				return false, err
-			}
-		}
-		if _, err := r.syncMirrorAttachments(ctx, moduleName, version, attachments); err != nil {
+		if err := r.prepareMirrorAttachments(ctx, moduleName, version, sourceJSON, state); err != nil {
 			return false, err
 		}
 	}
@@ -276,6 +277,23 @@ func (r *runner) syncVersion(ctx context.Context, moduleName, version string) (c
 	}
 
 	return true, nil
+}
+
+func (r *runner) prepareMirrorAttachments(ctx context.Context, module, version string, source []byte, state mirrorVersionState) error {
+	attachments := state.attachments
+	var err error
+	if !state.hasSource {
+		attachments, err = inspectMirrorSource(module, version, source)
+		if err != nil {
+			return err
+		}
+	}
+	missing, err := missingMirrorAttachments(r.local, module, version, attachments)
+	if err != nil {
+		return err
+	}
+	_, err = r.syncMirrorAttachments(ctx, module, version, attachments, missing)
+	return err
 }
 
 func (r *runner) fetchVersion(ctx context.Context, moduleName, version string, hasModule, hasSource bool) ([]byte, []byte, error) {
