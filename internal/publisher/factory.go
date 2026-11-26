@@ -17,11 +17,7 @@ func New(reg *modules.RegistryValue) (Publisher, error) {
 		return NewFilePublisher(reg.URL)
 
 	case modules.RegistryTypeGit:
-		branch := reg.Branch
-		if branch == "" {
-			branch = "main"
-		}
-		return NewGitPublisher(reg.URL, branch)
+		return NewGitPublisher(reg.URL, reg.Branch)
 
 	case modules.RegistryTypeHTTPPut:
 		var auth *Auth
