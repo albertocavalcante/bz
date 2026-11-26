@@ -814,7 +814,15 @@ func TestFileMirrorYankReconciliation(t *testing.T) {
 }
 
 func TestFileMirrorRejectsInvalidFreshCoreAndRecovers(t *testing.T) {
-	for _, tc := range []struct{ file, bad string }{{"MODULE.bazel", "module("}, {"MODULE.bazel", ""}, {"MODULE.bazel", `module(name = "wrong", version = "1.0.0")`}, {"MODULE.bazel", `module(name = "example", version = "2.0.0")`}, {"source.json", "[]"}, {"source.json", "null"}} {
+	for _, tc := range []struct{ file, bad string }{
+		{"MODULE.bazel", "module("},
+		{"MODULE.bazel", ""},
+		{"MODULE.bazel", `module(name = "wrong", version = "1.0.0")`},
+		{"MODULE.bazel", `module(name = "example", version = "2.0.0")`},
+		{"source.json", "[]"},
+		{"source.json", "null"},
+		{"source.json", "{"},
+	} {
 		t.Run(tc.file+tc.bad, func(t *testing.T) {
 			origin := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{"example": {Versions: []string{"1.0.0"}}})
 			dest := t.TempDir()
@@ -831,6 +839,13 @@ func TestFileMirrorRejectsInvalidFreshCoreAndRecovers(t *testing.T) {
 			result, err := svc.Run(context.Background(), "mirror", Options{})
 			if err != nil || len(result.Errors) == 0 {
 				t.Fatalf("invalid sync = %+v, %v", result, err)
+			}
+			want := "example@1.0.0: MODULE.bazel is empty or invalid"
+			if tc.file == "source.json" {
+				want = "example@1.0.0: source.json is missing or not a JSON object"
+			}
+			if len(result.Errors) != 1 || result.Errors[0].Error() != want {
+				t.Fatalf("invalid sync errors = %v, want %q", result.Errors, want)
 			}
 			if _, err := os.Stat(filepath.Join(dest, registry.MetadataPath("example"))); !os.IsNotExist(err) {
 				t.Fatalf("invalid catalog exists: %v", err)
