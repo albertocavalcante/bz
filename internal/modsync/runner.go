@@ -124,7 +124,8 @@ func (r *runner) syncModule(ctx context.Context, moduleName string, result *Resu
 	}
 
 	// Filter versions based on workflow.Versions
-	versions, err := r.selectVersions(meta)
+	selectionMeta := normalizedSelectionMetadata(meta)
+	versions, err := r.selectVersions(selectionMeta)
 	if err != nil {
 		return err
 	}
@@ -156,7 +157,7 @@ func (r *runner) syncModule(ctx context.Context, moduleName string, result *Resu
 
 		// Skip yanked versions if transform is set
 		if skipYanked {
-			if _, yanked := meta.YankedVersions[version]; yanked {
+			if _, yanked := yankReason(meta.YankedVersions, version); yanked {
 				if r.opts.Verbose {
 					slog.Info("skipped yanked version", "module", moduleName, "version", version)
 				}
@@ -297,6 +298,18 @@ func (r *runner) getSourceJSON(ctx context.Context, moduleName, version string) 
 
 	// source.json is optional and not supported by every registry backend.
 	return nil, nil
+}
+
+func normalizedSelectionMetadata(meta *registry.Metadata) *registry.Metadata {
+	// LatestVersion consults exact keys; normalize yanks against origin versions.
+	selectionMeta := *meta
+	selectionMeta.YankedVersions = make(map[string]string)
+	for _, version := range meta.Versions {
+		if reason, ok := yankReason(meta.YankedVersions, version); ok {
+			selectionMeta.YankedVersions[version] = reason
+		}
+	}
+	return &selectionMeta
 }
 
 // filterVersions filters versions based on the workflow's version selector.

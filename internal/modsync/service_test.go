@@ -869,10 +869,59 @@ func TestValidModuleIdentity(t *testing.T) {
 	for _, tc := range []struct {
 		declared, requested string
 		want                bool
-	}{{"1.0+upstream", "1.0+mirror", true}, {"01.0", "1.0", false}, {"1.0", "1.0.0", false}, {"2025.foo", "2025.foo", true}} {
+	}{{"1.0+upstream", "1.0+mirror", true}, {"01.0", "1.0", false}, {"1.0", "1.0.0", false}, {"2025.foo", "2025.foo", true}, {"1.0+", "1.0", false}, {"1.0+bad/part", "1.0", false}} {
 		content := []byte(`module(name = "example", version = "` + tc.declared + `")`)
 		if got := validModule(content, "example", tc.requested); got != tc.want {
 			t.Errorf("version %q for %q = %v", tc.declared, tc.requested, got)
 		}
+	}
+}
+
+func TestValidModuleDynamicIdentity(t *testing.T) {
+	for _, content := range []string{`module(name = "example", version = "1." + "0")`, `module(**{"name": "example", "version": "1.0"})`, `module(**args)`} {
+		if !validModule([]byte(content), "example", "1.0") {
+			t.Errorf("dynamic declaration rejected: %s", content)
+		}
+	}
+}
+
+func TestLiteralExpansionMismatch(t *testing.T) {
+	if validModule([]byte(`module(**{"name":"wrong", "version":"1.0"})`), "example", "1.0") {
+		t.Fatal("accepted wrong name")
+	}
+	if validModule([]byte(`module(**{"name":"example", "version":"1.0+"})`), "example", "1.0") {
+		t.Fatal("accepted invalid version")
+	}
+}
+
+func TestFileMirrorNormalizesYankedKeys(t *testing.T) {
+	origin := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{"example": {Versions: []string{"1.0"}}})
+	dest := t.TempDir()
+	workflow := &config.Workflow{Name: "mirror", Origin: &config.Registry{Type: "file", URL: origin}, Destination: &config.Registry{Type: "file", URL: dest}, Modules: []string{"example"}}
+	svc := NewService(&config.Config{Workflows: []*config.Workflow{workflow}})
+	run := func() {
+		t.Helper()
+		result, err := svc.Run(context.Background(), "mirror", Options{})
+		if err != nil || len(result.Errors) > 0 {
+			t.Fatalf("sync = %+v, %v", result, err)
+		}
+	}
+	run()
+	metaPath := filepath.Join(origin, registry.MetadataPath("example"))
+	if err := os.WriteFile(metaPath, []byte(`{"versions":["1.0"],"yanked_versions":{"1.0+origin":"withdrawn"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run()
+	meta, err := registry.NewFileRegistry(dest).GetMetadata(context.Background(), "example")
+	if err != nil || meta.YankedVersions["1.0"] != "withdrawn" {
+		t.Fatalf("metadata = %+v, %v", meta, err)
+	}
+	// Explicit all plus skip_yanked uses the same normalized lookup.
+	workflow.Destination.URL = t.TempDir()
+	workflow.Versions = &config.VersionSelector{Type: "all"}
+	workflow.Transformations = []*config.Transform{{Type: "skip_yanked"}}
+	run()
+	if _, err := os.Stat(filepath.Join(workflow.Destination.URL, registry.MetadataPath("example"))); !os.IsNotExist(err) {
+		t.Fatalf("yanked version was published: %v", err)
 	}
 }

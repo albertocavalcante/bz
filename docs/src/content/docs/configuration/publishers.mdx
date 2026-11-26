@@ -41,7 +41,7 @@ A workflow with a file registry destination writes the selected versions and the
             └── source.json
 ```
 
-Use `bz mod info rules_go --registry=/var/bazel-registry` to read the published versions. An existing `bazel_registry.json` stays in place. If a prior run wrote versions directly under the destination, sync those versions again to populate `modules/`; the earlier files stay in place. Concurrent bz writers use an OS advisory lock on a persistent `.bz-sync.lock` marker; all writers must cooperate and the filesystem must support advisory locking. This is supported on Windows, macOS, Linux, and the BSD and Solaris platforms supported by Go; other platforms reject file-registry writes. Dry runs do not create the marker.
+Use `bz mod info rules_go --registry=/var/bazel-registry` to read the published versions. An existing `bazel_registry.json` stays in place. If a prior run wrote versions directly under the destination, sync those versions again to populate `modules/`; the earlier files stay in place. Concurrent bz writers use an OS advisory lock on a persistent `.bz-sync.lock` marker; all writers must cooperate and the filesystem must support advisory locking. This is supported on Windows, macOS, Linux, and the BSD and Solaris platforms supported by Go; other platforms reject file-registry writes. Dry runs do not create the marker. Literal module names and versions are checked against the registry path; Bazel evaluates and validates dynamic declaration values.
 
 ## HTTP PUT Publisher
 

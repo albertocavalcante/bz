@@ -8,8 +8,8 @@ import (
 	"maps"
 	"path"
 	"slices"
-	"strings"
 
+	bazelversion "github.com/albertocavalcante/go-bzlmod/selection/version"
 	"github.com/bazelbuild/buildtools/build"
 
 	"github.com/albertocavalcante/bz/internal/coord"
@@ -17,14 +17,22 @@ import (
 	"github.com/albertocavalcante/bz/internal/registry"
 )
 
+// normalizedVersion follows Bazel's version equality, including validation.
+func normalizedVersion(value string) (string, bool) {
+	parsed, err := bazelversion.Parse(value)
+	return parsed.Normalized, err == nil && !parsed.IsEmpty
+}
+
 func validModule(data []byte, name, version string) bool {
 	parsed, err := build.ParseModule("MODULE.bazel", data)
 	if err != nil {
 		return false
 	}
+	expected, ok := normalizedVersion(version)
+	if !ok {
+		return false
+	}
 	var calls int
-	var declaredName, declaredVersion string
-	var seenName, seenVersion bool
 	for _, stmt := range parsed.Stmt {
 		call, ok := stmt.(*build.CallExpr)
 		if !ok {
@@ -35,40 +43,96 @@ func validModule(data []byte, name, version string) bool {
 			continue
 		}
 		calls++
-		for _, arg := range call.List {
+		seenName, seenVersion := false, false
+		args, expansion := expandedArgs(call.List)
+		for _, arg := range args {
 			assign, ok := arg.(*build.AssignExpr)
 			if !ok {
-				return false
+				continue
 			}
 			key, ok := assign.LHS.(*build.Ident)
 			if !ok {
-				return false
+				expansion = true
+				continue
 			}
 			if key.Name != "name" && key.Name != "version" {
 				continue
-			}
-			value, ok := assign.RHS.(*build.StringExpr)
-			if !ok {
-				return false
 			}
 			if key.Name == "name" {
 				if seenName {
 					return false
 				}
 				seenName = true
-				declaredName = value.Value
-			}
-			if key.Name == "version" {
+			} else {
 				if seenVersion {
 					return false
 				}
 				seenVersion = true
-				declaredVersion = value.Value
+			}
+			value, literal := assign.RHS.(*build.StringExpr)
+			if !literal {
+				continue
+			} // Bazel evaluates and validates dynamic values.
+			if key.Name == "name" && value.Value != name {
+				return false
+			}
+			if key.Name == "version" {
+				actual, valid := normalizedVersion(value.Value)
+				if !valid || actual != expected {
+					return false
+				}
 			}
 		}
+		if (!seenName || !seenVersion) && !expansion {
+			return false
+		}
 	}
-	// Bazel Version equality removes build metadata but preserves textual spelling.
-	return calls == 1 && declaredName == name && declaredVersion != "" && strings.SplitN(declaredVersion, "+", 2)[0] == strings.SplitN(version, "+", 2)[0]
+	return calls == 1
+}
+
+// expandedArgs checks literal dictionary expansions and leaves dynamic ones to Bazel.
+func expandedArgs(input []build.Expr) ([]build.Expr, bool) {
+	args := make([]build.Expr, 0, len(input))
+	dynamic := false
+	for _, arg := range input {
+		unary, ok := arg.(*build.UnaryExpr)
+		if !ok || unary.Op != "**" {
+			args = append(args, arg)
+			continue
+		}
+		dict, ok := unary.X.(*build.DictExpr)
+		if !ok {
+			dynamic = true
+			continue
+		}
+		for _, entry := range dict.List {
+			key, ok := entry.Key.(*build.StringExpr)
+			if !ok {
+				dynamic = true
+				continue
+			}
+			args = append(args, &build.AssignExpr{LHS: &build.Ident{Name: key.Value}, RHS: entry.Value})
+		}
+	}
+	return args, dynamic
+}
+
+// yankReason matches normalized Bazel versions, preferring exact keys.
+func yankReason(yanks map[string]string, version string) (string, bool) {
+	if reason, ok := yanks[version]; ok {
+		return reason, true
+	}
+	normalized, valid := normalizedVersion(version)
+	if !valid {
+		return "", false
+	}
+	keys := slices.Sorted(maps.Keys(yanks))
+	for _, key := range keys {
+		if candidate, ok := normalizedVersion(key); ok && candidate == normalized {
+			return yanks[key], true
+		}
+	}
+	return "", false
 }
 
 func validSource(data []byte) bool {
@@ -114,6 +178,27 @@ func readLocalMetadata(dest *publisher.FilePublisher, module string) (*localMeta
 	return metadata, nil
 }
 
+func reconcileYanks(origin *registry.Metadata, prior map[string]string, versions []string) map[string]string {
+	yanked := make(map[string]string)
+	originVersions := make(map[string]bool, len(origin.Versions))
+	for _, version := range origin.Versions {
+		if normalized, ok := normalizedVersion(version); ok {
+			originVersions[normalized] = true
+		}
+	}
+	for _, version := range versions {
+		normalized, valid := normalizedVersion(version)
+		if valid && originVersions[normalized] {
+			if reason, ok := yankReason(origin.YankedVersions, version); ok {
+				yanked[version] = reason
+			}
+		} else if reason, ok := yankReason(prior, version); ok {
+			yanked[version] = reason
+		}
+	}
+	return yanked
+}
+
 func (m *localMetadata) write(dest *publisher.FilePublisher, module string, origin *registry.Metadata, available []string) error {
 	known := make(map[string]bool, len(available)+len(m.value.Versions))
 	for _, version := range available {
@@ -146,20 +231,7 @@ func (m *localMetadata) write(dest *publisher.FilePublisher, module string, orig
 			}
 		}
 	}
-	yanked := make(map[string]string)
-	originVersions := make(map[string]bool, len(origin.Versions))
-	for _, version := range origin.Versions {
-		originVersions[version] = true
-	}
-	for _, version := range versions {
-		if originVersions[version] {
-			if reason, ok := origin.YankedVersions[version]; ok {
-				yanked[version] = reason
-			}
-		} else if reason, ok := m.value.YankedVersions[version]; ok {
-			yanked[version] = reason
-		}
-	}
+	yanked := reconcileYanks(origin, m.value.YankedVersions, versions)
 	if slices.Equal(versions, m.value.Versions) && maps.Equal(yanked, m.value.YankedVersions) {
 		return nil
 	}
