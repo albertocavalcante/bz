@@ -1,7 +1,6 @@
 package modsync
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +8,7 @@ import (
 	"maps"
 	"path"
 	"slices"
+	"strings"
 
 	"github.com/bazelbuild/buildtools/build"
 
@@ -17,12 +17,58 @@ import (
 	"github.com/albertocavalcante/bz/internal/registry"
 )
 
-func validModule(data []byte) bool {
-	if len(bytes.TrimSpace(data)) == 0 {
+func validModule(data []byte, name, version string) bool {
+	parsed, err := build.ParseModule("MODULE.bazel", data)
+	if err != nil {
 		return false
 	}
-	_, err := build.ParseModule("MODULE.bazel", data)
-	return err == nil
+	var calls int
+	var declaredName, declaredVersion string
+	var seenName, seenVersion bool
+	for _, stmt := range parsed.Stmt {
+		call, ok := stmt.(*build.CallExpr)
+		if !ok {
+			continue
+		}
+		id, ok := call.X.(*build.Ident)
+		if !ok || id.Name != "module" {
+			continue
+		}
+		calls++
+		for _, arg := range call.List {
+			assign, ok := arg.(*build.AssignExpr)
+			if !ok {
+				return false
+			}
+			key, ok := assign.LHS.(*build.Ident)
+			if !ok {
+				return false
+			}
+			if key.Name != "name" && key.Name != "version" {
+				continue
+			}
+			value, ok := assign.RHS.(*build.StringExpr)
+			if !ok {
+				return false
+			}
+			if key.Name == "name" {
+				if seenName {
+					return false
+				}
+				seenName = true
+				declaredName = value.Value
+			}
+			if key.Name == "version" {
+				if seenVersion {
+					return false
+				}
+				seenVersion = true
+				declaredVersion = value.Value
+			}
+		}
+	}
+	// Bazel Version equality removes build metadata but preserves textual spelling.
+	return calls == 1 && declaredName == name && declaredVersion != "" && strings.SplitN(declaredVersion, "+", 2)[0] == strings.SplitN(version, "+", 2)[0]
 }
 
 func validSource(data []byte) bool {
@@ -77,7 +123,7 @@ func (m *localMetadata) write(dest *publisher.FilePublisher, module string, orig
 		if coord.ValidateVersion(version) != nil {
 			continue
 		}
-		moduleOK, err := completeFile(dest, path.Join(module, version, registry.ModuleBazelFile), validModule)
+		moduleOK, err := completeFile(dest, path.Join(module, version, registry.ModuleBazelFile), func(data []byte) bool { return validModule(data, module, version) })
 		if err != nil {
 			return err
 		}

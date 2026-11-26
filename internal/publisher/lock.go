@@ -2,7 +2,10 @@ package publisher
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"time"
 )
 
@@ -10,6 +13,12 @@ import (
 // ownership is held by the OS and released when the handle closes.
 func (p *FilePublisher) LockRegistry(ctx context.Context) (func(), error) {
 	f, err := p.root.OpenFile(".bz-sync.lock", lockFlags(), 0o600)
+	if errors.Is(err, fs.ErrNotExist) {
+		f, err = p.root.OpenFile(".bz-sync.lock", lockFlags()|os.O_CREATE|os.O_EXCL, 0o600)
+		if errors.Is(err, fs.ErrExist) {
+			f, err = p.root.OpenFile(".bz-sync.lock", lockFlags(), 0o600)
+		}
+	}
 	if err != nil {
 		return nil, err
 	}

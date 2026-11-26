@@ -97,6 +97,9 @@ func (p *FilePublisher) Put(_ context.Context, path string, content []byte) erro
 	}
 	defer release()
 	if p.registryLayout {
+		if len(content) > registry.MaxFileBytes {
+			return fmt.Errorf("registry file exceeds %d-byte limit", registry.MaxFileBytes)
+		}
 		if err := root.MkdirAll(filepath.Dir(filepath.FromSlash(path)), 0o755); err != nil {
 			return err
 		}
@@ -136,6 +139,9 @@ func (p *FilePublisher) Read(path string) ([]byte, error) {
 
 // Replace atomically replaces a file in an existing module directory.
 func (p *FilePublisher) Replace(path string, content []byte) error {
+	if p.registryLayout && len(content) > registry.MaxFileBytes {
+		return fmt.Errorf("registry file exceeds %d-byte limit", registry.MaxFileBytes)
+	}
 	if err := coord.ValidateRegistryPath(path); err != nil {
 		return err
 	}

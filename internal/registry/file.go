@@ -192,6 +192,9 @@ func (r *FileRegistry) readFile(rel string) ([]byte, error) {
 	return ReadBounded(root, name)
 }
 
+// MaxFileBytes is the maximum size accepted for a local registry file.
+const MaxFileBytes = maxFetchResponseBytes
+
 // ReadBounded reads a confined regular file with the registry fetch size limit.
 func ReadBounded(root *os.Root, name string) ([]byte, error) {
 	file, err := root.OpenFile(name, registryReadFlags(), 0)
@@ -206,15 +209,15 @@ func ReadBounded(root *os.Root, name string) ([]byte, error) {
 	if !info.Mode().IsRegular() {
 		return nil, fmt.Errorf("registry file is not a regular file")
 	}
-	if info.Size() > maxFetchResponseBytes {
-		return nil, fmt.Errorf("registry file exceeds %d-byte limit", maxFetchResponseBytes)
+	if info.Size() > MaxFileBytes {
+		return nil, fmt.Errorf("registry file exceeds %d-byte limit", MaxFileBytes)
 	}
-	data, err := io.ReadAll(io.LimitReader(file, maxFetchResponseBytes+1))
+	data, err := io.ReadAll(io.LimitReader(file, MaxFileBytes+1))
 	if err != nil {
 		return nil, err
 	}
-	if len(data) > maxFetchResponseBytes {
-		return nil, fmt.Errorf("registry file exceeds %d-byte limit", maxFetchResponseBytes)
+	if len(data) > MaxFileBytes {
+		return nil, fmt.Errorf("registry file exceeds %d-byte limit", MaxFileBytes)
 	}
 	return data, nil
 }

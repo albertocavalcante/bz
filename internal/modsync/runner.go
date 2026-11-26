@@ -30,6 +30,11 @@ func newRunner(workflow *config.Workflow, opts Options) (*runner, error) {
 		return nil, fmt.Errorf("creating source registry: %w", err)
 	}
 
+	// Local mirrors must never publish files that their own reader cannot read.
+	if workflow.Destination != nil && workflow.Destination.Type == registry.TypeFile && workflow.Origin != nil && workflow.Origin.Type == registry.TypeFile {
+		source = registry.NewCacheRegistry(workflow.Origin.URL)
+	}
+
 	// Create destination publisher
 	dest, err := publisherFromConfig(workflow.Destination, opts.DryRun)
 	if err != nil {
@@ -123,11 +128,8 @@ func (r *runner) syncModule(ctx context.Context, moduleName string, result *Resu
 	if err != nil {
 		return err
 	}
-	if len(versions) == 0 {
-		if r.opts.Verbose {
-			slog.Info("no versions match selector", "module", moduleName)
-		}
-		return nil
+	if len(versions) == 0 && r.opts.Verbose {
+		slog.Info("no versions match selector", "module", moduleName)
 	}
 
 	// Check if we should skip yanked versions
@@ -193,7 +195,7 @@ func (r *runner) syncVersion(ctx context.Context, moduleName, version string) (w
 	sourceJSONPath := path.Join(moduleName, version, registry.SourceFile)
 	var hasModule, hasSource bool
 	if r.local != nil {
-		hasModule, err = completeFile(r.local, moduleBazelPath, validModule)
+		hasModule, err = completeFile(r.local, moduleBazelPath, func(data []byte) bool { return validModule(data, moduleName, version) })
 		if err != nil {
 			return false, fmt.Errorf("check MODULE.bazel: %w", err)
 		}
@@ -274,7 +276,7 @@ func (r *runner) fetchVersion(ctx context.Context, moduleName, version string, h
 	}
 
 	if r.local != nil {
-		if !hasModule && !validModule(moduleBazel) {
+		if !hasModule && !validModule(moduleBazel, moduleName, version) {
 			return nil, nil, fmt.Errorf("MODULE.bazel is empty or invalid")
 		}
 		if !hasSource && !validSource(sourceJSON) {

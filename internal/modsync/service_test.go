@@ -756,6 +756,9 @@ func TestFileMirrorYankReconciliation(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		if name == "MODULE.bazel" {
+			data = []byte(`module(name = "example", version = "0.5.0")`)
+		}
 		if err := os.WriteFile(filepath.Join(localVersion, name), data, 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -777,7 +780,7 @@ func TestFileMirrorYankReconciliation(t *testing.T) {
 }
 
 func TestFileMirrorRejectsInvalidFreshCoreAndRecovers(t *testing.T) {
-	for _, tc := range []struct{ file, bad string }{{"MODULE.bazel", "module("}, {"MODULE.bazel", ""}, {"source.json", "[]"}, {"source.json", "null"}} {
+	for _, tc := range []struct{ file, bad string }{{"MODULE.bazel", "module("}, {"MODULE.bazel", ""}, {"MODULE.bazel", `module(name = "wrong", version = "1.0.0")`}, {"MODULE.bazel", `module(name = "example", version = "2.0.0")`}, {"source.json", "[]"}, {"source.json", "null"}} {
 		t.Run(tc.file+tc.bad, func(t *testing.T) {
 			origin := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{"example": {Versions: []string{"1.0.0"}}})
 			dest := t.TempDir()
@@ -806,5 +809,70 @@ func TestFileMirrorRejectsInvalidFreshCoreAndRecovers(t *testing.T) {
 				t.Fatalf("recovery = %+v, %v", result, err)
 			}
 		})
+	}
+}
+
+func TestFileMirrorReconcilesWhenDefaultSelectorFindsNoVersion(t *testing.T) {
+	origin := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{"example": {Versions: []string{"1.0.0"}}})
+	dest := t.TempDir()
+	workflow := &config.Workflow{Name: "mirror", Origin: &config.Registry{Type: "file", URL: origin}, Destination: &config.Registry{Type: "file", URL: dest}, Modules: []string{"example"}}
+	svc := NewService(&config.Config{Workflows: []*config.Workflow{workflow}})
+	run := func() {
+		t.Helper()
+		result, err := svc.Run(context.Background(), "mirror", Options{})
+		if err != nil || len(result.Errors) != 0 {
+			t.Fatalf("sync = %+v, %v", result, err)
+		}
+	}
+	run()
+	metadata := filepath.Join(origin, registry.MetadataPath("example"))
+	if err := os.WriteFile(metadata, []byte(`{"versions":["1.0.0"],"yanked_versions":{"1.0.0":"withdrawn"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run()
+	got, err := registry.NewFileRegistry(dest).GetMetadata(context.Background(), "example")
+	if err != nil || got.YankedVersions["1.0.0"] != "withdrawn" {
+		t.Fatalf("metadata = %+v, %v", got, err)
+	}
+	// A first sync with no selected version must not create an empty catalog.
+	workflow.Destination.URL = t.TempDir()
+	run()
+	if _, err := os.Stat(filepath.Join(workflow.Destination.URL, registry.MetadataPath("example"))); !os.IsNotExist(err) {
+		t.Fatalf("unexpected catalog: %v", err)
+	}
+}
+
+func TestFileMirrorRejectsOversizedOrigin(t *testing.T) {
+	origin := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{"example": {Versions: []string{"1.0.0"}}})
+	file, err := os.OpenFile(filepath.Join(origin, registry.ModuleBazelPath("example", "1.0.0")), os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Truncate(registry.MaxFileBytes + 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	dest := t.TempDir()
+	workflow := &config.Workflow{Name: "mirror", Origin: &config.Registry{Type: "file", URL: origin}, Destination: &config.Registry{Type: "file", URL: dest}, Modules: []string{"example"}}
+	result, err := NewService(&config.Config{Workflows: []*config.Workflow{workflow}}).Run(context.Background(), "mirror", Options{})
+	if err != nil || len(result.Errors) == 0 {
+		t.Fatalf("oversized sync = %+v, %v", result, err)
+	}
+	if _, err := os.Stat(filepath.Join(dest, registry.MetadataPath("example"))); !os.IsNotExist(err) {
+		t.Fatalf("unexpected catalog: %v", err)
+	}
+}
+
+func TestValidModuleIdentity(t *testing.T) {
+	for _, tc := range []struct {
+		declared, requested string
+		want                bool
+	}{{"1.0+upstream", "1.0+mirror", true}, {"01.0", "1.0", false}, {"1.0", "1.0.0", false}, {"2025.foo", "2025.foo", true}} {
+		content := []byte(`module(name = "example", version = "` + tc.declared + `")`)
+		if got := validModule(content, "example", tc.requested); got != tc.want {
+			t.Errorf("version %q for %q = %v", tc.declared, tc.requested, got)
+		}
 	}
 }
