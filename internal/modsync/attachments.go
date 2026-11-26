@@ -31,10 +31,7 @@ type versionAttachment struct {
 // without rewriting it. Bazel applies patches in the original JSON order.
 func inspectMirrorSource(module, version string, source []byte) ([]versionAttachment, error) {
 	var descriptor map[string]json.RawMessage
-	if err := json.Unmarshal(source, &descriptor); err != nil {
-		return nil, fmt.Errorf("parse source.json: %w", err)
-	}
-	if descriptor == nil {
+	if err := json.Unmarshal(source, &descriptor); err != nil || descriptor == nil {
 		return nil, fmt.Errorf("source.json is missing or not a JSON object")
 	}
 	var sourceType string
