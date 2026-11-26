@@ -2,10 +2,7 @@ package modsync
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
-	"io/fs"
 	"log/slog"
 	"path"
 
@@ -107,6 +104,14 @@ func (r *runner) syncModule(ctx context.Context, moduleName string, result *Resu
 		return err
 	}
 
+	if r.local != nil && !r.opts.DryRun {
+		release, err := r.local.LockRegistry(ctx)
+		if err != nil {
+			return fmt.Errorf("lock destination: %w", err)
+		}
+		defer release()
+	}
+
 	// Get metadata from source
 	meta, err := r.source.GetMetadata(ctx, moduleName)
 	if err != nil {
@@ -186,33 +191,20 @@ func (r *runner) syncVersion(ctx context.Context, moduleName, version string) (w
 	// Check if already exists in destination
 	moduleBazelPath := path.Join(moduleName, version, registry.ModuleBazelFile)
 	sourceJSONPath := path.Join(moduleName, version, registry.SourceFile)
-	hasModule, err := r.dest.Exists(ctx, moduleBazelPath)
-	if err != nil {
-		return false, fmt.Errorf("check exists: %w", err)
-	}
-	var hasSource bool
+	var hasModule, hasSource bool
 	if r.local != nil {
-		hasSource, err = r.dest.Exists(ctx, sourceJSONPath)
+		hasModule, err = completeFile(r.local, moduleBazelPath, validModule)
 		if err != nil {
-			return false, fmt.Errorf("check source.json exists: %w", err)
+			return false, fmt.Errorf("check MODULE.bazel: %w", err)
 		}
-	}
-
-	if r.local != nil {
-		// A previous interrupted or corrupt write is not a complete version.
-		if hasModule {
-			data, readErr := r.local.Read(moduleBazelPath)
-			if readErr != nil && !errors.Is(readErr, fs.ErrNotExist) {
-				return false, readErr
-			}
-			hasModule = readErr == nil && len(data) > 0
+		hasSource, err = completeFile(r.local, sourceJSONPath, validSource)
+		if err != nil {
+			return false, fmt.Errorf("check source.json: %w", err)
 		}
-		if hasSource {
-			data, readErr := r.local.Read(sourceJSONPath)
-			if readErr != nil && !errors.Is(readErr, fs.ErrNotExist) {
-				return false, readErr
-			}
-			hasSource = readErr == nil && json.Valid(data)
+	} else {
+		hasModule, err = r.dest.Exists(ctx, moduleBazelPath)
+		if err != nil {
+			return false, fmt.Errorf("check exists: %w", err)
 		}
 	}
 
@@ -232,29 +224,9 @@ func (r *runner) syncVersion(ctx context.Context, moduleName, version string) (w
 		return true, nil
 	}
 
-	var moduleBazel []byte
-	if !hasModule {
-		moduleBazel, err = r.source.GetModuleBazel(ctx, moduleName, version)
-		if err != nil {
-			return false, fmt.Errorf("get MODULE.bazel: %w", err)
-		}
-	}
-
-	var sourceJSON []byte
-	if !hasSource {
-		sourceJSON, err = r.getSourceJSON(ctx, moduleName, version)
-		if err != nil {
-			return false, fmt.Errorf("get source.json: %w", err)
-		}
-		if r.local != nil && !json.Valid(sourceJSON) {
-			return false, fmt.Errorf("source.json is missing or invalid")
-		}
-		if len(r.workflow.Transformations) > 0 && sourceJSON != nil {
-			sourceJSON, err = applyTransforms(r.workflow.Transformations, sourceJSON)
-			if err != nil {
-				return false, fmt.Errorf("apply transforms: %w", err)
-			}
-		}
+	moduleBazel, sourceJSON, err := r.fetchVersion(ctx, moduleName, version, hasModule, hasSource)
+	if err != nil {
+		return false, err
 	}
 
 	// Publish the local version marker after its source description.
@@ -275,6 +247,42 @@ func (r *runner) syncVersion(ctx context.Context, moduleName, version string) (w
 	}
 
 	return true, nil
+}
+
+func (r *runner) fetchVersion(ctx context.Context, moduleName, version string, hasModule, hasSource bool) ([]byte, []byte, error) {
+	var err error
+	var moduleBazel []byte
+	if !hasModule {
+		moduleBazel, err = r.source.GetModuleBazel(ctx, moduleName, version)
+		if err != nil {
+			return nil, nil, fmt.Errorf("get MODULE.bazel: %w", err)
+		}
+	}
+
+	var sourceJSON []byte
+	if !hasSource {
+		sourceJSON, err = r.getSourceJSON(ctx, moduleName, version)
+		if err != nil {
+			return nil, nil, fmt.Errorf("get source.json: %w", err)
+		}
+		if len(r.workflow.Transformations) > 0 && sourceJSON != nil {
+			sourceJSON, err = applyTransforms(r.workflow.Transformations, sourceJSON)
+			if err != nil {
+				return nil, nil, fmt.Errorf("apply transforms: %w", err)
+			}
+		}
+	}
+
+	if r.local != nil {
+		if !hasModule && !validModule(moduleBazel) {
+			return nil, nil, fmt.Errorf("MODULE.bazel is empty or invalid")
+		}
+		if !hasSource && !validSource(sourceJSON) {
+			return nil, nil, fmt.Errorf("source.json is missing or not a JSON object")
+		}
+	}
+
+	return moduleBazel, sourceJSON, nil
 }
 
 // getSourceJSON fetches source.json from the registry.

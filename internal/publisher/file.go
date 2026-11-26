@@ -33,7 +33,7 @@ func NewFilePublisher(basePath string) (*FilePublisher, error) {
 		return nil, fmt.Errorf("resolve absolute path: %w", err)
 	}
 
-	root, err := os.OpenRoot(absPath)
+	root, err := os.OpenRoot(registry.DirectoryPath(absPath))
 	if err != nil {
 		return nil, fmt.Errorf("open base path: %w", err)
 	}
@@ -55,7 +55,7 @@ func NewFileRegistryPublisher(basePath string) (*FilePublisher, error) {
 // OpenFileRegistryPublisher opens an existing registry without creating it.
 // A missing registry is treated as empty, for dry runs.
 func OpenFileRegistryPublisher(basePath string) (*FilePublisher, error) {
-	root, err := os.OpenRoot(basePath)
+	root, err := os.OpenRoot(registry.DirectoryPath(basePath))
 	if errors.Is(err, fs.ErrNotExist) {
 		return &FilePublisher{registryLayout: true}, nil
 	}
@@ -79,7 +79,7 @@ func (p *FilePublisher) moduleRoot(create bool) (*os.Root, func(), error) {
 			return nil, nil, err
 		}
 	}
-	root, err := p.root.OpenRoot(registry.ModulesDir)
+	root, err := p.root.OpenRoot(registry.DirectoryPath(registry.ModulesDir))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -96,6 +96,12 @@ func (p *FilePublisher) Put(_ context.Context, path string, content []byte) erro
 		return err
 	}
 	defer release()
+	if p.registryLayout {
+		if err := root.MkdirAll(filepath.Dir(filepath.FromSlash(path)), 0o755); err != nil {
+			return err
+		}
+		return replaceInRoot(root, path, content)
+	}
 	return putInRoot(root, path, content)
 }
 
@@ -125,7 +131,7 @@ func (p *FilePublisher) Read(path string) ([]byte, error) {
 		return nil, err
 	}
 	defer release()
-	return root.ReadFile(filepath.FromSlash(path))
+	return registry.ReadBounded(root, filepath.FromSlash(path))
 }
 
 // Replace atomically replaces a file in an existing module directory.
@@ -138,7 +144,10 @@ func (p *FilePublisher) Replace(path string, content []byte) error {
 		return err
 	}
 	defer release()
+	return replaceInRoot(root, path, content)
+}
 
+func replaceInRoot(root *os.Root, path string, content []byte) error {
 	name := filepath.FromSlash(path)
 	mode := fs.FileMode(0o644)
 	info, err := root.Lstat(name)

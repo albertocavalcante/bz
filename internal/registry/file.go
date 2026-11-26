@@ -189,6 +189,11 @@ func (r *FileRegistry) readFile(rel string) ([]byte, error) {
 	if !r.bounded {
 		return root.ReadFile(name)
 	}
+	return ReadBounded(root, name)
+}
+
+// ReadBounded reads a confined regular file with the registry fetch size limit.
+func ReadBounded(root *os.Root, name string) ([]byte, error) {
 	file, err := root.OpenFile(name, registryReadFlags(), 0)
 	if err != nil {
 		return nil, err
@@ -213,6 +218,9 @@ func (r *FileRegistry) readFile(rel string) ([]byte, error) {
 	}
 	return data, nil
 }
+
+// DirectoryPath forces directory traversal before opening a directory.
+func DirectoryPath(name string) string { return registryDirectoryPath(name) }
 
 // stat checks that a registry entry exists inside the modules directory.
 func (r *FileRegistry) stat(rel string) error {

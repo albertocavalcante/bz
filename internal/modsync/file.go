@@ -1,6 +1,7 @@
 package modsync
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,10 +10,36 @@ import (
 	"path"
 	"slices"
 
+	"github.com/bazelbuild/buildtools/build"
+
 	"github.com/albertocavalcante/bz/internal/coord"
 	"github.com/albertocavalcante/bz/internal/publisher"
 	"github.com/albertocavalcante/bz/internal/registry"
 )
+
+func validModule(data []byte) bool {
+	if len(bytes.TrimSpace(data)) == 0 {
+		return false
+	}
+	_, err := build.ParseModule("MODULE.bazel", data)
+	return err == nil
+}
+
+func validSource(data []byte) bool {
+	var object map[string]json.RawMessage
+	return json.Unmarshal(data, &object) == nil && object != nil
+}
+
+func completeFile(dest *publisher.FilePublisher, name string, valid func([]byte) bool) (bool, error) {
+	data, err := dest.Read(name)
+	if errors.Is(err, fs.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return valid(data), nil
+}
 
 type localMetadata struct {
 	fields map[string]json.RawMessage
@@ -50,15 +77,15 @@ func (m *localMetadata) write(dest *publisher.FilePublisher, module string, orig
 		if coord.ValidateVersion(version) != nil {
 			continue
 		}
-		moduleData, moduleErr := dest.Read(path.Join(module, version, registry.ModuleBazelFile))
-		sourceData, sourceErr := dest.Read(path.Join(module, version, registry.SourceFile))
-		if moduleErr != nil && !errors.Is(moduleErr, fs.ErrNotExist) {
-			return moduleErr
+		moduleOK, err := completeFile(dest, path.Join(module, version, registry.ModuleBazelFile), validModule)
+		if err != nil {
+			return err
 		}
-		if sourceErr != nil && !errors.Is(sourceErr, fs.ErrNotExist) {
-			return sourceErr
+		sourceOK, err := completeFile(dest, path.Join(module, version, registry.SourceFile), validSource)
+		if err != nil {
+			return err
 		}
-		if moduleErr == nil && len(moduleData) > 0 && sourceErr == nil && json.Valid(sourceData) {
+		if moduleOK && sourceOK {
 			known[version] = true
 		}
 	}
@@ -73,12 +100,17 @@ func (m *localMetadata) write(dest *publisher.FilePublisher, module string, orig
 			}
 		}
 	}
-	yanked := maps.Clone(m.value.YankedVersions)
-	if yanked == nil {
-		yanked = make(map[string]string)
+	yanked := make(map[string]string)
+	originVersions := make(map[string]bool, len(origin.Versions))
+	for _, version := range origin.Versions {
+		originVersions[version] = true
 	}
-	for _, version := range available {
-		if reason, ok := origin.YankedVersions[version]; ok {
+	for _, version := range versions {
+		if originVersions[version] {
+			if reason, ok := origin.YankedVersions[version]; ok {
+				yanked[version] = reason
+			}
+		} else if reason, ok := m.value.YankedVersions[version]; ok {
 			yanked[version] = reason
 		}
 	}
