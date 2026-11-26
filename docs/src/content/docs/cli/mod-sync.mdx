@@ -70,7 +70,7 @@ Preview planned version additions and repairs with `--dry-run`.
 bz mod sync --workflow production --dry-run   # or: -n
 ```
 
-`Versions planned` counts additions and repairs found by inspecting the destination. `Versions written` stays at zero. An actual sync validates the source files and attachments and reconciles the catalog.
+`Versions planned` counts additions and repairs found by inspecting the destination. `Versions written` stays at zero. When publishing to a filesystem mirror, sync also validates source files and attachments and reconciles the catalog.
 
 A dry run does not publish to the configured destination. File destinations open read-only. Git uses a temporary clone and HTTP PUT uses HEAD requests. Origin metadata and remote inspection may use the network.
 
