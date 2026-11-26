@@ -457,11 +457,7 @@ func publisherFromConfig(cfg *config.Registry, dryRun bool) (publisher.Publisher
 		return publisher.NewFileRegistryPublisher(cfg.URL)
 
 	case "git":
-		branch := cfg.Branch
-		if branch == "" {
-			branch = "main"
-		}
-		return publisher.NewGitPublisher(cfg.URL, branch)
+		return publisher.NewGitPublisher(cfg.URL, cfg.Branch)
 
 	case "http_put":
 		var auth *publisher.Auth
