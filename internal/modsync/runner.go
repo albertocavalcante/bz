@@ -227,25 +227,27 @@ func (r *runner) syncVersion(ctx context.Context, moduleName, version string) (c
 		}
 	}
 
-	if completeCore {
-		if r.local != nil {
-			changed, err := r.syncMirrorAttachments(ctx, moduleName, version, state.attachments, missing)
-			if changed || err != nil {
-				return changed, err
-			}
-		}
+	if completeCore && len(missing) == 0 {
 		if r.opts.Verbose {
 			slog.Info("skipped existing version", "module", moduleName, "version", version)
 		}
 		return false, nil
 	}
 
-	if r.opts.Verbose {
+	if !completeCore && r.opts.Verbose {
 		slog.Info("syncing version", "module", moduleName, "version", version)
 	}
 
 	if r.opts.DryRun {
-		slog.Info("would sync version (dry-run)", "module", moduleName, "version", version)
+		if !completeCore {
+			slog.Info("would sync version (dry-run)", "module", moduleName, "version", version)
+		}
+		return true, nil
+	}
+	if completeCore {
+		if err := r.publishMirrorAttachments(ctx, moduleName, version, state.attachments, missing); err != nil {
+			return false, err
+		}
 		return true, nil
 	}
 
@@ -292,8 +294,7 @@ func (r *runner) prepareMirrorAttachments(ctx context.Context, module, version s
 	if err != nil {
 		return err
 	}
-	_, err = r.syncMirrorAttachments(ctx, module, version, attachments, missing)
-	return err
+	return r.publishMirrorAttachments(ctx, module, version, attachments, missing)
 }
 
 func (r *runner) fetchVersion(ctx context.Context, moduleName, version string, hasModule, hasSource bool) ([]byte, []byte, error) {
