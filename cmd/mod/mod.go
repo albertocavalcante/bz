@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/albertocavalcante/bz/internal/bzconfig"
+	"github.com/albertocavalcante/bz/internal/cachepath"
 	"github.com/albertocavalcante/bz/internal/cli"
 	"github.com/albertocavalcante/bz/internal/cmdutil"
 	"github.com/albertocavalcante/bz/internal/registry"
@@ -29,6 +30,10 @@ func resolvedRegistryURL() (string, error) {
 // createNetworkAwareRegistry creates a registry that respects offline mode settings.
 // It returns the registry and any error encountered.
 func createNetworkAwareRegistry() (registry.Registry, error) {
+	return createRegistry(false)
+}
+
+func createRegistry(useOfflineCache bool) (registry.Registry, error) {
 	registryURL, err := resolvedRegistryURL()
 	if err != nil {
 		return nil, err
@@ -49,9 +54,17 @@ func createNetworkAwareRegistry() (registry.Registry, error) {
 		PreferOffline: cli.IsEffectivelyPreferOffline(),
 	}
 
-	// For now, we don't have a cache registry, so pass nil
-	// The NetworkAwareRegistry will handle this gracefully
-	return registry.NewNetworkAware(inner, nil, opts), nil
+	// Cache entries have no origin metadata. Only use them for the implicit
+	// default registry in strict offline mode, never for an explicit registry.
+	var cache registry.Registry
+	if useOfflineCache && opts.Offline && registryFlag == "" && cli.GetRegistry() == "" {
+		dir, err := cachepath.Resolve("")
+		if err != nil {
+			return nil, err
+		}
+		cache = registry.NewCacheRegistry(dir)
+	}
+	return registry.NewNetworkAware(inner, cache, opts), nil
 }
 
 // registryFlagSource names the flag in registry validation errors.

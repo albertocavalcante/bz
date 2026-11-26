@@ -57,15 +57,15 @@ The simplest approach uses bz's built-in cache commands:
    # mode = "offline"
 
    # Option 3: CLI flag
-   bz mod list --offline
+   bz mod info rules_go --offline
    ```
 
 5. **Verify and use:**
 
    ```bash
    bz cache verify
-   bz mod list
-   bz mod outdated
+   bz mod info rules_go --offline
+   bz mod info rules_go@0.50.1 --offline
    ```
 </Steps>
 
@@ -145,7 +145,7 @@ bz supports three network modes:
 | Mode | Description | Use Case |
 |------|-------------|----------|
 | `online` | Always fetch from network (default) | Normal development |
-| `prefer-offline` | Use cache if available, fallback to network | Speed up builds |
+| `prefer-offline` | Use the selected registry | Connected use |
 | `offline` | Never access network, fail if not cached | Air-gapped machines |
 
 ### Setting Network Mode
@@ -153,8 +153,8 @@ bz supports three network modes:
 <Tabs>
 <TabItem label="CLI Flag">
 ```bash
-bz mod list --offline
-bz mod outdated --prefer-offline
+bz mod info rules_go --offline
+bz mod info rules_go --prefer-offline
 ```
 </TabItem>
 <TabItem label="Environment Variable">
@@ -174,7 +174,7 @@ mode = "offline"
 </Tabs>
 
 <Aside type="note">
-`--offline` and `--prefer-offline` are mutually exclusive. If both are set, `--offline` takes precedence.
+`--offline` and `--prefer-offline` are mutually exclusive.
 </Aside>
 
 ---
@@ -386,21 +386,23 @@ This is expected! In offline mode, bz should never attempt network access. If yo
 # This should fail in offline mode with no cache
 bz mod info some_uncached_module --offline
 
-# This should work if cache is populated
-bz mod list --offline
+# This reads the default cache when the module was downloaded
+bz mod info rules_go --offline
 ```
 
 ### Cache Location
 
-Default cache locations by platform:
+The default cache directory is `.cache/bz` under the user's home directory on
+all platforms. `cache download`, `cache verify`, and `cache clear` accept their
+own `--cache-dir` option. To read a custom cache location, pass it as a local
+registry, for example `bz --offline --registry /path/to/cache mod info rules_go`.
 
-| Platform | Default Path |
-|----------|--------------|
-| Linux | `~/.cache/bz` |
-| macOS | `~/.cache/bz` |
-| Windows | `%LOCALAPPDATA%\bz\cache` |
-
-Override with `--cache-dir` flag or `BZ_CACHE_DIR` environment variable.
+Strict offline `mod info` reads use the default cache only when no registry
+is configured or specified. Cache entries do not record their origin, so an
+explicit or configured remote registry does not use this cache. A local registry
+is read directly. Other module commands do not automatically read the download cache. Prefer-offline
+uses the selected registry. `mod list` reads the local MODULE.bazel and does
+not verify cached registry data.
 
 ---
 
@@ -415,11 +417,10 @@ jobs:
     runs-on: self-hosted  # Air-gapped runner
     env:
       BZ_OFFLINE: "1"
-      BZ_CACHE_DIR: "/opt/shared-cache/bz"
     steps:
       - uses: actions/checkout@v4
       - name: Verify cache
-        run: bz cache verify
+        run: bz cache verify --cache-dir /opt/shared-cache/bz
       - name: Build
         run: bazel build //...
 ```

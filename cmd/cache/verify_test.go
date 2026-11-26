@@ -2,6 +2,7 @@ package cache
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -11,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/albertocavalcante/bz/internal/depgraph"
+	"github.com/albertocavalcante/bz/internal/registry"
 )
 
 // resetVerifyCmd resets the verify command state for testing.
@@ -221,7 +222,7 @@ func TestReadCachedModuleBazel_RejectsModulesSymlink(t *testing.T) {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
 
-	_, err := readCachedModuleBazel(cacheDir, depgraph.ModuleRef{Name: "rules_go", Version: "0.50.1"})
+	_, err := registry.NewCacheRegistry(cacheDir).GetModuleBazel(context.Background(), "rules_go", "0.50.1")
 	assert.Error(t, err)
 }
 

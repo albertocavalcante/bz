@@ -1,23 +1,18 @@
 package cache
 
 import (
+	"context"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 
 	"github.com/spf13/cobra"
 
 	"github.com/albertocavalcante/bz/internal/cli"
 	"github.com/albertocavalcante/bz/internal/cmdutil"
-	"github.com/albertocavalcante/bz/internal/coord"
 	"github.com/albertocavalcante/bz/internal/depgraph"
 	"github.com/albertocavalcante/bz/internal/module"
 	"github.com/albertocavalcante/bz/internal/registry"
 )
-
-// Match the maximum MODULE.bazel response accepted by the HTTP registry.
-const maxCachedModuleBazelSize = 50 << 20
 
 var (
 	verifyJSON     bool
@@ -136,6 +131,7 @@ func verifyCachedClosure(cacheDir string, initial []depgraph.ModuleRef) []module
 	seen := make(map[string]bool)
 	queue := append([]depgraph.ModuleRef(nil), initial...)
 	statuses := make([]moduleStatus, 0, len(initial))
+	cache := registry.NewCacheRegistry(cacheDir)
 
 	for len(queue) > 0 {
 		ref := queue[0]
@@ -145,7 +141,7 @@ func verifyCachedClosure(cacheDir string, initial []depgraph.ModuleRef) []module
 		}
 		seen[ref.Key()] = true
 
-		content, err := readCachedModuleBazel(cacheDir, ref)
+		content, err := cache.GetModuleBazel(context.Background(), ref.Name, ref.Version)
 		if err != nil {
 			statuses = append(statuses, moduleStatus{name: ref.Name, version: ref.Version})
 			continue
@@ -161,53 +157,6 @@ func verifyCachedClosure(cacheDir string, initial []depgraph.ModuleRef) []module
 	}
 
 	return statuses
-}
-
-// readCachedModuleBazel reads one cache entry through an os.Root so the path
-// stays beneath cacheDir. The nonblocking open avoids waiting on a FIFO. The
-// post-open stat and bounded read reject special or oversized files.
-func readCachedModuleBazel(cacheDir string, ref depgraph.ModuleRef) ([]byte, error) {
-	if err := coord.Validate(ref.Name, ref.Version); err != nil {
-		return nil, err
-	}
-
-	base, err := os.OpenRoot(verificationDirectoryPath(cacheDir))
-	if err != nil {
-		return nil, err
-	}
-	defer base.Close()
-	root, err := base.OpenRoot(verificationDirectoryPath(registry.ModulesDir))
-	if err != nil {
-		return nil, err
-	}
-	defer root.Close()
-
-	path := filepath.Join(ref.Name, ref.Version, "MODULE.bazel")
-	file, err := root.OpenFile(path, verificationOpenFlags(), 0)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	info, err := file.Stat()
-	if err != nil {
-		return nil, err
-	}
-	if !info.Mode().IsRegular() {
-		return nil, fmt.Errorf("cached MODULE.bazel is not a regular file")
-	}
-	if info.Size() > maxCachedModuleBazelSize {
-		return nil, fmt.Errorf("cached MODULE.bazel exceeds %d-byte limit", maxCachedModuleBazelSize)
-	}
-
-	content, err := io.ReadAll(io.LimitReader(file, maxCachedModuleBazelSize+1))
-	if err != nil {
-		return nil, err
-	}
-	if len(content) > maxCachedModuleBazelSize {
-		return nil, fmt.Errorf("cached MODULE.bazel exceeds %d-byte limit", maxCachedModuleBazelSize)
-	}
-	return content, nil
 }
 
 func printVerifyText(w io.Writer, statuses []moduleStatus) {

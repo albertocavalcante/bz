@@ -1,18 +1,18 @@
 //go:build unix
 
-package cache
+package registry
 
 import (
 	"os"
 	"syscall"
 )
 
-func verificationOpenFlags() int {
+func registryReadFlags() int {
 	return os.O_RDONLY | syscall.O_NONBLOCK
 }
 
 // Force directory traversal before opening the last component. A direct
 // directory open can otherwise block on a FIFO before checking its type.
-func verificationDirectoryPath(path string) string {
+func registryDirectoryPath(path string) string {
 	return path + "/."
 }
