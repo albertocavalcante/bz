@@ -194,24 +194,24 @@ func (r *runner) syncVersion(ctx context.Context, moduleName, version string) (w
 	// Check if already exists in destination
 	moduleBazelPath := path.Join(moduleName, version, registry.ModuleBazelFile)
 	sourceJSONPath := path.Join(moduleName, version, registry.SourceFile)
-	var hasModule, hasSource bool
+	var state mirrorVersionState
 	if r.local != nil {
-		hasModule, err = completeFile(r.local, moduleBazelPath, func(data []byte) bool { return validModule(data, moduleName, version) })
-		if err != nil {
-			return false, fmt.Errorf("check MODULE.bazel: %w", err)
-		}
-		hasSource, err = completeFile(r.local, sourceJSONPath, validSource)
-		if err != nil {
-			return false, fmt.Errorf("check source.json: %w", err)
-		}
+		state, err = readMirrorVersion(r.local, moduleName, version)
 	} else {
-		hasModule, err = r.dest.Exists(ctx, moduleBazelPath)
-		if err != nil {
-			return false, fmt.Errorf("check exists: %w", err)
-		}
+		state.hasModule, err = r.dest.Exists(ctx, moduleBazelPath)
 	}
+	if err != nil {
+		return false, fmt.Errorf("inspect destination: %w", err)
+	}
+	hasModule, hasSource := state.hasModule, state.hasSource
 
 	if hasModule && (r.local == nil || hasSource) {
+		if r.local != nil {
+			written, err := r.syncMirrorAttachments(ctx, moduleName, version, state.attachments)
+			if written || err != nil {
+				return written, err
+			}
+		}
 		if r.opts.Verbose {
 			slog.Info("skipped existing version", "module", moduleName, "version", version)
 		}
@@ -232,7 +232,19 @@ func (r *runner) syncVersion(ctx context.Context, moduleName, version string) (w
 		return false, err
 	}
 
-	// Publish the local version marker after its source description.
+	// Publish attachments before the descriptor and the local version marker.
+	if r.local != nil {
+		attachments := state.attachments
+		if !hasSource {
+			attachments, err = mirrorAttachments(moduleName, version, sourceJSON)
+			if err != nil {
+				return false, err
+			}
+		}
+		if _, err := r.syncMirrorAttachments(ctx, moduleName, version, attachments); err != nil {
+			return false, err
+		}
+	}
 	if r.local != nil && !hasSource {
 		if err := r.dest.Put(ctx, sourceJSONPath, sourceJSON); err != nil {
 			return false, fmt.Errorf("write source.json: %w", err)

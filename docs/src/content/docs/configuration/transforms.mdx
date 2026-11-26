@@ -71,25 +71,19 @@ This is useful for:
 }
 ```
 
-### Include Patches
+### Patch and Overlay Files
 
-Copy patch files along with module metadata:
+A `registry.file` destination always copies the patches and overlays
+required by `source.json`. Their checksums are verified before the
+version is added to the destination catalog. Supported checksums are
+SHA-1, SHA-256, SHA-384, and SHA-512. Attachment paths must use portable
+registry names. Each path segment starts with a letter, digit,
+underscore, plus or hyphen and can also contain periods after the first
+character. A descriptor that requires a dotfile will fail publication.
 
-```starlark
-sync.workflow(
-    name = "with-patches",
-    origin = bcr,
-    destination = mirror,
-    modules = ["rules_go"],
-    transforms = [
-        sync.include_patches(),
-    ],
-)
-```
-
-<Aside type="note">
-This copies any patches referenced in `source.json` to the destination.
-</Aside>
+Existing workflows can retain `sync.include_patches()`. File mirrors use
+the descriptor to determine the required files. Auxiliary transfer to
+Git and HTTP PUT publishers is still pending.
 
 ## Combining Transforms
 
@@ -111,8 +105,6 @@ sync.workflow(
             replacement = "https://artifactory.internal/github-proxy",
         ),
 
-        # Finally: include any patches
-        sync.include_patches(),
     ],
 )
 ```

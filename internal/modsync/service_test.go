@@ -2,8 +2,11 @@ package modsync
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -623,17 +626,20 @@ func TestService_Run_RewritesOnlySourceURLs(t *testing.T) {
 	t.Parallel()
 	const name = "example"
 	const version = "1.0.0"
-	const archive = `{
+	const patch = "--- a/message.txt\n+++ b/message.txt\n@@ -1 +1 @@\n-before\n+after\n"
+	checksum := sha256.Sum256([]byte(patch))
+	integrity := "sha256-" + base64.StdEncoding.EncodeToString(checksum[:])
+	archive := fmt.Sprintf(`{
   "url": "https://upstream.example/source.tar.gz",
   "mirror_urls": ["https://backup.example/source.tar.gz", "https://upstream.example/backup.tar.gz"],
   "urls": ["https://upstream.example/legacy.tar.gz"],
   "archive": "https://upstream.example/other.tar.gz",
   "archive_type": "tar.gz",
   "type": "archive",
-  "patches": {"second.patch":"sha256-2", "first.patch":"sha256-1"},
+  "patches": {"second.patch":%[1]q, "first.patch":%[1]q},
   "extra": { "url": "https://upstream.example/info", "number": 9007199254740993, "raw": "\u0061" }
-}`
-	const git = `{"url":"https://upstream.example/extension","mirror_urls":{"extension":true},"remote":"https://upstream.example/project.git","commit":"abc","tag":"v1","type":"git_repository","patches":{"fix.patch":"sha256-a"}}`
+}`, integrity)
+	git := fmt.Sprintf(`{"url":"https://upstream.example/extension","mirror_urls":{"extension":true},"remote":"https://upstream.example/project.git","commit":"abc","tag":"v1","type":"git_repository","patches":{"fix.patch":%q}}`, integrity)
 	const local = `{"urls":["https://upstream.example/extension"],"archive":"https://upstream.example/other","path":"relative/dependency","type":"local_path","extension":true}`
 	tests := []struct {
 		name       string
@@ -666,6 +672,15 @@ func TestService_Run_RewritesOnlySourceURLs(t *testing.T) {
 					sourcePath := filepath.FromSlash(registry.SourcePath(name, version))
 					if err := os.WriteFile(filepath.Join(originDir, sourcePath), []byte(tt.descriptor), 0o644); err != nil {
 						t.Fatal(err)
+					}
+					patchDir := filepath.Join(originDir, filepath.Dir(sourcePath), "patches")
+					if err := os.MkdirAll(patchDir, 0o755); err != nil {
+						t.Fatal(err)
+					}
+					for _, patchName := range []string{"first.patch", "second.patch", "fix.patch"} {
+						if err := os.WriteFile(filepath.Join(patchDir, patchName), []byte(patch), 0o644); err != nil {
+							t.Fatal(err)
+						}
 					}
 					origin := &config.Registry{Type: kind, URL: originDir}
 					if kind == "http" {

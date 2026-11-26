@@ -28,7 +28,7 @@ This guide shows you how to create a local mirror of the [Bazel Central Registry
    bcr = registry.http("https://bcr.bazel.build")
 
    # Destination: Local filesystem
-   mirror = registry.file("/var/bazel-registry")
+   mirror = registry.file("./bazel-registry")
 
    # Modules to mirror (add your dependencies here)
    modules = [
@@ -60,16 +60,21 @@ This guide shows you how to create a local mirror of the [Bazel Central Registry
    bz mod sync --workflow mirror
    ```
 
-3. **Configure Bazel to use the mirror**
+3. **Check the mirrored version**
 
-   <Aside type="caution">
-   The mirrored tree is not yet in the `modules/` registry layout that Bazel expects, so Bazel cannot consume it as is. This is being fixed.
-   </Aside>
-
-   Add to your `.bazelrc`:
+   Run `mod info` against the generated registry. Replace the example
+   version with one published by your workflow.
 
    ```bash
-   common --registry=file:///var/bazel-registry
+   bz mod info rules_go@0.50.1 --offline --registry "$PWD/bazel-registry"
+   ```
+
+4. **Configure Bazel to use the mirror**
+
+   Add the mirror's absolute filesystem path to your `.bazelrc`.
+
+   ```bash
+   common --registry=file:///absolute/path/to/bazel-registry
    common --registry=https://bcr.bazel.build
    ```
 
@@ -77,7 +82,14 @@ This guide shows you how to create a local mirror of the [Bazel Central Registry
    List your local mirror first so Bazel checks it before BCR.
    </Aside>
 
-4. **Set up regular syncing**
+   To use the mirror without BCR, include every module and version your
+   Bazel invocation resolves, including Bazel's implicit dependencies.
+   Bazel also needs access to the source archives named in each
+   `source.json`. Sync copies registry metadata, patches, and overlays.
+   Host the source archives separately or prepopulate Bazel's download
+   cache for a disconnected build.
+
+5. **Set up regular syncing**
 
    Create a cron job or CI pipeline to keep the mirror updated:
 
@@ -167,14 +179,14 @@ Serve your mirror via HTTP using any web server:
 
 ```bash
 # Using Python
-cd /var/bazel-registry
+cd bazel-registry
 python -m http.server 8080
 
 # Using nginx
 # Add to nginx.conf:
 # server {
 #     listen 8080;
-#     root /var/bazel-registry;
+#     root /absolute/path/to/bazel-registry;
 #     autoindex on;
 # }
 ```
@@ -185,23 +197,10 @@ Then configure Bazel:
 common --registry=http://localhost:8080
 ```
 
-### Git Repository
-
-Push the mirror to a git repository:
-
-```starlark
-team_mirror = registry.git(
-    url = "https://github.com/myorg/bazel-registry.git",
-    branch = "main",
-)
-
-sync.workflow(
-    name = "git-mirror",
-    origin = bcr,
-    destination = team_mirror,
-    modules = modules,
-)
-```
+To serve the registry from a Git checkout, sync into a `registry.file`
+destination inside that checkout and publish the generated `modules/`
+tree. The Git publisher's module-relative layout is a separate output
+format.
 
 ## Troubleshooting
 
@@ -211,12 +210,12 @@ If Bazel can't find a module:
 
 1. Verify the module exists in your mirror:
    ```bash
-   ls /var/bazel-registry/modules/
+   ls bazel-registry/modules/
    ```
 
 2. Check you've synced the required version:
    ```bash
-   ls /var/bazel-registry/modules/rules_go/
+   ls bazel-registry/modules/rules_go/
    ```
 
 3. Run sync again with verbose output:
