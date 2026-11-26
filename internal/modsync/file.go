@@ -175,6 +175,15 @@ func readMirrorVersion(dest *publisher.FilePublisher, module, version string) (m
 	return state, nil
 }
 
+// completeness checks attachments only after both core files are valid.
+func (s mirrorVersionState) completeness(dest *publisher.FilePublisher, module, version string) (bool, []versionAttachment, error) {
+	if !s.hasModule || !s.hasSource {
+		return false, nil, nil
+	}
+	missing, err := missingMirrorAttachments(dest, module, version, s.attachments)
+	return true, missing, err
+}
+
 type localMetadata struct {
 	fields map[string]json.RawMessage
 	value  registry.Metadata
@@ -239,14 +248,11 @@ func (m *localMetadata) write(dest *publisher.FilePublisher, module string, orig
 		if err != nil {
 			return err
 		}
-		if !state.hasModule || !state.hasSource {
-			continue
-		}
-		missing, err := missingMirrorAttachments(dest, module, version, state.attachments)
+		completeCore, missing, err := state.completeness(dest, module, version)
 		if err != nil {
 			return err
 		}
-		if len(missing) == 0 {
+		if completeCore && len(missing) == 0 {
 			known[version] = true
 		}
 	}

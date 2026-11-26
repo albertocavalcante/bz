@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/albertocavalcante/bz/internal/testutil"
@@ -190,7 +191,14 @@ func TestModSync_UnknownWorkflowListsAvailable(t *testing.T) {
 
 func TestModSync_HTTPToFileRegistry(t *testing.T) {
 	syncEnv(t)
-	server := httptest.NewServer(http.FileServer(http.Dir(fixtureOrigin(t))))
+	var versionReads atomic.Int64
+	files := http.FileServer(http.Dir(fixtureOrigin(t)))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/metadata.json") {
+			versionReads.Add(1)
+		}
+		files.ServeHTTP(w, r)
+	}))
 	defer server.Close()
 	cfg, dest := writeSyncConfig(t, server.URL, `"rules_go"`, "")
 	data, err := os.ReadFile(cfg)
@@ -229,12 +237,51 @@ func TestModSync_HTTPToFileRegistry(t *testing.T) {
 		}
 	}
 	run()
-	if err := os.Remove(filepath.Join(dest, "modules", "rules_go", "0.50.1", "source.json")); err != nil {
+	versionDir := filepath.Join(dest, "modules", "rules_go", "0.50.1")
+	modulePath, sourcePath := filepath.Join(versionDir, "MODULE.bazel"), filepath.Join(versionDir, "source.json")
+	moduleBytes, err := os.ReadFile(modulePath)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if err := os.WriteFile(sourcePath, []byte(`{"patches":{"broken":"sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(versionDir, "patches", "broken"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(modulePath); err != nil {
+		t.Fatal(err)
+	}
+	versionReads.Store(0)
+	out, stderr, code := runCLI(t, "mod", "sync", "-c", cfg, "--workflow", "mirror", "--dry-run")
+	if code != 0 || versionReads.Load() != 0 {
+		t.Fatalf("incomplete core preview: %d %s %s; origin version reads = %d", code, out, stderr, versionReads.Load())
+	}
+	if err := os.WriteFile(modulePath, moduleBytes, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(filepath.Join(versionDir, "patches")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(sourcePath); err != nil {
+		t.Fatal(err)
+	}
+	metadataPath := filepath.Join(dest, "modules", "rules_go", "metadata.json")
+	if err := os.WriteFile(metadataPath, []byte(`{"versions":["0.49.0"]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	versionReads.Store(0)
+	out, stderr, code = runCLI(t, "mod", "sync", "-c", cfg, "--workflow", "mirror", "--dry-run")
+	if code != 0 || versionReads.Load() != 0 {
+		t.Fatalf("preview: %d %s %s; origin version reads = %d", code, out, stderr, versionReads.Load())
 	}
 	run()
 	if _, err := os.Stat(filepath.Join(dest, "modules", "rules_go", "0.50.1", "source.json")); err != nil {
 		t.Fatal(err)
+	}
+	metadata, err = os.ReadFile(metadataPath)
+	if err != nil || json.Unmarshal(metadata, &catalog) != nil || !reflect.DeepEqual(catalog.Versions, []string{"0.49.0", "0.50.1"}) {
+		t.Fatalf("repaired metadata = %s, %v", metadata, err)
 	}
 }
 

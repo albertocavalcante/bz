@@ -142,38 +142,34 @@ func missingMirrorAttachments(dest *publisher.FilePublisher, module, version str
 	return missing, nil
 }
 
-// syncMirrorAttachments copies descriptor-referenced files before the
+// publishMirrorAttachments copies descriptor-referenced files before the
 // version is advertised in metadata.json. Complete local files are reused.
-func (r *runner) syncMirrorAttachments(ctx context.Context, module, version string, attachments []versionAttachment) (bool, error) {
-	missing, err := missingMirrorAttachments(r.local, module, version, attachments)
-	if err != nil || len(missing) == 0 {
-		return false, err
-	}
-	if r.opts.DryRun {
-		return true, nil
+func (r *runner) publishMirrorAttachments(ctx context.Context, module, version string, attachments, missing []versionAttachment) error {
+	if len(missing) == 0 {
+		return nil
 	}
 	source, ok := r.source.(registry.VersionFileGetter)
 	if !ok {
-		return false, fmt.Errorf("origin does not support fetching registry attachments")
+		return fmt.Errorf("origin does not support fetching registry attachments")
 	}
 	prefix := module + "/" + version + "/"
 	for _, attachment := range missing {
 		data, err := attachment.read(ctx, source, module, version)
 		if err != nil {
-			return false, err
+			return err
 		}
 		if err := r.local.Put(ctx, prefix+attachment.path, data); err != nil {
-			return false, fmt.Errorf("publish %s: %w", attachment.path, err)
+			return fmt.Errorf("publish %s: %w", attachment.path, err)
 		}
 	}
 	// Recheck all files after publishing. Distinct reference paths can alias
 	// on filesystems with case-insensitive names.
 	remaining, err := missingMirrorAttachments(r.local, module, version, attachments)
 	if err != nil {
-		return false, err
+		return err
 	}
 	if len(remaining) != 0 {
-		return false, fmt.Errorf("published attachment %s failed verification", remaining[0].path)
+		return fmt.Errorf("published attachment %s failed verification", remaining[0].path)
 	}
-	return true, nil
+	return nil
 }

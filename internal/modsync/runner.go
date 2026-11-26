@@ -218,26 +218,36 @@ func (r *runner) syncVersion(ctx context.Context, moduleName, version string) (c
 		return false, fmt.Errorf("inspect destination: %w", err)
 	}
 	hasModule, hasSource := state.hasModule, state.hasSource
-
-	if hasModule && (r.local == nil || hasSource) {
-		if r.local != nil {
-			changed, err := r.syncMirrorAttachments(ctx, moduleName, version, state.attachments)
-			if changed || err != nil {
-				return changed, err
-			}
+	completeCore := hasModule
+	var missing []versionAttachment
+	if r.local != nil {
+		completeCore, missing, err = state.completeness(r.local, moduleName, version)
+		if err != nil {
+			return false, err
 		}
+	}
+
+	if completeCore && len(missing) == 0 {
 		if r.opts.Verbose {
 			slog.Info("skipped existing version", "module", moduleName, "version", version)
 		}
 		return false, nil
 	}
 
-	if r.opts.Verbose {
+	if !completeCore && r.opts.Verbose {
 		slog.Info("syncing version", "module", moduleName, "version", version)
 	}
 
 	if r.opts.DryRun {
-		slog.Info("would sync version (dry-run)", "module", moduleName, "version", version)
+		if !completeCore {
+			slog.Info("would sync version (dry-run)", "module", moduleName, "version", version)
+		}
+		return true, nil
+	}
+	if completeCore {
+		if err := r.publishMirrorAttachments(ctx, moduleName, version, state.attachments, missing); err != nil {
+			return false, err
+		}
 		return true, nil
 	}
 
@@ -248,14 +258,7 @@ func (r *runner) syncVersion(ctx context.Context, moduleName, version string) (c
 
 	// Publish attachments before the descriptor and the local version marker.
 	if r.local != nil {
-		attachments := state.attachments
-		if !hasSource {
-			attachments, err = inspectMirrorSource(moduleName, version, sourceJSON)
-			if err != nil {
-				return false, err
-			}
-		}
-		if _, err := r.syncMirrorAttachments(ctx, moduleName, version, attachments); err != nil {
+		if err := r.prepareMirrorAttachments(ctx, moduleName, version, sourceJSON, state); err != nil {
 			return false, err
 		}
 	}
@@ -276,6 +279,22 @@ func (r *runner) syncVersion(ctx context.Context, moduleName, version string) (c
 	}
 
 	return true, nil
+}
+
+func (r *runner) prepareMirrorAttachments(ctx context.Context, module, version string, source []byte, state mirrorVersionState) error {
+	attachments := state.attachments
+	var err error
+	if !state.hasSource {
+		attachments, err = inspectMirrorSource(module, version, source)
+		if err != nil {
+			return err
+		}
+	}
+	missing, err := missingMirrorAttachments(r.local, module, version, attachments)
+	if err != nil {
+		return err
+	}
+	return r.publishMirrorAttachments(ctx, module, version, attachments, missing)
 }
 
 func (r *runner) fetchVersion(ctx context.Context, moduleName, version string, hasModule, hasSource bool) ([]byte, []byte, error) {
