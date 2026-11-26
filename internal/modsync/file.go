@@ -140,15 +140,43 @@ func validSource(data []byte) bool {
 	return json.Unmarshal(data, &object) == nil && object != nil
 }
 
-func completeFile(dest *publisher.FilePublisher, name string, valid func([]byte) bool) (bool, error) {
+func readCompleteFile(dest *publisher.FilePublisher, name string, valid func([]byte) bool) ([]byte, error) {
 	data, err := dest.Read(name)
 	if errors.Is(err, fs.ErrNotExist) {
-		return false, nil
+		return nil, nil
 	}
 	if err != nil {
-		return false, err
+		return nil, err
 	}
-	return valid(data), nil
+	if !valid(data) {
+		return nil, nil
+	}
+	return data, nil
+}
+
+type mirrorVersionState struct {
+	hasModule   bool
+	hasSource   bool
+	attachments []versionAttachment
+}
+
+func readMirrorVersion(dest *publisher.FilePublisher, module, version string) (mirrorVersionState, error) {
+	moduleData, err := readCompleteFile(dest, path.Join(module, version, registry.ModuleBazelFile), func(data []byte) bool {
+		return validModule(data, module, version)
+	})
+	if err != nil {
+		return mirrorVersionState{}, fmt.Errorf("check MODULE.bazel: %w", err)
+	}
+	state := mirrorVersionState{hasModule: moduleData != nil}
+	sourceData, err := readCompleteFile(dest, path.Join(module, version, registry.SourceFile), validSource)
+	if err != nil {
+		return state, fmt.Errorf("check source.json: %w", err)
+	}
+	if sourceData != nil {
+		state.attachments, err = mirrorAttachments(module, version, sourceData)
+		state.hasSource = err == nil
+	}
+	return state, nil
 }
 
 type localMetadata struct {
@@ -208,18 +236,21 @@ func (m *localMetadata) write(dest *publisher.FilePublisher, module string, orig
 		known[version] = true
 	}
 	for _, version := range m.value.Versions {
-		if coord.ValidateVersion(version) != nil {
+		if known[version] || coord.ValidateVersion(version) != nil {
 			continue
 		}
-		moduleOK, err := completeFile(dest, path.Join(module, version, registry.ModuleBazelFile), func(data []byte) bool { return validModule(data, module, version) })
+		state, err := readMirrorVersion(dest, module, version)
 		if err != nil {
 			return err
 		}
-		sourceOK, err := completeFile(dest, path.Join(module, version, registry.SourceFile), validSource)
+		if !state.hasModule || !state.hasSource {
+			continue
+		}
+		missing, err := missingMirrorAttachments(dest, module, version, state.attachments)
 		if err != nil {
 			return err
 		}
-		if moduleOK && sourceOK {
+		if len(missing) == 0 {
 			known[version] = true
 		}
 	}

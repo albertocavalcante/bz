@@ -138,6 +138,17 @@ func (r *FileRegistry) GetSource(ctx context.Context, module, version string) ([
 	return data, nil
 }
 
+// GetVersionFile reads a bounded auxiliary file from the version directory.
+func (r *FileRegistry) GetVersionFile(_ context.Context, module, version, name string) ([]byte, error) {
+	rel, err := versionFilePath(module, version, name)
+	if err != nil {
+		return nil, err
+	}
+	bounded := *r
+	bounded.bounded = true
+	return bounded.readFile(rel)
+}
+
 // modulesName checks a slash-separated registry path ("modules/...") and
 // returns it relative to the modules directory. This is the lexical first
 // layer; reads then go through os.Root.

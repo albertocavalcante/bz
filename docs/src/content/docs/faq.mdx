@@ -70,7 +70,7 @@ See the [Mirror BCR guide](/bz/guides/mirror-bcr/) for step-by-step instructions
 Sync copies module files from a source registry to a destination:
 - `MODULE.bazel` - The module definition
 - `source.json` - Source download information
-- `patches/` - Any patches (if `include_patches` transform is used)
+- `patches/` and `overlay/` - Files referenced by the source descriptor in a filesystem mirror
 
 ### Does sync download the actual source archives?
 

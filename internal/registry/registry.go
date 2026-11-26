@@ -17,6 +17,8 @@ import (
 	"errors"
 	"path"
 	"strings"
+
+	"github.com/albertocavalcante/bz/internal/coord"
 )
 
 // Canonical directory and file names for BCR-compatible registries.
@@ -119,6 +121,22 @@ type SourceGetter interface {
 	// GetSource fetches the source.json content for a specific version.
 	// Returns ErrModuleNotFound or ErrVersionNotFound as appropriate.
 	GetSource(ctx context.Context, module, version string) ([]byte, error)
+}
+
+// VersionFileGetter reads a registry file relative to a module's version directory.
+type VersionFileGetter interface {
+	GetVersionFile(ctx context.Context, module, version, name string) ([]byte, error)
+}
+
+func versionFilePath(module, version, name string) (string, error) {
+	if err := coord.Validate(module, version); err != nil {
+		return "", err
+	}
+	relative := module + "/" + version + "/" + name
+	if err := coord.ValidateRegistryPath(relative); err != nil {
+		return "", err
+	}
+	return ModulesDir + "/" + relative, nil
 }
 
 // Metadata represents the contents of a module's metadata.json.

@@ -278,9 +278,12 @@ func (r *HTTPRegistry) fetch(ctx context.Context, url string) ([]byte, error) {
 		return nil, fmt.Errorf("HTTP %d from %s", resp.StatusCode, bzconfig.RedactURL(url))
 	}
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxFetchResponseBytes))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxFetchResponseBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("read response: %w", err)
+	}
+	if len(body) > maxFetchResponseBytes {
+		return nil, fmt.Errorf("response exceeds %d-byte limit", maxFetchResponseBytes)
 	}
 
 	return body, nil
@@ -326,6 +329,19 @@ func (r *HTTPRegistry) GetSource(ctx context.Context, module, version string) ([
 	}
 
 	return data, nil
+}
+
+// GetVersionFile fetches an auxiliary file from the version directory.
+func (r *HTTPRegistry) GetVersionFile(ctx context.Context, module, version, name string) ([]byte, error) {
+	rel, err := versionFilePath(module, version, name)
+	if err != nil {
+		return nil, err
+	}
+	url, err := r.url(rel)
+	if err != nil {
+		return nil, err
+	}
+	return r.fetch(ctx, url)
 }
 
 // url appends a slash-separated registry path (built from validated
