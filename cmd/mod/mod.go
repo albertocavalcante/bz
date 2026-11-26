@@ -38,6 +38,17 @@ func createRegistry(useOfflineCache bool) (registry.Registry, error) {
 	if err != nil {
 		return nil, err
 	}
+	explicitRegistry := registryFlag != "" || cli.GetRegistry() != ""
+	offline := cli.IsEffectivelyOffline()
+	if useOfflineCache && offline && !explicitRegistry {
+		projectRegistry, configured, err := cli.ProjectRegistry()
+		if err != nil {
+			return nil, err
+		}
+		if configured {
+			registryURL, explicitRegistry = projectRegistry, true
+		}
+	}
 
 	// Create the inner registry
 	inner, err := registry.New(registryURL)
@@ -50,14 +61,14 @@ func createRegistry(useOfflineCache bool) (registry.Registry, error) {
 
 	// Wrap with network-aware registry that respects CLI options
 	opts := &cli.Options{
-		Offline:       cli.IsEffectivelyOffline(),
+		Offline:       offline,
 		PreferOffline: cli.IsEffectivelyPreferOffline(),
 	}
 
 	// Cache entries have no origin metadata. Only use them for the implicit
 	// default registry in strict offline mode, never for an explicit registry.
 	var cache registry.Registry
-	if useOfflineCache && opts.Offline && registryFlag == "" && cli.GetRegistry() == "" {
+	if useOfflineCache && opts.Offline && !explicitRegistry {
 		dir, err := cachepath.Resolve("")
 		if err != nil {
 			return nil, err
