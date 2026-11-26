@@ -29,8 +29,20 @@ type Options struct {
 type Result struct {
 	ModulesProcessed int
 	ModulesSkipped   int // Already existed
-	ModulesWritten   int
+	ModulesWritten   int // Versions actually written or repaired
+	VersionsPlanned  int // Versions identified for writing or repair in a dry run
 	Errors           []error
+}
+
+// recordVersion records an inspected version or a completed change.
+func (r *Result) recordVersion(changed, dryRun bool) {
+	if !changed {
+		r.ModulesSkipped++
+	} else if dryRun {
+		r.VersionsPlanned++
+	} else {
+		r.ModulesWritten++
+	}
 }
 
 // Run executes a named workflow.

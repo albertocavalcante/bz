@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -246,5 +247,89 @@ func TestModSync_DryRunDoesNotCreateFileDestination(t *testing.T) {
 	}
 	if _, err := os.Stat(dest); !os.IsNotExist(err) {
 		t.Fatalf("destination exists or stat failed: %v", err)
+	}
+	for _, want := range []string{"Dry run complete:", "Versions planned:  2", "Versions written:  0", "Versions skipped:  0"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in %s", want, out)
+		}
+	}
+}
+
+func TestModSync_PreviewMixedAndApply(t *testing.T) {
+	syncEnv(t)
+	cfg, dest := writeSyncConfig(t, fixtureOrigin(t), `"rules_go", "bazel_skylib"`, "")
+	run := func(extra ...string) string {
+		t.Helper()
+		args := append([]string{"mod", "sync", "-c", cfg, "--workflow", "mirror"}, extra...)
+		out, stderr, code := runCLI(t, args...)
+		if code != 0 {
+			t.Fatalf("sync: %d %s %s", code, out, stderr)
+		}
+		return out
+	}
+	run("--modules", "bazel_skylib")
+	snapshot := func() map[string]string {
+		t.Helper()
+		files := map[string]string{}
+		err := filepath.WalkDir(dest, func(p string, d os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			rel, err := filepath.Rel(dest, p)
+			if err != nil {
+				return err
+			}
+			if d.IsDir() {
+				files[rel] = "<dir>"
+				return nil
+			}
+			data, err := os.ReadFile(p)
+			if err != nil {
+				return err
+			}
+			files[rel] = string(data)
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return files
+	}
+	before := snapshot()
+	out := run("--dry-run")
+	for _, want := range []string{"Versions planned:  2", "Versions written:  0", "Versions skipped:  1"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in %s", want, out)
+		}
+	}
+	if !reflect.DeepEqual(before, snapshot()) {
+		t.Fatal("preview changed destination tree")
+	}
+	out = run()
+	for _, want := range []string{"Sync complete:", "Modules written:   2", "Modules skipped:   1"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in %s", want, out)
+		}
+	}
+	out = run("--dry-run")
+	if !strings.Contains(out, "Versions planned:  0") || !strings.Contains(out, "Versions skipped:  3") {
+		t.Errorf("unexpected completed preview: %s", out)
+	}
+}
+
+func TestModSync_PreviewDuplicateModules(t *testing.T) {
+	syncEnv(t)
+	cfg, dest := writeSyncConfig(t, fixtureOrigin(t), `"bazel_skylib", "bazel_skylib"`, "")
+	out, stderr, code := runCLI(t, "mod", "sync", "-c", cfg, "--workflow", "mirror", "--dry-run")
+	if code != 0 {
+		t.Fatalf("sync: %d %s %s", code, out, stderr)
+	}
+	for _, want := range []string{"Versions planned:  1", "Versions skipped:  1", "Versions written:  0"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in %s", want, out)
+		}
+	}
+	if _, err := os.Stat(dest); !os.IsNotExist(err) {
+		t.Fatalf("preview created destination: %v", err)
 	}
 }
