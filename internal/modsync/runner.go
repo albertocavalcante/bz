@@ -18,6 +18,7 @@ type runner struct {
 	workflow *config.Workflow
 	source   registry.Registry
 	dest     publisher.Publisher
+	local    *publisher.FilePublisher
 	opts     Options
 }
 
@@ -29,16 +30,23 @@ func newRunner(workflow *config.Workflow, opts Options) (*runner, error) {
 		return nil, fmt.Errorf("creating source registry: %w", err)
 	}
 
+	// Local mirrors must never publish files that their own reader cannot read.
+	if workflow.Destination != nil && workflow.Destination.Type == registry.TypeFile && workflow.Origin != nil && workflow.Origin.Type == registry.TypeFile {
+		source = registry.NewCacheRegistry(workflow.Origin.URL)
+	}
+
 	// Create destination publisher
-	dest, err := publisherFromConfig(workflow.Destination)
+	dest, err := publisherFromConfig(workflow.Destination, opts.DryRun)
 	if err != nil {
 		return nil, fmt.Errorf("creating destination publisher: %w", err)
 	}
 
+	local, _ := dest.(*publisher.FilePublisher)
 	return &runner{
 		workflow: workflow,
 		source:   source,
 		dest:     dest,
+		local:    local,
 		opts:     opts,
 	}, nil
 }
@@ -101,6 +109,14 @@ func (r *runner) syncModule(ctx context.Context, moduleName string, result *Resu
 		return err
 	}
 
+	if r.local != nil && !r.opts.DryRun {
+		release, err := r.local.LockRegistry(ctx)
+		if err != nil {
+			return fmt.Errorf("lock destination: %w", err)
+		}
+		defer release()
+	}
+
 	// Get metadata from source
 	meta, err := r.source.GetMetadata(ctx, moduleName)
 	if err != nil {
@@ -108,21 +124,28 @@ func (r *runner) syncModule(ctx context.Context, moduleName string, result *Resu
 	}
 
 	// Filter versions based on workflow.Versions
-	versions, err := r.selectVersions(meta)
+	selectionMeta := normalizedSelectionMetadata(meta)
+	versions, err := r.selectVersions(selectionMeta)
 	if err != nil {
 		return err
 	}
-	if len(versions) == 0 {
-		if r.opts.Verbose {
-			slog.Info("no versions match selector", "module", moduleName)
-		}
-		return nil
+	if len(versions) == 0 && r.opts.Verbose {
+		slog.Info("no versions match selector", "module", moduleName)
 	}
 
 	// Check if we should skip yanked versions
 	skipYanked := r.hasTransform(config.Transform{Type: "skip_yanked"})
 
+	var metadata *localMetadata
+	if r.local != nil && !r.opts.DryRun {
+		metadata, err = readLocalMetadata(r.local, moduleName)
+		if err != nil {
+			return fmt.Errorf("read destination metadata: %w", err)
+		}
+	}
+
 	// Process each version
+	var available []string
 	for _, version := range versions {
 		// Versions come from untrusted source metadata; an invalid one fails
 		// only that version and nothing is written for it.
@@ -134,7 +157,7 @@ func (r *runner) syncModule(ctx context.Context, moduleName string, result *Resu
 
 		// Skip yanked versions if transform is set
 		if skipYanked {
-			if _, yanked := meta.YankedVersions[version]; yanked {
+			if _, yanked := yankReason(meta.YankedVersions, version); yanked {
 				if r.opts.Verbose {
 					slog.Info("skipped yanked version", "module", moduleName, "version", version)
 				}
@@ -148,6 +171,9 @@ func (r *runner) syncModule(ctx context.Context, moduleName string, result *Resu
 			continue
 		}
 
+		if metadata != nil {
+			available = append(available, version)
+		}
 		if written {
 			result.ModulesWritten++
 		} else {
@@ -155,19 +181,37 @@ func (r *runner) syncModule(ctx context.Context, moduleName string, result *Resu
 		}
 	}
 
+	if metadata != nil && (len(available) > 0 || metadata.fields != nil) {
+		if err := metadata.write(r.local, moduleName, meta, available); err != nil {
+			return fmt.Errorf("write destination metadata: %w", err)
+		}
+	}
 	return nil
 }
 
 // syncVersion syncs a single module version.
 func (r *runner) syncVersion(ctx context.Context, moduleName, version string) (written bool, err error) {
 	// Check if already exists in destination
-	moduleBazelPath := path.Join(moduleName, version, "MODULE.bazel")
-	exists, err := r.dest.Exists(ctx, moduleBazelPath)
-	if err != nil {
-		return false, fmt.Errorf("check exists: %w", err)
+	moduleBazelPath := path.Join(moduleName, version, registry.ModuleBazelFile)
+	sourceJSONPath := path.Join(moduleName, version, registry.SourceFile)
+	var hasModule, hasSource bool
+	if r.local != nil {
+		hasModule, err = completeFile(r.local, moduleBazelPath, func(data []byte) bool { return validModule(data, moduleName, version) })
+		if err != nil {
+			return false, fmt.Errorf("check MODULE.bazel: %w", err)
+		}
+		hasSource, err = completeFile(r.local, sourceJSONPath, validSource)
+		if err != nil {
+			return false, fmt.Errorf("check source.json: %w", err)
+		}
+	} else {
+		hasModule, err = r.dest.Exists(ctx, moduleBazelPath)
+		if err != nil {
+			return false, fmt.Errorf("check exists: %w", err)
+		}
 	}
 
-	if exists {
+	if hasModule && (r.local == nil || hasSource) {
 		if r.opts.Verbose {
 			slog.Info("skipped existing version", "module", moduleName, "version", version)
 		}
@@ -183,40 +227,65 @@ func (r *runner) syncVersion(ctx context.Context, moduleName, version string) (w
 		return true, nil
 	}
 
-	// Read MODULE.bazel from source
-	moduleBazel, err := r.source.GetModuleBazel(ctx, moduleName, version)
+	moduleBazel, sourceJSON, err := r.fetchVersion(ctx, moduleName, version, hasModule, hasSource)
 	if err != nil {
-		return false, fmt.Errorf("get MODULE.bazel: %w", err)
+		return false, err
 	}
 
-	// Read source.json from source
-	sourceJSON, err := r.getSourceJSON(ctx, moduleName, version)
-	if err != nil {
-		return false, fmt.Errorf("get source.json: %w", err)
-	}
-
-	// Apply transformations to source.json
-	if len(r.workflow.Transformations) > 0 && sourceJSON != nil {
-		sourceJSON, err = applyTransforms(r.workflow.Transformations, sourceJSON)
-		if err != nil {
-			return false, fmt.Errorf("apply transforms: %w", err)
+	// Publish the local version marker after its source description.
+	if r.local != nil && !hasSource {
+		if err := r.dest.Put(ctx, sourceJSONPath, sourceJSON); err != nil {
+			return false, fmt.Errorf("write source.json: %w", err)
 		}
 	}
-
-	// Write MODULE.bazel to destination
-	if err := r.dest.Put(ctx, moduleBazelPath, moduleBazel); err != nil {
-		return false, fmt.Errorf("write MODULE.bazel: %w", err)
+	if !hasModule {
+		if err := r.dest.Put(ctx, moduleBazelPath, moduleBazel); err != nil {
+			return false, fmt.Errorf("write MODULE.bazel: %w", err)
+		}
 	}
-
-	// Write source.json to destination (if available)
-	if sourceJSON != nil {
-		sourceJSONPath := path.Join(moduleName, version, "source.json")
+	if r.local == nil && sourceJSON != nil {
 		if err := r.dest.Put(ctx, sourceJSONPath, sourceJSON); err != nil {
 			return false, fmt.Errorf("write source.json: %w", err)
 		}
 	}
 
 	return true, nil
+}
+
+func (r *runner) fetchVersion(ctx context.Context, moduleName, version string, hasModule, hasSource bool) ([]byte, []byte, error) {
+	var err error
+	var moduleBazel []byte
+	if !hasModule {
+		moduleBazel, err = r.source.GetModuleBazel(ctx, moduleName, version)
+		if err != nil {
+			return nil, nil, fmt.Errorf("get MODULE.bazel: %w", err)
+		}
+	}
+
+	var sourceJSON []byte
+	if !hasSource {
+		sourceJSON, err = r.getSourceJSON(ctx, moduleName, version)
+		if err != nil {
+			return nil, nil, fmt.Errorf("get source.json: %w", err)
+		}
+		if len(r.workflow.Transformations) > 0 && sourceJSON != nil {
+			sourceJSON, err = applyTransforms(r.workflow.Transformations, sourceJSON)
+			if err != nil {
+				return nil, nil, fmt.Errorf("apply transforms: %w", err)
+			}
+		}
+	}
+
+	if r.local != nil {
+		if !hasModule && !validModule(moduleBazel, moduleName, version) {
+			return nil, nil, fmt.Errorf("MODULE.bazel is empty or invalid")
+		}
+		if !hasSource && !validSource(sourceJSON) {
+			return nil, nil, fmt.Errorf("source.json is missing or not a JSON object")
+		}
+	}
+
+	return moduleBazel, sourceJSON, nil
 }
 
 // getSourceJSON fetches source.json from the registry.
@@ -229,6 +298,18 @@ func (r *runner) getSourceJSON(ctx context.Context, moduleName, version string) 
 
 	// source.json is optional and not supported by every registry backend.
 	return nil, nil
+}
+
+func normalizedSelectionMetadata(meta *registry.Metadata) *registry.Metadata {
+	// LatestVersion consults exact keys; normalize yanks against origin versions.
+	selectionMeta := *meta
+	selectionMeta.YankedVersions = make(map[string]string)
+	for _, version := range meta.Versions {
+		if reason, ok := yankReason(meta.YankedVersions, version); ok {
+			selectionMeta.YankedVersions[version] = reason
+		}
+	}
+	return &selectionMeta
 }
 
 // filterVersions filters versions based on the workflow's version selector.
@@ -337,14 +418,17 @@ func registryFromConfig(cfg *config.Registry) (registry.Registry, error) {
 }
 
 // publisherFromConfig creates a publisher from config.
-func publisherFromConfig(cfg *config.Registry) (publisher.Publisher, error) {
+func publisherFromConfig(cfg *config.Registry, dryRun bool) (publisher.Publisher, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("registry configuration is required")
 	}
 
 	switch cfg.Type {
 	case "file":
-		return publisher.NewFilePublisher(cfg.URL)
+		if dryRun {
+			return publisher.OpenFileRegistryPublisher(cfg.URL)
+		}
+		return publisher.NewFileRegistryPublisher(cfg.URL)
 
 	case "git":
 		branch := cfg.Branch

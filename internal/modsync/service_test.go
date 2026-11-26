@@ -2,10 +2,13 @@ package modsync
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -354,69 +357,125 @@ func TestFilterRange(t *testing.T) {
 	}
 }
 
-// Integration test with file-based registry and publisher
 func TestService_Run_Integration(t *testing.T) {
-	t.Parallel(
-	// Set up test registry using the shared testutil
-	)
+	t.Parallel()
 
+	ctx := context.Background()
 	regDir := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{
-		"rules_go": {Versions: []string{"0.49.0", "0.50.0"}},
+		"rules_go": {
+			Versions:       []string{"0.48.0", "0.49.0", "0.50.0"},
+			YankedVersions: map[string]string{"0.49.0": "unselected", "0.50.0": "selected"},
+		},
 	})
-
-	// Set up destination directory
 	destDir := t.TempDir()
 
-	cfg := &config.Config{
-		Workflows: []*config.Workflow{
-			{
-				Name:        "test-sync",
-				Description: "Test sync workflow",
-				Origin: &config.Registry{
-					Type: "file",
-					URL:  regDir,
-				},
-				Destination: &config.Registry{
-					Type: "file",
-					URL:  destDir,
-				},
-				Modules: []string{"rules_go"},
-				Versions: &config.VersionSelector{
-					Type:  "latest",
-					Count: 1,
-				},
-			},
-		},
+	// Preserve both an old flat output and a configured registry settings file.
+	legacyPath := filepath.Join(destDir, "rules_go", "0.50.0", "MODULE.bazel")
+	settingsPath := filepath.Join(destDir, "bazel_registry.json")
+	if err := os.MkdirAll(filepath.Dir(legacyPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, content := range map[string]string{legacyPath: "# legacy copy\n", settingsPath: `{"mirrors":["https://mirror.example/"]}`} {
+		if err := os.WriteFile(name, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 
-	svc := NewService(cfg)
-	result, err := svc.Run(context.Background(), "test-sync", Options{Verbose: true})
+	workflow := &config.Workflow{
+		Name:        "test-sync",
+		Origin:      &config.Registry{Type: "file", URL: regDir},
+		Destination: &config.Registry{Type: "file", URL: destDir},
+		Modules:     []string{"rules_go"},
+		Versions:    &config.VersionSelector{Type: "latest", Count: 1},
+	}
+	svc := NewService(&config.Config{Workflows: []*config.Workflow{workflow}})
+	runSync := func(wantWritten, wantSkipped int) {
+		t.Helper()
+		result, err := svc.Run(ctx, workflow.Name, Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(result.Errors) != 0 || result.ModulesProcessed != 1 ||
+			result.ModulesWritten != wantWritten || result.ModulesSkipped != wantSkipped {
+			t.Fatalf("Run() = %+v, want %d written and %d skipped", result, wantWritten, wantSkipped)
+		}
+	}
+	runSync(1, 0)
 
+	origin := registry.NewFileRegistry(regDir)
+	dest := registry.NewFileRegistry(destDir)
+	modules, err := dest.ListModules(ctx)
+	if err != nil || !slices.Equal(modules, []string{"rules_go"}) {
+		t.Fatalf("destination ListModules() = %v, %v", modules, err)
+	}
+	meta, err := dest.GetMetadata(ctx, "rules_go")
 	if err != nil {
-		t.Fatalf("Run() error = %v", err)
+		t.Fatal(err)
+	}
+	if !slices.Equal(meta.Versions, []string{"0.50.0"}) || len(meta.YankedVersions) != 1 ||
+		meta.YankedVersions["0.50.0"] != "selected" {
+		t.Fatalf("unexpected destination metadata: %+v", meta)
+	}
+	for _, get := range []func(context.Context, string, string) ([]byte, error){dest.GetModuleBazel, dest.GetSource} {
+		if _, err := get(ctx, "rules_go", "0.49.0"); !errors.Is(err, registry.ErrVersionNotFound) {
+			t.Errorf("read unsynced version: %v", err)
+		}
 	}
 
-	if result.ModulesProcessed != 1 {
-		t.Errorf("ModulesProcessed = %d, want 1", result.ModulesProcessed)
+	for _, name := range []string{registry.ModuleBazelPath("rules_go", "0.50.0"), registry.SourcePath("rules_go", "0.50.0")} {
+		want, err := os.ReadFile(filepath.Join(regDir, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := os.ReadFile(filepath.Join(destDir, name))
+		if err != nil || !slices.Equal(got, want) {
+			t.Errorf("destination %s = %q, %v", name, got, err)
+		}
 	}
-
-	if result.ModulesWritten != 1 {
-		t.Errorf("ModulesWritten = %d, want 1", result.ModulesWritten)
-	}
-
-	// Verify files were written
-	destPub, err := publisher.NewFilePublisher(destDir)
+	wantModule, err := origin.GetModuleBazel(ctx, "rules_go", "0.50.0")
 	if err != nil {
-		t.Fatalf("NewFilePublisher() error = %v", err)
+		t.Fatal(err)
+	}
+	gotModule, err := dest.GetModuleBazel(ctx, "rules_go", "0.50.0")
+	if err != nil || !slices.Equal(gotModule, wantModule) {
+		t.Errorf("destination GetModuleBazel() = %q, %v", gotModule, err)
+	}
+	wantSource, err := origin.GetSource(ctx, "rules_go", "0.50.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotSource, err := dest.GetSource(ctx, "rules_go", "0.50.0")
+	if err != nil || !slices.Equal(gotSource, wantSource) {
+		t.Errorf("destination GetSource() = %q, %v", gotSource, err)
+	}
+	for name, want := range map[string]string{legacyPath: "# legacy copy\n", settingsPath: `{"mirrors":["https://mirror.example/"]}`} {
+		got, err := os.ReadFile(name)
+		if err != nil || string(got) != want {
+			t.Errorf("contents of %s = %q, %v", name, got, err)
+		}
 	}
 
-	exists, err := destPub.Exists(context.Background(), "rules_go/0.50.0/MODULE.bazel")
+	// An incremental backfill keeps previously published versions and local metadata.
+	metadataPath := filepath.Join(destDir, registry.MetadataPath("rules_go"))
+	priorMetadata := `{"versions":["0.50.0"],"yanked_versions":{"0.50.0":"selected"},"local_note":"keep"}`
+	if err := os.WriteFile(metadataPath, []byte(priorMetadata), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	workflow.Versions = &config.VersionSelector{Type: "range", MaxVer: "0.48.0"}
+	runSync(1, 0)
+	meta, err = dest.GetMetadata(ctx, "rules_go")
+	if err != nil || !slices.Equal(meta.Versions, []string{"0.48.0", "0.50.0"}) || meta.YankedVersions["0.50.0"] != "selected" {
+		t.Fatalf("destination metadata after backfill = %+v, %v", meta, err)
+	}
+	data, err := os.ReadFile(metadataPath)
 	if err != nil {
-		t.Fatalf("Exists() error = %v", err)
+		t.Fatal(err)
 	}
-	if !exists {
-		t.Error("MODULE.bazel should exist in destination")
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil || string(fields["local_note"]) != `"keep"` {
+		t.Errorf("destination metadata extensions = %s, %v", data, err)
 	}
+	runSync(0, 1)
 }
 
 func TestService_Run_DryRun(t *testing.T) {
@@ -456,7 +515,7 @@ func TestService_Run_DryRun(t *testing.T) {
 	}
 
 	// But nothing should actually be written
-	destPub, err := publisher.NewFilePublisher(destDir)
+	destPub, err := publisher.NewFileRegistryPublisher(destDir)
 	if err != nil {
 		t.Fatalf("NewFilePublisher() error = %v", err)
 	}
@@ -632,7 +691,7 @@ func TestService_Run_RewritesOnlySourceURLs(t *testing.T) {
 						t.Fatalf("Run() = %+v, %v", result, err)
 					}
 
-					got, err := os.ReadFile(filepath.Join(dest, name, version, registry.SourceFile))
+					got, err := os.ReadFile(filepath.Join(dest, registry.ModulesDir, name, version, registry.SourceFile))
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -640,6 +699,246 @@ func TestService_Run_RewritesOnlySourceURLs(t *testing.T) {
 						t.Errorf("destination source.json = %s\nwant %s", got, tt.want)
 					}
 				})
+			}
+		})
+	}
+}
+
+func TestFileMirrorConcurrentCatalog(t *testing.T) {
+	origin := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{"example": {Versions: []string{"1.0.0", "2.0.0"}}})
+	dest := t.TempDir()
+	workflows := make([]*config.Workflow, 0, 2)
+	for _, version := range []string{"1.0.0", "2.0.0"} {
+		workflows = append(workflows, &config.Workflow{Name: version, Origin: &config.Registry{Type: "file", URL: origin}, Destination: &config.Registry{Type: "file", URL: dest}, Modules: []string{"example"}, Versions: &config.VersionSelector{Type: "range", MinVer: version, MaxVer: version}})
+	}
+	svc := NewService(&config.Config{Workflows: workflows})
+	errs := make(chan error, len(workflows))
+	for _, workflow := range workflows {
+		go func(name string) {
+			result, err := svc.Run(context.Background(), name, Options{})
+			if err == nil && len(result.Errors) > 0 {
+				err = result.Errors[0]
+			}
+			errs <- err
+		}(workflow.Name)
+	}
+	for range workflows {
+		if err := <-errs; err != nil {
+			t.Fatal(err)
+		}
+	}
+	meta, err := registry.NewFileRegistry(dest).GetMetadata(context.Background(), "example")
+	if err != nil || !slices.Equal(meta.Versions, []string{"1.0.0", "2.0.0"}) {
+		t.Fatalf("catalog = %+v, %v", meta, err)
+	}
+}
+
+func TestFileMirrorYankReconciliation(t *testing.T) {
+	origin := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{"example": {Versions: []string{"1.0.0", "2.0.0"}, YankedVersions: map[string]string{"1.0.0": "old"}}})
+	dest := t.TempDir()
+	workflow := &config.Workflow{Name: "mirror", Origin: &config.Registry{Type: "file", URL: origin}, Destination: &config.Registry{Type: "file", URL: dest}, Modules: []string{"example"}, Versions: &config.VersionSelector{Type: "all"}}
+	svc := NewService(&config.Config{Workflows: []*config.Workflow{workflow}})
+	run := func() {
+		t.Helper()
+		result, err := svc.Run(context.Background(), "mirror", Options{})
+		if err != nil || len(result.Errors) != 0 {
+			t.Fatalf("sync = %+v, %v", result, err)
+		}
+	}
+	run()
+	// A destination-only complete version keeps its yank; stale yank keys are removed.
+	localVersion := filepath.Join(dest, "modules", "example", "0.5.0")
+	if err := os.MkdirAll(localVersion, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"MODULE.bazel", "source.json"} {
+		data, err := os.ReadFile(filepath.Join(dest, "modules", "example", "1.0.0", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if name == "MODULE.bazel" {
+			data = []byte(`module(name = "example", version = "0.5.0")`)
+		}
+		if err := os.WriteFile(filepath.Join(localVersion, name), data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	localMeta := filepath.Join(dest, registry.MetadataPath("example"))
+	if err := os.WriteFile(localMeta, []byte(`{"versions":["1.0.0","2.0.0","0.5.0"],"yanked_versions":{"1.0.0":"old","0.5.0":"local","9.0.0":"stale"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(origin, registry.MetadataPath("example"))
+	if err := os.WriteFile(path, []byte(`{"versions":["1.0.0","2.0.0"],"yanked_versions":{"2.0.0":"new"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	workflow.Transformations = []*config.Transform{{Type: "skip_yanked"}}
+	run()
+	meta, err := registry.NewFileRegistry(dest).GetMetadata(context.Background(), "example")
+	if err != nil || len(meta.YankedVersions) != 2 || meta.YankedVersions["2.0.0"] != "new" || meta.YankedVersions["0.5.0"] != "local" {
+		t.Fatalf("yanks = %+v, %v", meta, err)
+	}
+}
+
+func TestFileMirrorRejectsInvalidFreshCoreAndRecovers(t *testing.T) {
+	for _, tc := range []struct{ file, bad string }{{"MODULE.bazel", "module("}, {"MODULE.bazel", ""}, {"MODULE.bazel", `module(name = "wrong", version = "1.0.0")`}, {"MODULE.bazel", `module(name = "example", version = "2.0.0")`}, {"source.json", "[]"}, {"source.json", "null"}} {
+		t.Run(tc.file+tc.bad, func(t *testing.T) {
+			origin := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{"example": {Versions: []string{"1.0.0"}}})
+			dest := t.TempDir()
+			file := filepath.Join(origin, "modules", "example", "1.0.0", tc.file)
+			good, err := os.ReadFile(file)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(file, []byte(tc.bad), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			workflow := &config.Workflow{Name: "mirror", Origin: &config.Registry{Type: "file", URL: origin}, Destination: &config.Registry{Type: "file", URL: dest}, Modules: []string{"example"}}
+			svc := NewService(&config.Config{Workflows: []*config.Workflow{workflow}})
+			result, err := svc.Run(context.Background(), "mirror", Options{})
+			if err != nil || len(result.Errors) == 0 {
+				t.Fatalf("invalid sync = %+v, %v", result, err)
+			}
+			if _, err := os.Stat(filepath.Join(dest, registry.MetadataPath("example"))); !os.IsNotExist(err) {
+				t.Fatalf("invalid catalog exists: %v", err)
+			}
+			if err := os.WriteFile(file, good, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			result, err = svc.Run(context.Background(), "mirror", Options{})
+			if err != nil || len(result.Errors) != 0 {
+				t.Fatalf("recovery = %+v, %v", result, err)
+			}
+		})
+	}
+}
+
+func TestFileMirrorReconcilesWhenDefaultSelectorFindsNoVersion(t *testing.T) {
+	origin := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{"example": {Versions: []string{"1.0.0"}}})
+	dest := t.TempDir()
+	workflow := &config.Workflow{Name: "mirror", Origin: &config.Registry{Type: "file", URL: origin}, Destination: &config.Registry{Type: "file", URL: dest}, Modules: []string{"example"}}
+	svc := NewService(&config.Config{Workflows: []*config.Workflow{workflow}})
+	run := func() {
+		t.Helper()
+		result, err := svc.Run(context.Background(), "mirror", Options{})
+		if err != nil || len(result.Errors) != 0 {
+			t.Fatalf("sync = %+v, %v", result, err)
+		}
+	}
+	run()
+	metadata := filepath.Join(origin, registry.MetadataPath("example"))
+	if err := os.WriteFile(metadata, []byte(`{"versions":["1.0.0"],"yanked_versions":{"1.0.0":"withdrawn"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run()
+	got, err := registry.NewFileRegistry(dest).GetMetadata(context.Background(), "example")
+	if err != nil || got.YankedVersions["1.0.0"] != "withdrawn" {
+		t.Fatalf("metadata = %+v, %v", got, err)
+	}
+	// A first sync with no selected version must not create an empty catalog.
+	workflow.Destination.URL = t.TempDir()
+	run()
+	if _, err := os.Stat(filepath.Join(workflow.Destination.URL, registry.MetadataPath("example"))); !os.IsNotExist(err) {
+		t.Fatalf("unexpected catalog: %v", err)
+	}
+}
+
+func TestFileMirrorRejectsOversizedOrigin(t *testing.T) {
+	origin := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{"example": {Versions: []string{"1.0.0"}}})
+	file, err := os.OpenFile(filepath.Join(origin, registry.ModuleBazelPath("example", "1.0.0")), os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Truncate(registry.MaxFileBytes + 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	dest := t.TempDir()
+	workflow := &config.Workflow{Name: "mirror", Origin: &config.Registry{Type: "file", URL: origin}, Destination: &config.Registry{Type: "file", URL: dest}, Modules: []string{"example"}}
+	result, err := NewService(&config.Config{Workflows: []*config.Workflow{workflow}}).Run(context.Background(), "mirror", Options{})
+	if err != nil || len(result.Errors) == 0 {
+		t.Fatalf("oversized sync = %+v, %v", result, err)
+	}
+	if _, err := os.Stat(filepath.Join(dest, registry.MetadataPath("example"))); !os.IsNotExist(err) {
+		t.Fatalf("unexpected catalog: %v", err)
+	}
+}
+
+func TestValidModuleIdentity(t *testing.T) {
+	for _, tc := range []struct {
+		declared, requested string
+		want                bool
+	}{{"1.0+upstream", "1.0+mirror", true}, {"01.0", "1.0", false}, {"1.0", "1.0.0", false}, {"2025.foo", "2025.foo", true}, {"1.0+", "1.0", false}, {"1.0+bad/part", "1.0", false}} {
+		content := []byte(`module(name = "example", version = "` + tc.declared + `")`)
+		if got := validModule(content, "example", tc.requested); got != tc.want {
+			t.Errorf("version %q for %q = %v", tc.declared, tc.requested, got)
+		}
+	}
+}
+
+func TestValidModuleDynamicIdentity(t *testing.T) {
+	for _, content := range []string{`module(name = "example", version = "1." + "0")`, `module(**{"name": "example", "version": "1.0"})`, `module(**args)`} {
+		if !validModule([]byte(content), "example", "1.0") {
+			t.Errorf("dynamic declaration rejected: %s", content)
+		}
+	}
+}
+
+func TestLiteralExpansionMismatch(t *testing.T) {
+	if validModule([]byte(`module(**{"name":"wrong", "version":"1.0"})`), "example", "1.0") {
+		t.Fatal("accepted wrong name")
+	}
+	if validModule([]byte(`module(**{"name":"example", "version":"1.0+"})`), "example", "1.0") {
+		t.Fatal("accepted invalid version")
+	}
+}
+
+func TestFileMirrorNormalizesYankedKeys(t *testing.T) {
+	origin := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{"example": {Versions: []string{"1.0"}}})
+	dest := t.TempDir()
+	workflow := &config.Workflow{Name: "mirror", Origin: &config.Registry{Type: "file", URL: origin}, Destination: &config.Registry{Type: "file", URL: dest}, Modules: []string{"example"}}
+	svc := NewService(&config.Config{Workflows: []*config.Workflow{workflow}})
+	run := func() {
+		t.Helper()
+		result, err := svc.Run(context.Background(), "mirror", Options{})
+		if err != nil || len(result.Errors) > 0 {
+			t.Fatalf("sync = %+v, %v", result, err)
+		}
+	}
+	run()
+	metaPath := filepath.Join(origin, registry.MetadataPath("example"))
+	if err := os.WriteFile(metaPath, []byte(`{"versions":["1.0"],"yanked_versions":{"1.0+origin":"withdrawn"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run()
+	meta, err := registry.NewFileRegistry(dest).GetMetadata(context.Background(), "example")
+	if err != nil || meta.YankedVersions["1.0"] != "withdrawn" {
+		t.Fatalf("metadata = %+v, %v", meta, err)
+	}
+	// Explicit all plus skip_yanked uses the same normalized lookup.
+	workflow.Destination.URL = t.TempDir()
+	workflow.Versions = &config.VersionSelector{Type: "all"}
+	workflow.Transformations = []*config.Transform{{Type: "skip_yanked"}}
+	run()
+	if _, err := os.Stat(filepath.Join(workflow.Destination.URL, registry.MetadataPath("example"))); !os.IsNotExist(err) {
+		t.Fatalf("yanked version was published: %v", err)
+	}
+}
+
+func TestReconcileYanksDeduplicatesNormalizedVersions(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		origin *registry.Metadata
+		prior  map[string]string
+	}{
+		{name: "origin", origin: &registry.Metadata{Versions: []string{"1.0", "1.0+build"}, YankedVersions: map[string]string{"1.0+build": "withdrawn"}}},
+		{name: "destination only", origin: &registry.Metadata{}, prior: map[string]string{"1.0+build": "withdrawn"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := reconcileYanks(tc.origin, tc.prior, []string{"1.0", "1.0+build"})
+			if len(got) != 1 || got["1.0"] != "withdrawn" {
+				t.Fatalf("yanks = %v", got)
 			}
 		})
 	}

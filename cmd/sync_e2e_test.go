@@ -1,6 +1,9 @@
 package cmd
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -69,16 +72,22 @@ func TestModSync_GuideFlowWithWorkflowFlag(t *testing.T) {
 			if code != 0 {
 				t.Fatalf("exit code = %d\nstdout=%s\nstderr=%s", code, stdout, stderr)
 			}
-			// NOTE: this asserts the layout written today (<dest>/<module>/<version>/...),
-			// which is not yet a Bazel registry layout. The layout change must update
-			// this assertion to modules/<module>/<version>/....
 			for _, rel := range []string{
-				"rules_go/0.50.1/MODULE.bazel",
-				"rules_go/0.49.0/MODULE.bazel",
-				"bazel_skylib/1.7.1/MODULE.bazel",
+				"modules/rules_go/metadata.json",
+				"modules/rules_go/0.50.1/MODULE.bazel",
+				"modules/rules_go/0.50.1/source.json",
+				"modules/rules_go/0.49.0/MODULE.bazel",
+				"modules/bazel_skylib/metadata.json",
+				"modules/bazel_skylib/1.7.1/MODULE.bazel",
 			} {
 				if _, err := os.Stat(filepath.Join(dest, rel)); err != nil {
 					t.Errorf("missing %s under %s: %v", rel, dest, err)
+				}
+			}
+			for _, module := range []string{"rules_go", "rules_go@0.50.1"} {
+				stdout, stderr, code := runCLI(t, "mod", "info", module, "--registry", dest, "--json")
+				if code != 0 || !strings.Contains(stdout, `"0.50.1"`) {
+					t.Errorf("info %s: code=%d stdout=%s stderr=%s", module, code, stdout, stderr)
 				}
 			}
 		})
@@ -175,5 +184,67 @@ func TestModSync_UnknownWorkflowListsAvailable(t *testing.T) {
 	_, stderr, code := runCLI(t, "mod", "sync", "-c", cfg, "-w", "nope")
 	if code == 0 || !strings.Contains(stderr, `workflow "nope" not found (available: mirror)`) {
 		t.Errorf("code=%d stderr=%q", code, stderr)
+	}
+}
+
+func TestModSync_HTTPToFileRegistry(t *testing.T) {
+	syncEnv(t)
+	server := httptest.NewServer(http.FileServer(http.Dir(fixtureOrigin(t))))
+	defer server.Close()
+	cfg, dest := writeSyncConfig(t, server.URL, `"rules_go"`, "")
+	data, err := os.ReadFile(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data = []byte(strings.Replace(string(data), "bcr = registry.file(", "bcr = registry.http(", 1))
+	if err := os.WriteFile(cfg, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run := func() {
+		t.Helper()
+		out, stderr, code := runCLI(t, "mod", "sync", "-c", cfg, "--workflow", "mirror")
+		if code != 0 {
+			t.Fatalf("sync: %d %s %s", code, out, stderr)
+		}
+	}
+	run()
+	metadata, err := os.ReadFile(filepath.Join(dest, "modules", "rules_go", "metadata.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var catalog struct {
+		Versions []string `json:"versions"`
+	}
+	if err := json.Unmarshal(metadata, &catalog); err != nil {
+		t.Fatal(err)
+	}
+	if len(catalog.Versions) != 2 {
+		t.Fatalf("versions = %v", catalog.Versions)
+	}
+	for _, module := range []string{"rules_go", "rules_go@0.50.1"} {
+		out, stderr, code := runCLI(t, "mod", "info", module, "--registry", dest, "--offline", "--json")
+		if code != 0 || !strings.Contains(out, "0.50.1") {
+			t.Fatalf("info: %d %s %s", code, out, stderr)
+		}
+	}
+	run()
+	if err := os.Remove(filepath.Join(dest, "modules", "rules_go", "0.50.1", "source.json")); err != nil {
+		t.Fatal(err)
+	}
+	run()
+	if _, err := os.Stat(filepath.Join(dest, "modules", "rules_go", "0.50.1", "source.json")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestModSync_DryRunDoesNotCreateFileDestination(t *testing.T) {
+	syncEnv(t)
+	cfg, dest := writeSyncConfig(t, fixtureOrigin(t), `"rules_go"`, "")
+	out, stderr, code := runCLI(t, "mod", "sync", "-c", cfg, "--workflow", "mirror", "--dry-run")
+	if code != 0 {
+		t.Fatalf("sync: %d %s %s", code, out, stderr)
+	}
+	if _, err := os.Stat(dest); !os.IsNotExist(err) {
+		t.Fatalf("destination exists or stat failed: %v", err)
 	}
 }

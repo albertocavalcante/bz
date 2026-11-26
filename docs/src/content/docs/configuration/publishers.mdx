@@ -12,34 +12,36 @@ Publishers are destinations where bz writes synced modules. They're specified us
 Write modules to a local filesystem:
 
 ```starlark
-# Create a local registry mirror
+# Mirror an existing local registry
+source = registry.file("/var/bazel-origin")
 mirror = registry.file("/var/bazel-registry")
 
 sync.workflow(
     name = "local-sync",
-    origin = bcr,
-    destination = mirror,  # Uses file publisher
+    origin = source,
+    destination = mirror,
     modules = ["rules_go"],
 )
 ```
 
 ### Directory Structure
 
-The file publisher creates the standard BCR structure:
+A workflow with a file registry destination writes the selected versions and their metadata under `modules/`:
 
 ```
 /var/bazel-registry/
-├── modules/
-│   └── rules_go/
-│       ├── metadata.json
-│       ├── 0.50.0/
-│       │   ├── MODULE.bazel
-│       │   └── source.json
-│       └── 0.50.1/
-│           ├── MODULE.bazel
-│           └── source.json
-└── bazel_registry.json
+└── modules/
+    └── rules_go/
+        ├── metadata.json
+        ├── 0.50.0/
+        │   ├── MODULE.bazel
+        │   └── source.json
+        └── 0.50.1/
+            ├── MODULE.bazel
+            └── source.json
 ```
+
+Use `bz mod info rules_go --registry=/var/bazel-registry` to read the published versions. An existing `bazel_registry.json` stays in place. If a prior run wrote versions directly under the destination, sync those versions again to populate `modules/`; the earlier files stay in place. Concurrent bz writers use an OS advisory lock on a persistent `.bz-sync.lock` marker; all writers must cooperate and the filesystem must support advisory locking. This is supported on Windows, macOS, Linux, and the BSD and Solaris platforms supported by Go; other platforms reject file-registry writes. Dry runs do not create the marker. Literal module names and versions are checked against the registry path; Bazel evaluates and validates dynamic declaration values.
 
 ## HTTP PUT Publisher
 
@@ -73,10 +75,10 @@ The HTTP publisher sends PUT requests to `{url}/{path}` for each file. Your serv
 
 ### Request Format
 
-For each file, bz sends:
+For a synced module file, bz sends:
 
 ```http
-PUT /modules/rules_go/0.50.1/MODULE.bazel HTTP/1.1
+PUT /rules_go/0.50.1/MODULE.bazel HTTP/1.1
 Host: registry.example.com
 Content-Type: application/octet-stream
 Authorization: Bearer <token>
