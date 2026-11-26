@@ -925,3 +925,21 @@ func TestFileMirrorNormalizesYankedKeys(t *testing.T) {
 		t.Fatalf("yanked version was published: %v", err)
 	}
 }
+
+func TestReconcileYanksDeduplicatesNormalizedVersions(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		origin *registry.Metadata
+		prior  map[string]string
+	}{
+		{name: "origin", origin: &registry.Metadata{Versions: []string{"1.0", "1.0+build"}, YankedVersions: map[string]string{"1.0+build": "withdrawn"}}},
+		{name: "destination only", origin: &registry.Metadata{}, prior: map[string]string{"1.0+build": "withdrawn"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := reconcileYanks(tc.origin, tc.prior, []string{"1.0", "1.0+build"})
+			if len(got) != 1 || got["1.0"] != "withdrawn" {
+				t.Fatalf("yanks = %v", got)
+			}
+		})
+	}
+}

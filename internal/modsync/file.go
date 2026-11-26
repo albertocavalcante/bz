@@ -188,12 +188,15 @@ func reconcileYanks(origin *registry.Metadata, prior map[string]string, versions
 	}
 	for _, version := range versions {
 		normalized, valid := normalizedVersion(version)
-		if valid && originVersions[normalized] {
-			if reason, ok := yankReason(origin.YankedVersions, version); ok {
-				yanked[version] = reason
+		if !valid {
+			continue
+		}
+		if originVersions[normalized] {
+			if reason, ok := yankReason(origin.YankedVersions, normalized); ok {
+				yanked[normalized] = reason
 			}
-		} else if reason, ok := yankReason(prior, version); ok {
-			yanked[version] = reason
+		} else if reason, ok := yankReason(prior, normalized); ok {
+			yanked[normalized] = reason
 		}
 	}
 	return yanked
