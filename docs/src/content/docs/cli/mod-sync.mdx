@@ -64,17 +64,15 @@ Sync complete:
 
 ### Dry Run
 
-Preview what would be synced without writing:
+Preview planned version additions and repairs with `--dry-run`.
 
 ```bash
 bz mod sync --workflow production --dry-run   # or: -n
 ```
 
-A dry run counts what would be written and writes nothing. It does not fetch module files, so failures that only occur while fetching are not detected.
+`Versions planned` counts additions and repairs found by inspecting the destination. `Versions written` stays at zero. When publishing to a filesystem mirror, sync also validates source files and attachments and reconciles the catalog.
 
-<Aside type="tip">
-Always use `--dry-run` first when syncing to production to verify what will be changed.
-</Aside>
+A dry run does not publish to the configured destination. File destinations open read-only. Git uses a temporary clone and HTTP PUT uses HEAD requests. Origin metadata and remote inspection may use the network.
 
 ### Custom Config File
 

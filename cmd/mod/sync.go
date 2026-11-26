@@ -132,10 +132,20 @@ func runSync(cmd *cobra.Command, args []string) error {
 		fmt.Fprintln(cmd.OutOrStdout())
 	}
 
-	fmt.Fprintf(cmd.OutOrStdout(), "Sync complete:\n")
+	if syncDryRun {
+		fmt.Fprintln(cmd.OutOrStdout(), "Dry run complete:")
+	} else {
+		fmt.Fprintln(cmd.OutOrStdout(), "Sync complete:")
+	}
 	fmt.Fprintf(cmd.OutOrStdout(), "  Modules processed: %d\n", result.ModulesProcessed)
-	fmt.Fprintf(cmd.OutOrStdout(), "  Modules written:   %d\n", result.ModulesWritten)
-	fmt.Fprintf(cmd.OutOrStdout(), "  Modules skipped:   %d\n", result.ModulesSkipped)
+	if syncDryRun {
+		fmt.Fprintf(cmd.OutOrStdout(), "  Versions planned:  %d\n", result.VersionsPlanned)
+		fmt.Fprintf(cmd.OutOrStdout(), "  Versions written:  %d\n", result.ModulesWritten)
+		fmt.Fprintf(cmd.OutOrStdout(), "  Versions skipped:  %d\n", result.ModulesSkipped)
+	} else {
+		fmt.Fprintf(cmd.OutOrStdout(), "  Modules written:   %d\n", result.ModulesWritten)
+		fmt.Fprintf(cmd.OutOrStdout(), "  Modules skipped:   %d\n", result.ModulesSkipped)
+	}
 
 	if len(result.Errors) > 0 {
 		fmt.Fprintf(cmd.ErrOrStderr(), "  Failed:            %d\n", len(result.Errors))

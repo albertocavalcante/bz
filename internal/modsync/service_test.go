@@ -513,8 +513,8 @@ func TestService_Run_DryRun(t *testing.T) {
 	}
 
 	// Dry run should report what would be written
-	if result.ModulesWritten != 1 {
-		t.Errorf("ModulesWritten = %d, want 1 (dry run)", result.ModulesWritten)
+	if result.ModulesWritten != 0 || result.VersionsPlanned != 1 {
+		t.Errorf("written = %d, planned = %d; want 0, 1", result.ModulesWritten, result.VersionsPlanned)
 	}
 
 	// But nothing should actually be written
@@ -704,6 +704,24 @@ func TestService_Run_RewritesOnlySourceURLs(t *testing.T) {
 						Run(t.Context(), workflow.Name, Options{})
 					if err != nil || len(result.Errors) != 0 || result.ModulesWritten != 1 {
 						t.Fatalf("Run() = %+v, %v", result, err)
+					}
+
+					if tt.name != "local" {
+						patchName := "first.patch"
+						if tt.name == "git" {
+							patchName = "fix.patch"
+						}
+						missing := filepath.Join(dest, registry.ModulesDir, name, version, "patches", patchName)
+						if err := os.Remove(missing); err != nil {
+							t.Fatal(err)
+						}
+						preview, err := NewService(&config.Config{Workflows: []*config.Workflow{workflow}}).Run(t.Context(), workflow.Name, Options{DryRun: true})
+						if err != nil || len(preview.Errors) != 0 || preview.VersionsPlanned != 1 || preview.ModulesWritten != 0 {
+							t.Fatalf("repair preview = %+v, %v", preview, err)
+						}
+						if _, err := os.Stat(missing); !os.IsNotExist(err) {
+							t.Fatalf("preview changed missing patch: %v", err)
+						}
 					}
 
 					got, err := os.ReadFile(filepath.Join(dest, registry.ModulesDir, name, version, registry.SourceFile))

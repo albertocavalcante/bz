@@ -20,6 +20,7 @@ type runner struct {
 	dest     publisher.Publisher
 	local    *publisher.FilePublisher
 	opts     Options
+	planned  map[string]bool // successfully planned module/version references
 }
 
 // newRunner creates a runner for a workflow.
@@ -165,7 +166,7 @@ func (r *runner) syncModule(ctx context.Context, moduleName string, result *Resu
 			}
 		}
 
-		written, err := r.syncVersion(ctx, moduleName, version)
+		changed, err := r.planOrSyncVersion(ctx, moduleName, version)
 		if err != nil {
 			result.Errors = append(result.Errors, fmt.Errorf("%s@%s: %w", moduleName, version, err))
 			continue
@@ -174,11 +175,7 @@ func (r *runner) syncModule(ctx context.Context, moduleName string, result *Resu
 		if metadata != nil {
 			available = append(available, version)
 		}
-		if written {
-			result.ModulesWritten++
-		} else {
-			result.ModulesSkipped++
-		}
+		result.recordVersion(changed, r.opts.DryRun)
 	}
 
 	if metadata != nil && (len(available) > 0 || metadata.fields != nil) {
@@ -189,8 +186,25 @@ func (r *runner) syncModule(ctx context.Context, moduleName string, result *Resu
 	return nil
 }
 
-// syncVersion syncs a single module version.
-func (r *runner) syncVersion(ctx context.Context, moduleName, version string) (written bool, err error) {
+// planOrSyncVersion avoids counting a planned change twice when the workflow
+// or origin repeats a reference. Failed inspections remain eligible for retry.
+func (r *runner) planOrSyncVersion(ctx context.Context, module, version string) (bool, error) {
+	key := module + "/" + version
+	if r.opts.DryRun && r.planned[key] {
+		return false, nil
+	}
+	changed, err := r.syncVersion(ctx, module, version)
+	if r.opts.DryRun && changed && err == nil {
+		if r.planned == nil {
+			r.planned = make(map[string]bool)
+		}
+		r.planned[key] = true
+	}
+	return changed, err
+}
+
+// syncVersion reports whether a version was changed or, in a dry run, needs a change.
+func (r *runner) syncVersion(ctx context.Context, moduleName, version string) (changed bool, err error) {
 	// Check if already exists in destination
 	moduleBazelPath := path.Join(moduleName, version, registry.ModuleBazelFile)
 	sourceJSONPath := path.Join(moduleName, version, registry.SourceFile)
@@ -207,9 +221,9 @@ func (r *runner) syncVersion(ctx context.Context, moduleName, version string) (w
 
 	if hasModule && (r.local == nil || hasSource) {
 		if r.local != nil {
-			written, err := r.syncMirrorAttachments(ctx, moduleName, version, state.attachments)
-			if written || err != nil {
-				return written, err
+			changed, err := r.syncMirrorAttachments(ctx, moduleName, version, state.attachments)
+			if changed || err != nil {
+				return changed, err
 			}
 		}
 		if r.opts.Verbose {
