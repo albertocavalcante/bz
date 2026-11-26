@@ -7,6 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/albertocavalcante/bz/internal/bzconfig"
 )
 
 func TestCommandDisabledError_Error(t *testing.T) {
@@ -200,24 +202,18 @@ mode = "offline"
 	assert.ErrorAs(t, err, &offlineErr)
 }
 
-// TestCheckCommandAllowed_InvalidValueDoesNotReenableCommand: an invalid
-// value elsewhere in the file must not make the disabled list disappear.
-func TestCheckCommandAllowed_InvalidValueDoesNotReenableCommand(t *testing.T) {
+// TestCheckCommandAllowed_InvalidConfigFailsClosed: an invalid value must
+// not make the disabled list disappear; the configuration error is returned
+// so the command does not run.
+func TestCheckCommandAllowed_InvalidConfigFailsClosed(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Chdir(tmpDir)
 	ResetCachedConfig()
 	t.Cleanup(ResetCachedConfig)
-	t.Setenv("BZ_OFFLINE", "ture")
 
 	configContent := `
 [network]
 timeout = "30"
-mode = "ofline"
-registry = "not-a-url"
-fallback_registries = ["https://:443"]
-
-[cache]
-ttl = "7d"
 
 [commands]
 disabled = ["audit"]
@@ -225,7 +221,41 @@ disabled = ["audit"]
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, ".bzconfig.toml"), []byte(configContent), 0o644))
 
 	err := CheckCommandAllowed("audit")
-	var cmdErr *CommandDisabledError
-	require.ErrorAs(t, err, &cmdErr)
-	assert.Equal(t, "audit", cmdErr.Command)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `invalid network timeout "30"`)
+
+	t.Setenv("BZ_OFFLINE", "ture")
+	ResetCachedConfig()
+	err = CheckCommandAllowed("audit")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "BZ_OFFLINE")
+}
+
+func TestEffective_FlagBeatsConfigMode(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Chdir(tmpDir)
+	ResetCachedConfig()
+	t.Cleanup(ResetCachedConfig)
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, ".bz.toml"), []byte("[network]\nmode = \"offline\"\n"), 0o600))
+	Global = Options{PreferOffline: true}
+	t.Cleanup(func() { Global = Options{} })
+
+	eff, err := Effective()
+	require.NoError(t, err)
+	assert.Equal(t, bzconfig.NetworkModePreferOffline, eff.Network.Mode)
+	assert.Equal(t, "flag --prefer-offline", eff.Source(bzconfig.KeyMode).String())
+}
+
+func TestCheckOfflineAllowed_InvalidConfigFailsClosed(t *testing.T) {
+	// The error names the resolved path (/private/var on macOS).
+	tmpDir, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
+	t.Chdir(tmpDir)
+	ResetCachedConfig()
+	t.Cleanup(ResetCachedConfig)
+	Global = Options{}
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, ".bz.toml"), []byte("[network]\nmode = \"ofline\"\n"), 0o600))
+
+	err = CheckOfflineAllowed("audit")
+	require.EqualError(t, err, `invalid network mode "ofline" in project config `+filepath.Join(tmpDir, ".bz.toml")+` (want "online", "prefer-offline" or "offline")`)
 }

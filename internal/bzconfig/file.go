@@ -29,7 +29,8 @@ type fileSchema struct {
 
 // ParseFile decodes one configuration file into a layer of the given kind.
 //
-// A leading "~" in [cache] dir is expanded against home. Entries of
+// A leading "~" in [cache] dir is expanded against home, and a relative
+// [cache] dir is resolved against the file's directory. Entries of
 // [commands] disabled are trimmed and empty entries dropped, as for
 // BZ_DISABLE_COMMANDS.
 func ParseFile(kind LayerKind, path string, data []byte, home string) (Layer, error) {
@@ -48,6 +49,9 @@ func ParseFile(kind LayerKind, path string, data []byte, home string) (Layer, er
 	l.Settings.Timeout = s.Network.Timeout
 	if s.Cache.Dir != nil {
 		dir := ExpandHome(*s.Cache.Dir, home)
+		if strings.TrimSpace(dir) != "" && !filepath.IsAbs(dir) {
+			dir = filepath.Join(filepath.Dir(path), dir)
+		}
 		l.Settings.CacheDir = &dir
 	}
 	l.Settings.CacheTTL = s.Cache.TTL

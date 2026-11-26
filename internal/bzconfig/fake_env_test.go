@@ -4,6 +4,7 @@ import (
 	"io/fs"
 	"path/filepath"
 	"strings"
+	"testing"
 	"time"
 )
 
@@ -44,7 +45,7 @@ func newFakeEnv() *fakeEnv {
 		statErrs: map[string]error{},
 
 		uid:    1000,
-		owners: map[string]int{},
+		owners: map[string]int{"/etc/bz/config.toml": 0}, // the system file is root's
 		links:  map[string]string{},
 	}
 }
@@ -139,6 +140,21 @@ func (f *fakeEnv) evalSymlinks(path string) (string, error) {
 		}
 	}
 	return "", fs.ErrInvalid
+}
+
+const (
+	systemFile  = "/etc/bz/config.toml"
+	userFile    = "/home/u/.config/bz/config.toml"
+	projectFile = "/work/proj/.bz.toml"
+)
+
+func mustLoad(t *testing.T, f *fakeEnv, flags Layer) *Effective {
+	t.Helper()
+	eff, _, err := Load(f.env(), flags)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	return eff
 }
 
 // fakeFile is an open handle: its Stat is the FileInfo at open time and

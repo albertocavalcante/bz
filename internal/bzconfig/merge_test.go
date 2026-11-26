@@ -1,8 +1,6 @@
 package bzconfig
 
 import (
-	"os"
-	"path/filepath"
 	"slices"
 	"testing"
 
@@ -257,53 +255,4 @@ func TestMerge_DoesNotAliasLayerSlices(t *testing.T) {
 	eff.Commands.Disabled[0] = "changed"
 	assert.Equal(t, "audit", list[0])
 	assert.True(t, slices.Equal([]string{"changed"}, eff.Commands.Disabled))
-}
-
-func clearBZEnv(t *testing.T) {
-	t.Helper()
-	for _, v := range []string{EnvOffline, EnvPreferOffline, EnvRegistry, EnvCacheDir, EnvDisableCommands} {
-		t.Setenv(v, "")
-	}
-}
-
-func TestLoadProjectFile(t *testing.T) {
-	t.Run("nonexistent file gives defaults", func(t *testing.T) {
-		clearBZEnv(t)
-		eff, err := LoadProjectFile(filepath.Join(t.TempDir(), "missing.toml"))
-		require.NoError(t, err)
-		assert.Equal(t, NetworkModeOnline, eff.Network.Mode)
-		assert.Equal(t, DefaultRegistry, eff.Network.Registry)
-		assert.Empty(t, eff.Commands.Disabled)
-	})
-
-	t.Run("invalid values are ignored, valid keys apply", func(t *testing.T) {
-		clearBZEnv(t)
-		t.Setenv(EnvPreferOffline, "maybe")
-		path := filepath.Join(t.TempDir(), ".bzconfig.toml")
-		require.NoError(t, os.WriteFile(path, []byte(
-			"[network]\nmode = \"ofline\"\ntimeout = \"30\"\n[commands]\ndisabled = [\"audit\"]\n"), 0o644))
-		eff, err := LoadProjectFile(path)
-		require.NoError(t, err)
-		assert.Equal(t, []string{"audit"}, eff.Commands.Disabled)
-		assert.Equal(t, NetworkModeOnline, eff.Network.Mode)
-		assert.Equal(t, DefaultTimeout, eff.Network.Timeout)
-	})
-
-	t.Run("environment overrides the file", func(t *testing.T) {
-		clearBZEnv(t)
-		t.Setenv(EnvDisableCommands, "sbom")
-		path := filepath.Join(t.TempDir(), ".bzconfig.toml")
-		require.NoError(t, os.WriteFile(path, []byte("[commands]\ndisabled = [\"audit\"]\n"), 0o644))
-		eff, err := LoadProjectFile(path)
-		require.NoError(t, err)
-		assert.Equal(t, []string{"sbom"}, eff.Commands.Disabled)
-	})
-
-	t.Run("malformed file is an error", func(t *testing.T) {
-		clearBZEnv(t)
-		path := filepath.Join(t.TempDir(), ".bzconfig.toml")
-		require.NoError(t, os.WriteFile(path, []byte("[network\n"), 0o644))
-		_, err := LoadProjectFile(path)
-		require.Error(t, err)
-	})
 }
