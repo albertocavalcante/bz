@@ -27,10 +27,10 @@ The simplest approach uses bz's built-in cache commands:
    bz cache download
 
    # Or cache specific modules
-   bz cache download rules_go rules_python gazelle
+   bz cache download rules_go@0.50.1 rules_python gazelle
    ```
 
-2. **Verify the cache is complete:**
+2. **Verify the cache is complete from the project directory containing `MODULE.bazel`:**
 
    ```bash
    bz cache verify
@@ -46,26 +46,26 @@ The simplest approach uses bz's built-in cache commands:
    tar -czf bz-cache.tar.gz ~/.cache/bz
    ```
 
-4. **On the air-gapped machine, enable offline mode:**
+4. **On the air-gapped machine, transfer the project and its `MODULE.bazel`, then enable offline mode:**
 
    ```bash
    # Option 1: Environment variable
    export BZ_OFFLINE=1
 
-   # Option 2: Config file (~/.config/bz/config.toml)
+   # Option 2: Config file (.bzconfig.toml)
    # [network]
    # mode = "offline"
 
    # Option 3: CLI flag
-   bz mod list --offline
+   bz mod info rules_go --offline
    ```
 
 5. **Verify and use:**
 
    ```bash
    bz cache verify
-   bz mod list
-   bz mod outdated
+   bz mod info rules_go --offline
+   bz mod info rules_go@0.50.1 --offline
    ```
 </Steps>
 
@@ -145,7 +145,7 @@ bz supports three network modes:
 | Mode | Description | Use Case |
 |------|-------------|----------|
 | `online` | Always fetch from network (default) | Normal development |
-| `prefer-offline` | Use cache if available, fallback to network | Speed up builds |
+| `prefer-offline` | Use the selected registry | Connected use |
 | `offline` | Never access network, fail if not cached | Air-gapped machines |
 
 ### Setting Network Mode
@@ -153,8 +153,8 @@ bz supports three network modes:
 <Tabs>
 <TabItem label="CLI Flag">
 ```bash
-bz mod list --offline
-bz mod outdated --prefer-offline
+bz mod info rules_go --offline
+bz mod info rules_go --prefer-offline
 ```
 </TabItem>
 <TabItem label="Environment Variable">
@@ -166,7 +166,7 @@ export BZ_PREFER_OFFLINE=1
 </TabItem>
 <TabItem label="Config File">
 ```toml
-# ~/.config/bz/config.toml
+# .bzconfig.toml
 [network]
 mode = "offline"
 ```
@@ -174,7 +174,7 @@ mode = "offline"
 </Tabs>
 
 <Aside type="note">
-`--offline` and `--prefer-offline` are mutually exclusive. If both are set, `--offline` takes precedence.
+`--offline` and `--prefer-offline` are mutually exclusive.
 </Aside>
 
 ---
@@ -258,7 +258,7 @@ The `rewrite_source_urls` transform changes where Bazel downloads source archive
 3. **Configure bz to use it:**
 
    ```toml
-   # /etc/bz/config.toml
+   # .bzconfig.toml
    [network]
    mode = "offline"
    registry = "file:///opt/bazel/registry"
@@ -289,17 +289,15 @@ Here's a complete example for an air-gapped deployment:
     - modules/ (bz cache)
 </FileTree>
 
-### System Configuration
+### Project Configuration
 
 ```toml
-# /etc/bz/config.toml
+# .bzconfig.toml
 
 [network]
 mode = "offline"
 registry = "file:///opt/bazel/registry"
 
-[cache]
-dir = "/opt/bazel/cache"
 
 [commands]
 # Disable commands that require network
@@ -377,7 +375,7 @@ bz cache download
 This is expected! In offline mode, bz should never attempt network access. If you see this error:
 
 1. Check that offline mode is enabled: `echo $BZ_OFFLINE`
-2. Verify config file: `cat ~/.config/bz/config.toml`
+2. Verify config file: `cat .bzconfig.toml`
 3. Ensure the cache is populated: `bz cache verify`
 
 ### Checking Network Mode
@@ -386,21 +384,24 @@ This is expected! In offline mode, bz should never attempt network access. If yo
 # This should fail in offline mode with no cache
 bz mod info some_uncached_module --offline
 
-# This should work if cache is populated
-bz mod list --offline
+# This reads the default cache when the module was downloaded
+bz mod info rules_go --offline
 ```
 
 ### Cache Location
 
-Default cache locations by platform:
+The default cache directory is `.cache/bz` under the user's home directory on
+all platforms. `cache download`, `cache verify`, and `cache clear` accept their
+own `--cache-dir` option. To read a custom cache location, pass it as a local
+registry, for example `bz --offline --registry /path/to/cache mod info rules_go`.
 
-| Platform | Default Path |
-|----------|--------------|
-| Linux | `~/.cache/bz` |
-| macOS | `~/.cache/bz` |
-| Windows | `%LOCALAPPDATA%\bz\cache` |
-
-Override with `--cache-dir` flag or `BZ_CACHE_DIR` environment variable.
+Strict offline `mod info` reads use the default cache only when no registry
+is configured or specified. Cache entries do not record their origin, so an
+explicit or configured remote registry does not use this cache. A local registry
+is read directly. Other module commands do not automatically read the download
+cache. Prefer-offline uses the selected registry. `mod list` reads the local
+MODULE.bazel and does not verify cached registry data. Metadata can advertise
+versions that were not downloaded; request a specific version to check it.
 
 ---
 
@@ -415,11 +416,10 @@ jobs:
     runs-on: self-hosted  # Air-gapped runner
     env:
       BZ_OFFLINE: "1"
-      BZ_CACHE_DIR: "/opt/shared-cache/bz"
     steps:
       - uses: actions/checkout@v4
       - name: Verify cache
-        run: bz cache verify
+        run: bz cache verify --cache-dir /opt/shared-cache/bz
       - name: Build
         run: bazel build //...
 ```

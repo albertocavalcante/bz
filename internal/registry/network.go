@@ -2,6 +2,7 @@ package registry
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -176,7 +177,10 @@ func (r *NetworkAwareRegistry) GetMetadata(ctx context.Context, module string) (
 			}
 			meta, err := r.cache.GetMetadata(ctx, module)
 			if err != nil {
-				return nil, NewOfflineCacheMissError(module, r.inner.String())
+				if errors.Is(err, ErrModuleNotFound) {
+					return nil, NewOfflineCacheMissError(module, r.inner.String())
+				}
+				return nil, err
 			}
 			return meta, nil
 		},
@@ -205,7 +209,10 @@ func (r *NetworkAwareRegistry) GetModuleBazel(ctx context.Context, module, versi
 			}
 			content, err := r.cache.GetModuleBazel(ctx, module, version)
 			if err != nil {
-				return nil, NewOfflineVersionMissError(module, version, r.inner.String())
+				if errors.Is(err, ErrModuleNotFound) || errors.Is(err, ErrVersionNotFound) {
+					return nil, NewOfflineVersionMissError(module, version, r.inner.String())
+				}
+				return nil, err
 			}
 			return content, nil
 		},

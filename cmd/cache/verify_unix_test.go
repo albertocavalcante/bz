@@ -3,6 +3,7 @@
 package cache
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -11,7 +12,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/albertocavalcante/bz/internal/depgraph"
+	"github.com/albertocavalcante/bz/internal/registry"
 )
 
 func TestReadCachedModuleBazel_RejectsModulesFIFOWithoutBlocking(t *testing.T) {
@@ -32,7 +33,7 @@ func TestReadCachedModuleBazel_RejectsModulesFIFOWithoutBlocking(t *testing.T) {
 
 			done := make(chan error, 1)
 			go func() {
-				_, err := readCachedModuleBazel(cacheDir, depgraph.ModuleRef{Name: "rules_go", Version: "0.50.1"})
+				_, err := registry.NewCacheRegistry(cacheDir).GetModuleBazel(context.Background(), "rules_go", "0.50.1")
 				done <- err
 			}()
 

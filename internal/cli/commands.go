@@ -138,3 +138,15 @@ func IsEffectivelyPreferOffline() bool {
 
 	return cfg.IsPreferOffline()
 }
+
+// ProjectRegistry returns the project-configured registry, if explicitly set.
+func ProjectRegistry() (string, bool, error) {
+	cfg, err := loadCachedConfig()
+	if err != nil {
+		return "", false, err
+	}
+	if cfg.Source(bzconfig.KeyRegistry).Layer == bzconfig.LayerDefault {
+		return "", false, nil
+	}
+	return cfg.Network.Registry, true, nil
+}

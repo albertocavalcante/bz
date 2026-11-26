@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -16,12 +17,18 @@ import (
 
 // FileRegistry implements Registry for local filesystem registries.
 type FileRegistry struct {
-	root string
+	root    string
+	bounded bool
 }
 
 // NewFileRegistry creates a new filesystem-based registry.
 func NewFileRegistry(root string) *FileRegistry {
 	return &FileRegistry{root: root}
+}
+
+// NewCacheRegistry creates a local registry with bounded reads for cached data.
+func NewCacheRegistry(root string) *FileRegistry {
+	return &FileRegistry{root: root, bounded: true}
 }
 
 // Type returns the registry type identifier.
@@ -152,12 +159,20 @@ func (r *FileRegistry) modulesName(rel string) (string, error) {
 // root still resolve. The caller closes the returned root; the registry
 // root handle is closed before returning.
 func (r *FileRegistry) openModules() (*os.Root, error) {
-	base, err := os.OpenRoot(r.root)
+	rootPath := r.root
+	if r.bounded {
+		rootPath = registryDirectoryPath(rootPath)
+	}
+	base, err := os.OpenRoot(rootPath)
 	if err != nil {
 		return nil, err
 	}
 	defer base.Close()
-	return base.OpenRoot(ModulesDir)
+	modulesPath := ModulesDir
+	if r.bounded {
+		modulesPath = registryDirectoryPath(modulesPath)
+	}
+	return base.OpenRoot(modulesPath)
 }
 
 // readFile reads a registry file confined to the modules directory.
@@ -171,7 +186,32 @@ func (r *FileRegistry) readFile(rel string) ([]byte, error) {
 		return nil, err
 	}
 	defer root.Close()
-	return root.ReadFile(name)
+	if !r.bounded {
+		return root.ReadFile(name)
+	}
+	file, err := root.OpenFile(name, registryReadFlags(), 0)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("registry file is not a regular file")
+	}
+	if info.Size() > maxFetchResponseBytes {
+		return nil, fmt.Errorf("registry file exceeds %d-byte limit", maxFetchResponseBytes)
+	}
+	data, err := io.ReadAll(io.LimitReader(file, maxFetchResponseBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > maxFetchResponseBytes {
+		return nil, fmt.Errorf("registry file exceeds %d-byte limit", maxFetchResponseBytes)
+	}
+	return data, nil
 }
 
 // stat checks that a registry entry exists inside the modules directory.

@@ -1,10 +1,12 @@
 package cmd
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -12,6 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/albertocavalcante/bz/internal/cachepath"
 	"github.com/albertocavalcante/bz/internal/testutil"
 )
 
@@ -141,4 +144,84 @@ func writeOfflineTestModule(t *testing.T) {
 	t.Helper()
 	const content = "module(name = \"example\")\nbazel_dep(name = \"fixture\", version = \"1.0.0\")\n"
 	require.NoError(t, os.WriteFile("MODULE.bazel", []byte(content), 0o644))
+}
+
+func TestOfflineDefaultCacheReadback(t *testing.T) {
+	syncEnv(t)
+	t.Setenv("USERPROFILE", os.Getenv("HOME"))
+	t.Setenv("home", os.Getenv("HOME"))
+	cacheDir, err := cachepath.Resolve("")
+	require.NoError(t, err)
+	origin := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{
+		"parent": {Versions: []string{"1.0.0", "2.0.0"}, Deps: map[string][]string{"1.0.0": {"child@1.0.0"}}},
+		"child":  {Versions: []string{"1.0.0"}},
+	})
+	stdout, stderr, code := runCLI(t, "cache", "download", "--registry", origin, "parent@1.0.0")
+	require.Equalf(t, 0, code, "stdout=%s stderr=%s", stdout, stderr)
+	transport := &offlineTestTransport{}
+	original := http.DefaultTransport
+	http.DefaultTransport = transport
+	t.Cleanup(func() { http.DefaultTransport = original })
+	for _, name := range []string{"parent", "child"} {
+		for _, coordinate := range []string{name, name + "@1.0.0"} {
+			stdout, stderr, code = runCLI(t, "--offline", "mod", "info", coordinate, "--json")
+			require.Equalf(t, 0, code, "coordinate=%s stdout=%s stderr=%s", coordinate, stdout, stderr)
+			var result map[string]any
+			require.NoError(t, json.Unmarshal([]byte(stdout), &result))
+			require.Equal(t, name, result["name"])
+			if strings.Contains(coordinate, "@") {
+				require.Equal(t, "1.0.0", result["version"])
+			}
+		}
+	}
+	// Offline update must not select an uncached version from copied metadata.
+	project := []byte("module(name = \"project\")\nbazel_dep(name = \"parent\", version = \"1.0.0\")\n")
+	require.NoError(t, os.WriteFile("MODULE.bazel", project, 0o644))
+	_, _, _ = runCLI(t, "--offline", "mod", "update", "parent")
+	actual, err := os.ReadFile("MODULE.bazel")
+	require.NoError(t, err)
+	require.Equal(t, project, actual)
+	// A configured remote cannot safely consume this unscoped cache.
+	for _, args := range [][]string{
+		{"--offline", "--registry", "http://example.invalid", "mod", "info", "parent"},
+		{"--offline", "mod", "info", "missing"},
+		{"--offline", "mod", "info", "parent@2.0.0"},
+	} {
+		_, stderr, code = runCLI(t, args...)
+		require.NotEqual(t, 0, code)
+		require.Contains(t, stderr, "not cached")
+	}
+	t.Setenv("BZ_REGISTRY", "http://example.invalid")
+	_, stderr, code = runCLI(t, "--offline", "mod", "info", "parent")
+	require.NotEqual(t, 0, code)
+	require.Contains(t, stderr, "not cached")
+	t.Setenv("BZ_REGISTRY", "")
+	for _, remote := range []string{"http://example.invalid", "https://bcr.bazel.build"} {
+		require.NoError(t, os.WriteFile(".bzconfig.toml", []byte("[network]\nregistry = "+strconv.Quote(remote)+"\n"), 0o644))
+		_, stderr, code = runCLI(t, "--offline", "mod", "info", "parent")
+		require.NotEqual(t, 0, code)
+		require.Contains(t, stderr, "not cached")
+	}
+	local := testutil.SetupTestRegistry(t, map[string]testutil.TestModule{"other": {Versions: []string{"3.0.0"}}})
+	require.NoError(t, os.WriteFile(".bzconfig.toml", []byte("[network]\nregistry = "+strconv.Quote(local)+"\n"), 0o644))
+	stdout, stderr, code = runCLI(t, "--offline", "mod", "info", "other@3.0.0", "--json")
+	require.Equalf(t, 0, code, "stdout=%s stderr=%s", stdout, stderr)
+	_, stderr, code = runCLI(t, "--offline", "mod", "info", "parent")
+	require.NotEqual(t, 0, code)
+	require.Contains(t, stderr, "not found")
+	// The global flag takes precedence over project configuration.
+	stdout, stderr, code = runCLI(t, "--offline", "--registry", origin, "mod", "info", "parent@1.0.0", "--json")
+	require.Equalf(t, 0, code, "stdout=%s stderr=%s", stdout, stderr)
+	require.NoError(t, os.Remove(".bzconfig.toml"))
+	assert.Zero(t, transport.requests.Load())
+	// Prefer-offline must still contact the selected registry rather than mix origins.
+	_, _, code = runCLI(t, "--prefer-offline", "mod", "info", "parent")
+	require.NotEqual(t, 0, code)
+	require.Positive(t, transport.requests.Load())
+	before := transport.requests.Load()
+	require.NoError(t, os.WriteFile(filepath.Join(cacheDir, "modules", "parent", "metadata.json"), []byte("{"), 0o644))
+	_, stderr, code = runCLI(t, "--offline", "mod", "info", "parent")
+	require.NotEqual(t, 0, code)
+	require.Contains(t, stderr, "parse metadata")
+	assert.Equal(t, before, transport.requests.Load())
 }

@@ -54,7 +54,7 @@ func runInfo(cmd *cobra.Command, args []string) error {
 	ctx := cmdutil.CommandContext(cmd)
 
 	// Create network-aware registry
-	reg, err := createNetworkAwareRegistry()
+	reg, err := createRegistry(true)
 	if err != nil {
 		return err
 	}
