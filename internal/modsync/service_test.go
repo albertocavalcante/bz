@@ -1,6 +1,7 @@
 package modsync
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
@@ -840,6 +841,20 @@ func TestFileMirrorRejectsInvalidFreshCoreAndRecovers(t *testing.T) {
 			result, err = svc.Run(context.Background(), "mirror", Options{})
 			if err != nil || len(result.Errors) != 0 {
 				t.Fatalf("recovery = %+v, %v", result, err)
+			}
+			if tc.file == "source.json" {
+				destinationFile := filepath.Join(dest, registry.SourcePath("example", "1.0.0"))
+				if err := os.WriteFile(destinationFile, []byte(tc.bad), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				result, err = svc.Run(context.Background(), "mirror", Options{})
+				if err != nil || len(result.Errors) != 0 {
+					t.Fatalf("destination repair = %+v, %v", result, err)
+				}
+				got, err := os.ReadFile(destinationFile)
+				if err != nil || !bytes.Equal(got, good) {
+					t.Fatalf("repaired source = %q, %v; want %q", got, err, good)
+				}
 			}
 		})
 	}

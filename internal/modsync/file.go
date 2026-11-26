@@ -135,11 +135,6 @@ func yankReason(yanks map[string]string, version string) (string, bool) {
 	return "", false
 }
 
-func validSource(data []byte) bool {
-	var object map[string]json.RawMessage
-	return json.Unmarshal(data, &object) == nil && object != nil
-}
-
 func readCompleteFile(dest *publisher.FilePublisher, name string, valid func([]byte) bool) ([]byte, error) {
 	data, err := dest.Read(name)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -168,14 +163,15 @@ func readMirrorVersion(dest *publisher.FilePublisher, module, version string) (m
 		return mirrorVersionState{}, fmt.Errorf("check MODULE.bazel: %w", err)
 	}
 	state := mirrorVersionState{hasModule: moduleData != nil}
-	sourceData, err := readCompleteFile(dest, path.Join(module, version, registry.SourceFile), validSource)
+	sourceData, err := dest.Read(path.Join(module, version, registry.SourceFile))
+	if errors.Is(err, fs.ErrNotExist) {
+		return state, nil
+	}
 	if err != nil {
 		return state, fmt.Errorf("check source.json: %w", err)
 	}
-	if sourceData != nil {
-		state.attachments, err = mirrorAttachments(module, version, sourceData)
-		state.hasSource = err == nil
-	}
+	state.attachments, err = inspectMirrorSource(module, version, sourceData)
+	state.hasSource = err == nil
 	return state, nil
 }
 

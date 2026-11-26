@@ -250,7 +250,7 @@ func (r *runner) syncVersion(ctx context.Context, moduleName, version string) (c
 	if r.local != nil {
 		attachments := state.attachments
 		if !hasSource {
-			attachments, err = mirrorAttachments(moduleName, version, sourceJSON)
+			attachments, err = inspectMirrorSource(moduleName, version, sourceJSON)
 			if err != nil {
 				return false, err
 			}
@@ -305,9 +305,6 @@ func (r *runner) fetchVersion(ctx context.Context, moduleName, version string, h
 	if r.local != nil {
 		if !hasModule && !validModule(moduleBazel, moduleName, version) {
 			return nil, nil, fmt.Errorf("MODULE.bazel is empty or invalid")
-		}
-		if !hasSource && !validSource(sourceJSON) {
-			return nil, nil, fmt.Errorf("source.json is missing or not a JSON object")
 		}
 	}
 

@@ -27,12 +27,15 @@ type versionAttachment struct {
 	checksum []byte
 }
 
-// mirrorAttachments reads attachment references without rewriting the source
-// descriptor. Bazel applies patches in the order in the original JSON.
-func mirrorAttachments(module, version string, source []byte) ([]versionAttachment, error) {
+// inspectMirrorSource validates the descriptor and reads attachment references
+// without rewriting it. Bazel applies patches in the original JSON order.
+func inspectMirrorSource(module, version string, source []byte) ([]versionAttachment, error) {
 	var descriptor map[string]json.RawMessage
 	if err := json.Unmarshal(source, &descriptor); err != nil {
 		return nil, fmt.Errorf("parse source.json: %w", err)
+	}
+	if descriptor == nil {
+		return nil, fmt.Errorf("source.json is missing or not a JSON object")
 	}
 	var sourceType string
 	if raw, ok := descriptor["type"]; ok {
